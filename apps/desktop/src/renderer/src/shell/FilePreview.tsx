@@ -1,10 +1,11 @@
 // A file shown in the right panel, read-only: PDF in the built-in viewer,
-// Markdown rendered, text and code with line numbers, HTML in a sandbox
+// Markdown rendered, text and code with line numbers (code in colour), HTML in a sandbox
 // (no scripts, nothing from the network), images. Anything else: a sentence
 // and the system program.
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
+import { HIGHLIGHT_MAX_CHARS, highlightLines, languageOf } from '../chat/highlight';
 import { Icon } from '../ui/Icon';
 import { FileGlyph } from '../ui/FileIcon';
 import { MaxButton, type MaxState } from '../ui/MaxButton';
@@ -17,7 +18,7 @@ export interface FilePreviewProps {
   /** null while loading. */
   info: PreviewInfo | null;
   onOpenExternal(path: string): void;
-  /** 打开所在文件夹 (the file selected in Explorer); absent: no such button. */
+  /** 打开所在文件夹 (the file selected in Explorer), by a press on the file's name; absent: the name is only its name. */
   onReveal?: (path: string) => void;
   onClose(): void;
   /** An Excel workbook: show its sheet number n (1-based). */
@@ -38,12 +39,26 @@ function sizeText(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1).replace(/\.0$/, '')} MB`;
 }
 
-/** Text with line numbers; long files render in pieces as you scroll down. */
-function Lines({ text }: { text: string }) {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+/**
+ * Text with line numbers; code in a language coloured here (chat/highlight.ts, the colours of code in answers).
+ * Long files render in pieces as you scroll down. A file up to HIGHLIGHT_MAX_CHARS is coloured before it shows;
+ * a longer one shows plain first and its colours follow (about 0.3 s for 20 000 lines), so it opens at once.
+ */
+function Lines({ text, language }: { text: string; language: string | null }) {
+  const plain = useMemo(() => text.replace(/\r\n?/g, '\n'), [text]);
+  const lines = useMemo(() => plain.split('\n'), [plain]);
+  const now = useMemo(() => (language && plain.length <= HIGHLIGHT_MAX_CHARS ? highlightLines(language, plain) : null), [language, plain]);
+  const [later, setLater] = useState<{ text: string; lines: ReactNode[][] | null } | null>(null);
+  useEffect(() => {
+    if (!language || plain.length <= HIGHLIGHT_MAX_CHARS) return;
+    const id = setTimeout(() => setLater({ text: plain, lines: highlightLines(language, plain) }), 0);
+    return () => clearTimeout(id);
+  }, [language, plain]);
+  const coloured = now ?? (later?.text === plain ? later.lines : null);
   const [shown, setShown] = useState(2000);
   return (
-    <div
+    // A pre, as every block of code (the code colours are set for code in one).
+    <pre
       className="preview-code"
       onScroll={(e) => {
         const el = e.currentTarget;
@@ -51,14 +66,14 @@ function Lines({ text }: { text: string }) {
       }}
     >
       {lines.slice(0, shown).map((l, i) => (
-        <div key={i} className="preview-line">
+        <span key={i} className="preview-line">
           <span className="preview-ln" aria-hidden>
             {i + 1}
           </span>
-          <span className="preview-lt">{l || ' '}</span>
-        </div>
+          <span className="preview-lt">{coloured?.[i]?.length ? coloured[i] : l || ' '}</span>
+        </span>
       ))}
-    </div>
+    </pre>
   );
 }
 
@@ -116,44 +131,57 @@ function cutNote(info: { name: string; size: number }): string {
   return WORD_NAME.test(info.name) ? t('仅显示前 500 段') : t('仅显示前 512 KB（共 {size}）', { size: sizeText(info.size) });
 }
 
-/** What can be shown both ways in the panel: as a page or picture, and as its code. */
-function codeOf(info: PreviewInfo | null): string | null {
+/** What can be shown both ways in the panel: as a page or picture, and as its code (and the code's language). */
+function codeOf(info: PreviewInfo | null): { text: string; language: string } | null {
   if (!info) return null;
-  if (info.kind === 'html' || (info.kind === 'markdown' && !WORD_NAME.test(info.name))) return info.text;
-  if (info.kind === 'image' && info.text !== undefined) return info.text;
+  if (info.kind === 'html') return { text: info.text, language: 'xml' };
+  if (info.kind === 'markdown' && !WORD_NAME.test(info.name)) return { text: info.text, language: 'markdown' };
+  if (info.kind === 'image' && info.text !== undefined) return { text: info.text, language: 'xml' };
   return null;
 }
 
 export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, max, source, note, children }: FilePreviewProps) {
-  // 代码 / 预览: per file (another file opens as its preview again).
+  // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
-  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
   const code = children ? null : codeOf(info);
-  const asCode = code !== null && codeFor === id;
+  const asCode = code !== null && codeFor.has(id);
+  const showAs = (on: boolean) =>
+    setCodeFor((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  const hasFile = Boolean(info && info.kind !== 'missing' && info.path);
   return (
     <section className="preview" aria-label={info ? t('预览 {name}', { name: info.name }) : t('预览')}>
       <header className="preview-head panel-head">
         <FileGlyph name={info?.name ?? ''} />
-        <span className="preview-name" title={info?.path ?? ''}>
-          {info?.name ?? ''}
-        </span>
+        {/* The name opens the file's folder (its hover note says so, with the full path); 复制路径 right after it. */}
+        {info && hasFile && onReveal ? (
+          <button type="button" className="preview-name is-button" onClick={() => onReveal(info.path)} title={[t('打开所在文件夹'), info.path].join('\n')}>
+            {info.name}
+          </button>
+        ) : (
+          <span className="preview-name" title={info?.path ?? ''}>
+            {info?.name ?? ''}
+          </span>
+        )}
+        {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
+        <span className="preview-head-gap" />
         {source && source.options.length > 1 ? (
           <Select className="preview-source" label={t('预览方式')} title={t('预览方式')} value={source.value} onChange={source.onChange} options={source.options.map((o) => ({ value: o.id, label: o.label }))} />
         ) : null}
         {code !== null ? (
-          <button type="button" className="icon-btn" aria-pressed={asCode} onClick={() => setCodeFor(asCode ? null : id)} aria-label={asCode ? t('预览') : t('代码')} title={asCode ? t('预览') : t('代码')}>
+          // One button: its icon and its note say the face a press goes to (预览 shows the code icon, 代码 the eye).
+          <button type="button" className="icon-btn" onClick={() => showAs(!asCode)} aria-label={asCode ? t('查看预览') : t('查看代码')} title={asCode ? t('查看预览') : t('查看代码')}>
             <Icon name={asCode ? 'eye' : 'code'} size={15} />
           </button>
         ) : null}
         {max ? <MaxButton max={max} /> : null}
         {/* The file's own buttons: not for a page drawn from an answer (it has no file). */}
-        {info && info.kind !== 'missing' && info.path && onReveal ? (
-          <button type="button" className="icon-btn" onClick={() => onReveal(info.path)} aria-label={t('打开所在文件夹')} title={t('打开所在文件夹')}>
-            <Icon name="folder" size={15} />
-          </button>
-        ) : null}
-        {info && info.kind !== 'missing' && info.path ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
-        {info && info.kind !== 'missing' && info.path ? (
+        {info && hasFile ? (
           <button type="button" className="icon-btn" onClick={() => onOpenExternal(info.path)} aria-label={t('用系统程序打开')} title={t('用系统程序打开')}>
             <Icon name="external" size={15} />
           </button>
@@ -177,7 +205,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
       ) : !info ? (
         <div className="preview-body" />
       ) : asCode ? (
-        <Lines key={`${id}|code`} text={code} />
+        <Lines key={`${id}|code`} text={code.text} language={code.language} />
       ) : info.kind === 'pdf' ? (
         <iframe className="preview-frame" src={info.url} title={info.name} />
       ) : info.kind === 'image' ? (
@@ -197,7 +225,7 @@ export function FilePreview({ info, onOpenExternal, onReveal, onSheet, onClose, 
             // sandbox with no permissions: no scripts, no forms, no navigation; only the page itself.
             <iframe className="preview-frame preview-html" sandbox="" srcDoc={info.text} title={info.name} />
           ) : (
-            <Lines key={info.path} text={info.text} />
+            <Lines key={info.path} text={info.text} language={languageOf(info.name)} />
           )}
         </>
       ) : (

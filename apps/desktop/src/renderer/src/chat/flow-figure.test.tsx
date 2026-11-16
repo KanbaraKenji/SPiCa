@@ -29,10 +29,10 @@ describe('a flowchart in an answer', () => {
     });
     expect(draw.fn).toHaveBeenCalledWith(chart, 'dark');
     expect(document.querySelector('.flow-figure img')?.getAttribute('src')).toBe('data:image/svg+xml,<svg>chart</svg>');
-    expect([...document.querySelectorAll('.flow-figure .code-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['代码', '复制']);
-    fireEvent.click(screen.getByRole('button', { name: '代码' }));
+    expect([...document.querySelectorAll('.flow-figure .code-head button')].map((b) => b.getAttribute('aria-label'))).toEqual(['查看代码', '复制']);
+    fireEvent.click(screen.getByRole('button', { name: '查看代码' }));
     expect(document.querySelector('.flow-figure pre')?.textContent).toBe(chart);
-    fireEvent.click(screen.getByRole('button', { name: '预览' }));
+    fireEvent.click(screen.getByRole('button', { name: '查看预览' }));
     fireEvent.click(document.querySelector('.flow-image')!);
     expect(document.querySelector('.image-viewer')).toBeTruthy();
   });

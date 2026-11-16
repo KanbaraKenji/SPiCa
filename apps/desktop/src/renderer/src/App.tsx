@@ -383,6 +383,14 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (previewFloats(width, open, savedWidths)) setFloating('preview');
     else if (floating === 'preview') setFloating(null);
   };
+  // The screenshot script hook (above) also opens a file to show in the preview panel (an absolute path), for pictures of the panel.
+  useEffect(() => {
+    if (window.__spicaShots)
+      window.__spicaShots.preview = (path) => {
+        setPreview({ sessionId: null, path });
+        showPreview();
+      };
+  });
   // The file last closed in the preview: the title bar's preview button opens it again.
   const [lastPreview, setLastPreview] = useState<typeof preview>(null);
   const closePreview = () => {
