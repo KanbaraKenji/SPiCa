@@ -2393,7 +2393,9 @@ pre .hl-punctuation {
   font-weight: 500;
 }
 
-.file-card-sub {
+/* also a confirmation card's second line (the built-in browser's: where and on what), one line, cut with … */
+.file-card-sub,
+.confirm-card .card-sub {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -6229,6 +6231,13 @@ section.plugins-part > .plugins-part-title {
 
 .confirm-spacer {
   flex: 1;
+}
+
+/* A title with its grey second line (only when the reason has two lines): the two stacked, as narrow as needed. */
+.card-title-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .confirm-card > .card-head .card-actions {

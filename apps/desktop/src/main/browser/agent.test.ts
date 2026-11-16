@@ -165,7 +165,7 @@ describe('acting on a page', () => {
     const p = s.pages.get(100)!;
     p.state.facts = button({ type: 'submit', name: 'Place order', form: { action: 'https://shop.example/order', method: 'post' } });
     const asked = await s.agent.inspect('s1', { tool: 'browser_click', ref: 3, callId: 'c1' });
-    expect(asked.verdict).toEqual({ action: 'confirm', reason: '提交表单（shop.example）：「Place order」' });
+    expect(asked.verdict).toEqual({ action: 'confirm', reason: '提交表单\nshop.example · 「Place order」' });
     p.state.facts = button({ type: 'submit', name: 'Delete account', form: { action: 'https://shop.example/delete', method: 'post' } });
     await expect(s.agent.click('s1', { ref: 3, callId: 'c1' })).rejects.toThrow(/page changed/);
     expect(p.sent).toEqual([]);

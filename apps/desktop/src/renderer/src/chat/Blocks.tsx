@@ -1022,7 +1022,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
   const facts = command !== null ? commandFacts(command) : [];
   // 无法撤销 and the warning: a dangerous command, or a step a plugin marked irreversible (its hook, or its manifest).
   const danger = facts.some((f) => f.danger) || block.irreversible === true;
-  const title = command === null ? confirmTitle(block.name, block.input, block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
+  // A reason on two lines (the built-in browser's: what, then where and on what): the second is a grey line under
+  // the title. One line: the card as before.
+  const [reasonHead, ...reasonRest] = block.reason.split('\n');
+  const sub = command === null && reasonRest.length ? reasonRest.join(' ') : '';
+  const title = command === null ? confirmTitle(block.name, block.input, sub ? (reasonHead ?? '') : block.reason) : facts.length ? facts.map((f) => f.text).join(t('；')) : t('运行命令');
   const cls = ['card', 'confirm-card', danger ? 'is-danger' : '', decided ? 'is-done' : ''].filter(Boolean).join(' ');
   return (
     <section className={cls} aria-label={t('确认')}>
@@ -1030,7 +1034,16 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* Only a dangerous one has a mark (the warning); an ordinary one's ringed i said nothing its 拒绝 / 允许
             do not (他在决策页 d26 选「只去掉普通确认卡的 i」). */}
         {danger ? <SpicaStatusIcon name="warning" size={16} /> : null}
-        <span className="card-title">{title}</span>
+        {sub ? (
+          <span className="card-title-block">
+            <span className="card-title">{title}</span>
+            <span className="card-sub" title={sub}>
+              {sub}
+            </span>
+          </span>
+        ) : (
+          <span className="card-title">{title}</span>
+        )}
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (

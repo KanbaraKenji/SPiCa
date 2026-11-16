@@ -212,10 +212,10 @@ export const ZH_TW_MAIN: Catalog = {
   '新对话': '新對話',
   // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
   '无法打开此网址。': '無法開啟此網址。',
-  // main/browser/actions.ts (the confirmation card when an agent acts in a page)
-  '提交表单（{site}）': '提交表單（{site}）',
-  '在{field}填入{text}并提交（{site}）': '在{field}填入{text}並提交（{site}）',
-  '提交表单（{site}）：{button}': '提交表單（{site}）：{button}',
-  '下载（{site}）：{link}': '下載（{site}）：{link}',
-  '{site} 上的按钮{button}': '{site} 上的按鈕{button}',
+  // main/browser/actions.ts (the confirmation card when an agent acts in a page: what, then where and on what)
+  提交表单: '提交表單',
+  填入并提交: '填入並提交',
+  下载: '下載',
+  点击按钮: '點選按鈕',
+  '{field}：{text}': '{field}：{text}',
 };

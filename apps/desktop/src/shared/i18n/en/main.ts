@@ -212,10 +212,10 @@ export const EN_MAIN: Catalog = {
   '新对话': 'New conversation',
   // shell/PaneTabs.tsx, shell/BrowserPane.tsx (the built-in browser)
   '无法打开此网址。': 'Cannot open this address.',
-  // main/browser/actions.ts (the confirmation card when an agent acts in a page)
-  '提交表单（{site}）': 'Submit a form ({site})',
-  '在{field}填入{text}并提交（{site}）': 'Fill {field} with {text} and submit ({site})',
-  '提交表单（{site}）：{button}': 'Submit a form ({site}): {button}',
-  '下载（{site}）：{link}': 'Download ({site}): {link}',
-  '{site} 上的按钮{button}': 'Button {button} on {site}',
+  // main/browser/actions.ts (the confirmation card when an agent acts in a page: what, then where and on what)
+  提交表单: 'Submit a form',
+  填入并提交: 'Fill in and submit',
+  下载: 'Download',
+  点击按钮: 'Click a button',
+  '{field}：{text}': '{field}: {text}',
 };

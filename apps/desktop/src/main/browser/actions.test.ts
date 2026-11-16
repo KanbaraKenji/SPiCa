@@ -13,10 +13,10 @@ describe('judge: the confirmation table', () => {
   });
 
   it('submitting a form: asked, naming the site it goes to and the button as the page words it', () => {
-    expect(judge('browser_click', el({ type: 'submit', name: 'Place order', form }))).toEqual({ action: 'confirm', reason: '提交表单（shop.example）：「Place order」' });
+    expect(judge('browser_click', el({ type: 'submit', name: 'Place order', form }))).toEqual({ action: 'confirm', reason: '提交表单\nshop.example · 「Place order」' });
     expect(judge('browser_click', el({ tag: 'input', type: 'submit', name: 'Go' }))).toMatchObject({ action: 'confirm' });
-    expect(judge('browser_type', el({ tag: 'input', type: 'text', name: '收货人', editable: true, form }), { submit: true, text: '张三' })).toEqual({ action: 'confirm', reason: '在「收货人」填入「张三」并提交（shop.example）' });
-    expect(judge('browser_press', el({ tag: 'input', form }), { key: 'Enter' })).toEqual({ action: 'confirm', reason: '提交表单（shop.example）' });
+    expect(judge('browser_type', el({ tag: 'input', type: 'text', name: '收货人', editable: true, form }), { submit: true, text: '张三' })).toEqual({ action: 'confirm', reason: '填入并提交\nshop.example · 「收货人」：「张三」' });
+    expect(judge('browser_press', el({ tag: 'input', form }), { key: 'Enter' })).toEqual({ action: 'confirm', reason: '提交表单\nshop.example' });
   });
 
   it('a button outside a form whose words pay, order, send or delete: asked', () => {
@@ -24,7 +24,7 @@ describe('judge: the confirmation table', () => {
   });
 
   it('a download link: asked', () => {
-    expect(judge('browser_click', el({ tag: 'a', name: 'Report', href: 'https://files.example/r.pdf', download: true }))).toEqual({ action: 'confirm', reason: '下载（files.example）：「Report」' });
+    expect(judge('browser_click', el({ tag: 'a', name: 'Report', href: 'https://files.example/r.pdf', download: true }))).toEqual({ action: 'confirm', reason: '下载\nfiles.example · 「Report」' });
   });
 
   it('password, card and code fields: left to the person, whatever the approval mode', () => {
@@ -34,7 +34,7 @@ describe('judge: the confirmation table', () => {
 
   it('a long button name is cut on the card; an element not there is left to the tool', () => {
     const r = judge('browser_click', el({ type: 'submit', form, name: 'x'.repeat(50) }));
-    expect(r.action === 'confirm' && r.reason).toBe(`提交表单（shop.example）：「${'x'.repeat(30)}…」`);
+    expect(r.action === 'confirm' && r.reason).toBe(`提交表单\nshop.example · 「${'x'.repeat(30)}…」`);
     expect(judge('browser_click', null)).toEqual({ action: 'allow' });
     expect(judge('browser_click', el({ found: false }))).toEqual({ action: 'allow' });
   });

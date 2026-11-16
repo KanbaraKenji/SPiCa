@@ -108,11 +108,19 @@ function quoted(name: string): string {
   return t('「{name}」', { name: s.length > 30 ? `${s.slice(0, 30)}…` : s || '—' });
 }
 
+/**
+ * A card's question on two lines: what, then where and on what (the card shows the second grey under the first,
+ * one line, cut with … when long; chat/Blocks.tsx ConfirmCard).
+ */
+function twoLines(what: string, site: string, on?: string): string {
+  return `${what}\n${on ? t('{site} · {on}', { site, on }) : site}`;
+}
+
 /** Whether to do it, ask first, or leave it to the person. The question's words are the confirmation card's. */
 export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: unknown; submit?: unknown; text?: unknown } = {}): ActionVerdict {
   if (tool === 'browser_press') {
     // Enter in a form's field sends the form
-    if (String(input.key ?? '').toLowerCase() === 'enter' && f?.found && f.form) return { action: 'confirm', reason: t('提交表单（{site}）', { site: host(f.form.action) }) };
+    if (String(input.key ?? '').toLowerCase() === 'enter' && f?.found && f.form) return { action: 'confirm', reason: twoLines(t('提交表单'), host(f.form.action)) };
     return { action: 'allow' };
   }
   if (!f || !f.found) return { action: 'allow' }; // the tool says it is not there
@@ -120,15 +128,15 @@ export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: u
     if (sensitiveField(f)) return { action: 'deny', reason: 'password, card number or one-time code field: the person types this themselves in the panel; ask them to do it' };
     if (input.submit === true) {
       const text = String(input.text ?? '');
-      return { action: 'confirm', reason: t('在{field}填入{text}并提交（{site}）', { field: quoted(f.name), text: quoted(text), site: host(f.form?.action ?? f.page) }) };
+      return { action: 'confirm', reason: twoLines(t('填入并提交'), host(f.form?.action ?? f.page), t('{field}：{text}', { field: quoted(f.name), text: quoted(text) })) };
     }
     return { action: 'allow' };
   }
   // a click
   const submit = (f.tag === 'button' && f.type === 'submit' && !!f.form) || (f.tag === 'input' && (f.type === 'submit' || f.type === 'image'));
-  if (submit) return { action: 'confirm', reason: t('提交表单（{site}）：{button}', { site: host(f.form?.action ?? f.page), button: quoted(f.name) }) };
-  if (f.download) return { action: 'confirm', reason: t('下载（{site}）：{link}', { site: host(f.href ?? f.page), link: quoted(f.name) }) };
-  if (f.tag !== 'a' && LASTING.test(f.name)) return { action: 'confirm', reason: t('{site} 上的按钮{button}', { site: host(f.page), button: quoted(f.name) }) };
+  if (submit) return { action: 'confirm', reason: twoLines(t('提交表单'), host(f.form?.action ?? f.page), quoted(f.name)) };
+  if (f.download) return { action: 'confirm', reason: twoLines(t('下载'), host(f.href ?? f.page), quoted(f.name)) };
+  if (f.tag !== 'a' && LASTING.test(f.name)) return { action: 'confirm', reason: twoLines(t('点击按钮'), host(f.page), quoted(f.name)) };
   return { action: 'allow' };
 }
 

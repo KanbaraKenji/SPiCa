@@ -78,6 +78,28 @@ describe('ConfirmCard', () => {
     expect(head.querySelector('.confirm-undo')?.textContent).toBe('无法撤销');
   });
 
+  it('a reason on two lines: the title, then a grey second line (whole on hover); 无法撤销 and the buttons where they were', () => {
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c8', name: 'browser_click', input: { ref: 4 }, reason: '提交表单\n127.0.0.1:47841 · 「提交登记」', irreversible: true }} onDecide={vi.fn()} />);
+    const head = document.querySelector('.confirm-card > .card-head')!;
+    const block = head.querySelector('.card-title-block')!;
+    expect(block.querySelector('.card-title')?.textContent).toBe('提交表单');
+    const sub = block.querySelector('.card-sub')!;
+    expect(sub.textContent).toBe('127.0.0.1:47841 · 「提交登记」');
+    expect(sub.getAttribute('title')).toBe('127.0.0.1:47841 · 「提交登记」');
+    // after the title block: 无法撤销, the spacer, the buttons (as on every card)
+    expect([...head.children].map((c) => (c.tagName === 'svg' ? 'warning' : c.getAttribute('class')))).toEqual(['warning', 'card-title-block', 'confirm-undo', 'confirm-spacer', 'card-actions']);
+    // the browser's element number is not shown
+    expect(document.querySelector('.confirm-card')!.textContent).not.toContain('ref');
+  });
+
+  it('a reason on one line: no second line, the title straight in the head as before', () => {
+    render(<ConfirmCard block={{ type: 'confirm', callId: 'c9', name: 'send_email', input: {}, reason: '发送邮件给「项目组」' }} onDecide={vi.fn()} />);
+    const head = document.querySelector('.confirm-card > .card-head')!;
+    expect(head.querySelector('.card-sub')).toBeNull();
+    expect(head.querySelector('.card-title-block')).toBeNull();
+    expect(head.firstElementChild?.className).toBe('card-title');
+  });
+
   it('a plugin step marked irreversible: the warning and 无法撤销, its reason as the title; unmarked, neither', () => {
     const step = { type: 'confirm' as const, callId: 'c7', name: 'notes__write_note', input: { title: '周会' }, reason: '覆盖笔记「周会」' };
     render(<ConfirmCard block={{ ...step, irreversible: true }} onDecide={vi.fn()} />);
