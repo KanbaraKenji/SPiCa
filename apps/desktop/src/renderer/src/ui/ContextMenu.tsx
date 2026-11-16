@@ -41,7 +41,8 @@ const groupOf = (it: MenuItem | undefined) => it?.groupKey ?? it?.group;
  * `anchor`: the button that opened the menu. The menu sits under it (above it when there is no
  * room below), and pressing that button again is left to the button, so a second click closes.
  * `side: 'above'`: over the button first (the row under the message box), under it only when
- * there is no room above. Either way 4px from the button, measured from the menu as drawn.
+ * there is no room above. Either way 4px from the button, measured from the menu as drawn. `align: 'end'`: the
+ * menu's right edge on the button's right edge, so it opens leftward (toward the card it belongs to, not out of it).
  */
 export function ContextMenu({
   x,
@@ -52,6 +53,7 @@ export function ContextMenu({
   side = 'below',
   minWidth,
   focusChecked = false,
+  align = 'start',
 }: {
   x: number;
   y: number;
@@ -63,6 +65,8 @@ export function ContextMenu({
   minWidth?: number | undefined;
   /** Opening, the focus goes to the ticked item (scrolled into view), not the first. */
   focusChecked?: boolean;
+  /** Which edges of the menu and its button line up: left (start) or right (end). */
+  align?: 'start' | 'end';
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -82,7 +86,7 @@ export function ContextMenu({
     // Measured here, once the button is shown (it may appear only with its menu open).
     if (anchor) {
       const a = anchor.getBoundingClientRect();
-      left = a.left;
+      left = align === 'end' ? a.right - r.width : a.left;
       const below = a.bottom + 4;
       const above = a.top - 4 - r.height;
       const fitsBelow = below + r.height <= window.innerHeight - 4;
@@ -93,7 +97,7 @@ export function ContextMenu({
     const first = (focusChecked && el.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not([aria-disabled="true"])')) || el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])');
     first?.focus({ preventScroll: true });
     first?.scrollIntoView?.({ block: 'nearest' });
-  }, [x, y, anchor, side, focusChecked]);
+  }, [x, y, anchor, side, focusChecked, align]);
 
   useEffect(() => {
     const close = () => onClose();

@@ -1063,7 +1063,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
 
 /**
  * 允许 for a write outside the conversation's folders: the button allows this once; its arrow opens a menu with
- * 始终允许此文件夹 (as Claude's own permission prompts do), so the card keeps two buttons.
+ * 始终允许此文件夹 (as Claude's own permission prompts do), so the card keeps two buttons. The menu opens toward
+ * the inside of the card: its right edge on the arrow's right edge (he: 「像卡片内侧延展」).
  */
 function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(folder: boolean): void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
@@ -1087,7 +1088,7 @@ function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: 
       {/* on the page itself: inside the conversation a card's own styles would carry the menu off its button */}
       {menu
         ? createPortal(
-            <ContextMenu x={0} y={0} anchor={menu} items={[{ label: t('始终允许此文件夹'), title: folder, onSelect: () => onAllow(true) }]} onClose={() => setMenu(null)} />,
+            <ContextMenu x={0} y={0} anchor={menu} align="end" items={[{ label: t('始终允许此文件夹'), title: folder, onSelect: () => onAllow(true) }]} onClose={() => setMenu(null)} />,
             document.body,
           )
         : null}

@@ -32,6 +32,23 @@ describe('ContextMenu under a button', () => {
     expect(menu.style.top).toBe('128px');
   });
 
+  it('align end: its right edge on the button’s right edge, opening leftward; above when no room below; inside a narrow window', () => {
+    menuSize(80);
+    const anchor = button({ left: 500, top: 100, bottom: 124 });
+    render(<ContextMenu x={0} y={0} items={items} anchor={anchor} align="end" onClose={() => {}} />);
+    expect(screen.getByRole('menu').style.left).toBe(`${500 + 24 - 140}px`);
+    expect(screen.getByRole('menu').style.top).toBe('128px');
+    cleanup();
+    const low = button({ left: 500, top: window.innerHeight - 40, bottom: window.innerHeight - 16 });
+    render(<ContextMenu x={0} y={0} items={items} anchor={low} align="end" onClose={() => {}} />);
+    expect(screen.getByRole('menu').style.top).toBe(`${window.innerHeight - 40 - 4 - 80}px`);
+    cleanup();
+    // a button near the window's left edge: the menu stays in the window
+    const near = button({ left: 20, top: 100, bottom: 124 });
+    render(<ContextMenu x={0} y={0} items={items} anchor={near} align="end" onClose={() => {}} />);
+    expect(screen.getByRole('menu').style.left).toBe('4px');
+  });
+
   it('goes above the button when there is no room below', () => {
     menuSize(80);
     const anchor = button({ left: 220, top: window.innerHeight - 40, bottom: window.innerHeight - 16 });
