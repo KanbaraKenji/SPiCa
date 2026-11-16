@@ -4,7 +4,7 @@
 import { createServer, type Server } from 'node:http';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { configureNetwork } from './net.ts';
 import {
   clearPython,
@@ -25,9 +25,11 @@ import {
   type PythonEnvOptions,
 } from './python-env.ts';
 import { tempDir } from './testing/helpers.ts';
+import { runFakeUv } from './testing/fake-uv-run.mjs';
 
-// each call starts a Node process for the stand-in: slow when the whole suite runs at once
-vi.setConfig({ testTimeout: 60_000 });
+// The stand-in for uv runs in this process (opts.runUv): no program start per uv call. The two tests that start
+// real programs (the stand-in as a program, PowerShell) have their own longer time limit, for a busy machine.
+const STARTS_PROGRAMS = 30_000;
 const fakeUv = join(import.meta.dirname, 'testing', 'fake-uv.mjs');
 
 let server: Server;
@@ -73,11 +75,23 @@ beforeEach(async () => {
   ({ dir, cleanup } = await tempDir());
   log = join(dir, 'uv.log');
   writeConfig({});
-  opts = { uvExe: process.execPath, uvPrefixArgs: [fakeUv, join(dir, 'fake.json')], root: join(dir, 'python'), packageIndex: `${base}/simple`, netDir: join(dir, 'net') };
+  // the stand-in runs in this process (no Node start-up per uv call); `spawned` starts it as a real program
+  opts = { uvExe: process.execPath, root: join(dir, 'python'), packageIndex: `${base}/simple`, netDir: join(dir, 'net'), runUv: inProcess };
 });
 afterEach(async () => {
   await cleanup();
 });
+
+/** The stand-in, run here with the environment uv would get, reading the test's fake.json at each call. */
+const inProcess: NonNullable<PythonEnvOptions['runUv']> = async (args, o) =>
+  runFakeUv({ config: JSON.parse(readFileSync(join(dir, 'fake.json'), 'utf8')) as object, args, env: o.env, input: o.input ?? '' });
+
+/** The same options with the stand-in started as a real program: what reaches a child process. */
+function spawned(): PythonEnvOptions {
+  const { runUv: _inProcess, ...rest } = opts;
+  void _inProcess;
+  return { ...rest, uvPrefixArgs: [fakeUv, join(dir, 'fake.json')] };
+}
 
 function writeConfig(extra: { fail?: string; failText?: string }): void {
   writeFileSync(join(dir, 'fake.json'), JSON.stringify({ log, pythonUrl: `${base}/python.tar.gz`, ...extra }));
@@ -227,7 +241,8 @@ describe('before downloading: what and how big', () => {
 describe('installing, listing, clearing', () => {
   it('first time: Python, then an environment without pip, then the packages', async () => {
     const steps: string[] = [];
-    const pkgs = await installPython(opts, ['pandas'], { onStep: (s) => steps.push(s) });
+    // the stand-in as a real program here: the variables below are what reached a child process
+    const pkgs = await installPython(spawned(), ['pandas'], { onStep: (s) => steps.push(s) });
     expect(steps).toEqual(['python', 'env', 'packages']);
     expect(pkgs).toEqual([
       { name: 'pandas', version: '2.3.3' },
@@ -243,7 +258,7 @@ describe('installing, listing, clearing', () => {
     const st = pythonEnvStatus(opts.root);
     expect(st).toMatchObject({ ready: true, version: '3.12.16', python: envPython(opts.root) });
     expect(envBinDir(opts.root)).toBe(join(opts.root, 'env', process.platform === 'win32' ? 'Scripts' : 'bin'));
-  });
+  }, STARTS_PROGRAMS);
 
   it('later: only the packages', async () => {
     await installPython(opts, []);
@@ -400,7 +415,7 @@ describe('whose Python, and what the model is told', () => {
     } finally {
       await gw.stop();
     }
-  });
+  }, STARTS_PROGRAMS);
 });
 
 describe('when a download fails', () => {

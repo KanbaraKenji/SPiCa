@@ -38,6 +38,11 @@ export interface PythonEnvOptions {
   netDir?: string;
   /** Arguments put before uv's own (tests: uvExe is a Node and this the stand-in script). */
   uvPrefixArgs?: string[];
+  /**
+   * Tests: run uv here instead of starting uvExe (a stand-in in this process; each start of a program costs a
+   * fraction of a second, which piles up on a busy machine). Gets the environment uv would.
+   */
+  runUv?(args: string[], o: { env: Record<string, string>; input?: string }): Promise<{ stdout: string; stderr: string; code: number }>;
 }
 
 export const DEFAULT_PYTHON = '3.12';
@@ -107,6 +112,16 @@ export class UvError extends Error {
  * progress on stderr); rejects with UvError, its output attached, when it fails.
  */
 export function uvCall(opts: PythonEnvOptions, args: string[], o: { input?: string; signal?: AbortSignal; timeoutMs?: number } = {}): Promise<{ stdout: string; stderr: string }> {
+  const failed = (out: { stdout: string; stderr: string }, why: string) =>
+    // uv may echo the proxy address with its login in an error
+    new UvError(redact(`uv ${args.slice(0, 2).join(' ')} failed: ${lastLine(out.stderr) || lastLine(out.stdout) || why}`), redact(`${out.stdout}\n${out.stderr}`.trim()));
+  if (opts.runUv) {
+    // tests: the stand-in runs in this process, with the environment uv would get
+    return opts.runUv(args, { env: uvEnv(opts), ...(o.input !== undefined ? { input: o.input } : {}) }).then((r) => {
+      if (r.code !== 0) throw failed(r, `exit code ${r.code}`);
+      return { stdout: r.stdout, stderr: r.stderr };
+    });
+  }
   return new Promise((resolve, reject) => {
     const child = execFile(
       opts.uvExe,
@@ -114,8 +129,7 @@ export function uvCall(opts: PythonEnvOptions, args: string[], o: { input?: stri
       { env: uvEnv(opts), windowsHide: true, encoding: 'utf8', timeout: o.timeoutMs ?? 15 * 60_000, maxBuffer: 32 * 1024 * 1024, ...(o.signal ? { signal: o.signal } : {}) },
       (err, stdout, stderr) => {
         const out = { stdout: String(stdout ?? ''), stderr: String(stderr ?? '') };
-        // uv may echo the proxy address with its login in an error
-        if (err) reject(new UvError(redact(`uv ${args.slice(0, 2).join(' ')} failed: ${lastLine(out.stderr) || lastLine(out.stdout) || err.message}`), redact(`${out.stdout}\n${out.stderr}`.trim())));
+        if (err) reject(failed(out, err.message));
         else resolve(out);
       },
     );
