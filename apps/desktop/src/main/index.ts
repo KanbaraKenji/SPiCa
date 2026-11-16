@@ -43,7 +43,8 @@ import { writeDemoChart } from './backend/demo-image';
 import { ProcessBackend, type BackendStatus } from './backend/process';
 import { STOP_LIMIT_MS, wireQuit } from './quit';
 import { pageAlive, pageRecovery } from './page-recovery';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateDialog, updateNowAnswer } from './app-dialog';
+import type { DialogSpec } from '../shared/app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, updateBusyAnswer, updateBusyDialog, updateDialog, updateNowAnswer } from './app-dialog';
 import { openDialogWindow } from './app-dialog-window';
 import { editMenu, type EditAction } from './edit-menu';
 import { watchFit } from './window-fit';
@@ -1280,23 +1281,41 @@ updates.onChange((s) => {
   }
   void askUpdateNow(s.available ?? '');
 });
-async function askUpdateNow(version: string): Promise<void> {
-  const win = mainWindow;
-  if (!win || win.isDestroyed()) return;
+/** The app's own dialog window (the Windows message box if it cannot open), in the look of the settings now. */
+async function askInWindow(win: BrowserWindow, make: (look: ReturnType<typeof dialogLook>) => DialogSpec, cancel: number) {
   const s = settings.get();
-  const spec = updateDialog(version, dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale())));
-  const box = messageBoxFor(spec, { type: 'info', appName: APP_NAME, cancel: 0 });
-  const answer = await askDialog({
+  const spec = make(dialogLook(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins), uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale())));
+  const box = messageBoxFor(spec, { type: 'info', appName: APP_NAME, cancel });
+  return askDialog({
     open: () => openDialogWindow(win, spec, s.zoom),
     fallback: () => dialog.showMessageBox(win, box.options).then((r) => box.answer(r.response, r.checkboxChecked)),
     warn: (line) => console.warn(line),
   });
+}
+async function askUpdateNow(version: string): Promise<void> {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const answer = await askInWindow(win, (look) => updateDialog(version, look), 0);
   // 稍后: the side bar's card stays.
-  if (updateNowAnswer(answer)) updates.install();
+  if (updateNowAnswer(answer)) await installWhenAsked();
+}
+/**
+ * 立即更新 (the side bar's card, 设置 › 关于, the dialog at start): with conversations running, first asks whether to stop
+ * them (updateBusyDialog); with none, installs at once. A version that must update and an update installed while the
+ * computer is left alone call updates.install() themselves and are not asked.
+ */
+async function installWhenAsked(): Promise<void> {
+  const ids = running.ids();
+  const win = mainWindow;
+  if (ids.length && win && !win.isDestroyed()) {
+    const names = await Promise.all(ids.map((id) => backend.getSession(id).then((x) => x?.title?.trim() || t('新对话'), () => t('新对话'))));
+    if (!updateBusyAnswer(await askInWindow(win, (look) => updateBusyDialog(names, look), 0))) return;
+  }
+  updates.install();
 }
 ipcMain.handle(DesktopChannel.Update, async (_e, op: unknown) => {
   if (op === 'check') return updates.check();
-  if (op === 'install') updates.install();
+  if (op === 'install') await installWhenAsked();
   return updates.state;
 });
 

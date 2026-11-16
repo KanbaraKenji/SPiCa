@@ -1,5 +1,6 @@
-// Updates in the side bar, above the account row: a downloaded app update (重启并更新; a version that must update
-// keeps its card, without 稍后), plugins waiting for settings to be filled in (查看), or plugins that can update (查看). When the side bar is only its column of icons
+// Updates in the side bar, above the account row: a downloaded app update (立即更新; a version that must update
+// keeps its card, without 稍后), plugins waiting for settings to be filled in (查看), or plugins that can update
+// (查看). When the side bar is only its column of icons
 // (closed, or the window too narrow), the same place holds one icon button, so nothing is lost with the side bar:
 // the app's update opens the side bar on its card, the plugins' opens them.
 import { useState } from 'react';
@@ -10,10 +11,13 @@ import { t } from '../../../shared/i18n';
 
 export interface UpdateNoticeView {
   kind: 'app' | 'plugins' | 'config';
+  /** In full: the hover text, and what the icon in the column of icons says. */
   text: string;
+  /** On the card, next to its button (立即更新 already says it is downloaded). */
+  short: string;
   /** The version must update: warning colour, no 稍后. */
   required: boolean;
-  /** 重启并更新 can be pressed (a portable copy only hears of it). */
+  /** 立即更新 can be pressed (a portable copy only hears of it). */
   ready: boolean;
   /** How many plugins (kind plugins), or settings not filled in (kind config). */
   count: number;
@@ -49,6 +53,7 @@ export function useUpdateNotice(update: UpdateState | null, unfilledPlugins: rea
     return {
       kind: 'app',
       text: ready ? t('新版本 {version} 已下载', { version: available }) : t('新版本 {version}', { version: available }),
+      short: t('新版本 {version}', { version: available }),
       required,
       ready,
       count: 0,
@@ -58,9 +63,15 @@ export function useUpdateNotice(update: UpdateState | null, unfilledPlugins: rea
   // Closed: shown again only when the count grows.
   // closed, it comes back when more plugins wait or more fields are missing
   const unfilled = unfilledPlugins.reduce((sum, w) => sum + w.missing, 0);
-  if (unfilled > configClosed) return { kind: 'config', text: waitingText(unfilledPlugins), required: true, ready: false, count: unfilledPlugins.length, close: () => setConfigClosed(unfilled) };
+  if (unfilled > configClosed) {
+    const text = waitingText(unfilledPlugins);
+    return { kind: 'config', text, short: text, required: true, ready: false, count: unfilledPlugins.length, close: () => setConfigClosed(unfilled) };
+  }
   const n = update?.pluginUpdates ?? 0;
-  if (n > pluginsClosed) return { kind: 'plugins', text: t('{n} 个插件可更新', { n }), required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  if (n > pluginsClosed) {
+    const text = t('{n} 个插件可更新', { n });
+    return { kind: 'plugins', text, short: text, required: false, ready: false, count: n, close: () => setPluginsClosed(n) };
+  }
   return null;
 }
 
@@ -70,26 +81,29 @@ export interface UpdateNoticeProps {
   onOpenPlugins(): void;
 }
 
-/** The card in the full side bar. */
+/**
+ * The card in the full side bar: one row, the mark, the words, the button, then × (稍后). Narrow, the words are cut
+ * short (in full on hover); the button and × stay.
+ */
 export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticeProps) {
   return (
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
-      <div className="update-card-head">
-        <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
-        <span className="update-card-text">{notice.text}</span>
-        {notice.close ? (
-          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
-            <Icon name="close" size={14} />
-          </button>
-        ) : null}
-      </div>
+      <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
+      <span className="update-card-text" title={notice.text}>
+        {notice.short}
+      </span>
       {notice.kind === 'app' && notice.ready ? (
         <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
-          {t('重启并更新')}
+          {t('立即更新')}
         </button>
       ) : notice.kind !== 'app' ? (
         <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
           {t('查看')}
+        </button>
+      ) : null}
+      {notice.close ? (
+        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
+          <Icon name="close" size={14} />
         </button>
       ) : null}
     </div>

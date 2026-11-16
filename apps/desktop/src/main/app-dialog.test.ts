@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, updateDialog, updateNowAnswer, type DialogWindow } from './app-dialog';
+import { askDialog, crashAnswer, crashDialog, dialogLook, messageBoxFor, runDialog, updateBusyAnswer, updateBusyDialog, updateDialog, updateNowAnswer, type DialogWindow } from './app-dialog';
 import { parseDialogSpec, type DialogAnswer } from '../shared/app-dialog';
 import { DARK_SKIN, LIGHT_SKIN } from '../shared/skin';
 
@@ -143,5 +143,23 @@ describe('the update dialog at start', () => {
     const box = messageBoxFor(spec, { type: 'info', appName: 'Spica', cancel: 0 });
     expect(box.options.buttons).toEqual(['立即更新', '稍后']);
     expect(updateNowAnswer(box.answer(0, false))).toBe(true);
+  });
+});
+
+describe('立即更新 while conversations run', () => {
+  it('says the update stops them, names up to three (one a line) and how many more; 取消 or 继续更新, × is 取消', () => {
+    const spec = updateBusyDialog(['整理报价', '起草纪要'], dialogLook(DARK_SKIN));
+    expect(spec.title).toBe('有任务正在运行，更新会中断它。');
+    expect(spec.detail).toEqual(['「整理报价」', '「起草纪要」']);
+    expect(spec.buttons).toEqual([{ label: '取消' }, { label: '继续更新', primary: true }]);
+    expect(spec.closeButton).toBe(true);
+    expect(updateBusyDialog(['a', 'b', 'c', 'd', 'e'], dialogLook(DARK_SKIN)).detail).toEqual(['「a」', '「b」', '「c」', '还有 2 个']);
+    expect(updateBusyAnswer({ button: 1, checked: false, choice: null })).toBe(true);
+    expect(updateBusyAnswer({ button: 0, checked: false, choice: null })).toBe(false);
+    expect(updateBusyAnswer({ button: null, checked: false, choice: null })).toBe(false);
+    // the Windows message box (fallback): 继续更新 first, closing it is 取消
+    const box = messageBoxFor(spec, { type: 'info', appName: 'Spica', cancel: 0 });
+    expect(box.options.buttons).toEqual(['继续更新', '取消']);
+    expect(updateBusyAnswer(box.answer(1, false))).toBe(false);
   });
 });

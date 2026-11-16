@@ -86,7 +86,7 @@ export const EN_MEMORY: Catalog = {
   没有改动: 'No changes',
   // 关于
   便携版: 'Portable version',
-  重启并更新: 'Restart and update',
+  '立即更新': 'Update now',
   监控台已开启: 'Monitor on',
   监控台已关闭: 'Monitor off',
   更新与公告: 'Updates and announcements',
