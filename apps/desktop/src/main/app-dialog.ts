@@ -107,6 +107,28 @@ export function updateDialog(version: string, look: Pick<DialogSpec, 'scheme' | 
   };
 }
 
+/**
+ * 立即更新 pressed (the side bar, 设置 › 关于, the dialog at start) while conversations run: what the update stops, by
+ * name (three at most, one a line, then how many more), 取消 or 继续更新; × is 取消. Not asked for a version that must update or an
+ * update installed while nobody uses the computer (those wait for nothing to run, or must go ahead).
+ */
+export function updateBusyDialog(names: readonly string[], look: Pick<DialogSpec, 'scheme' | 'tokens'>): DialogSpec {
+  const lines = names.slice(0, 3).map((name) => t('「{name}」', { name }));
+  if (names.length > 3) lines.push(t('还有 {n} 个', { n: names.length - 3 }));
+  return {
+    title: t('有任务正在运行，更新会中断它。'),
+    detail: lines,
+    buttons: [{ label: t('取消') }, { label: t('继续更新'), primary: true }],
+    closeButton: true,
+    ...look,
+  };
+}
+
+/** 继续更新 in updateBusyDialog's answer; 取消, × or the dialog closed is not. */
+export function updateBusyAnswer(a: DialogAnswer): boolean {
+  return a.button === 1;
+}
+
 /** 立即更新 in updateDialog's answer; 稍后 or the dialog closed is not. */
 export function updateNowAnswer(a: DialogAnswer): boolean {
   return a.button === 1;

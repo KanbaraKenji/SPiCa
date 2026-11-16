@@ -1,4 +1,4 @@
-// Updates in the side bar, above the account row: a downloaded app update (重启并更新; a version that must update
+// Updates in the side bar, above the account row: a downloaded app update (立即更新; a version that must update
 // keeps its card, without 稍后) or plugins that can update (查看). When the side bar is only its column of icons
 // (closed, or the window too narrow), the same place holds one icon button, so nothing is lost with the side bar:
 // the app's update opens the side bar on its card, the plugins' opens them.
@@ -13,7 +13,7 @@ export interface UpdateNoticeView {
   text: string;
   /** The version must update: warning colour, no 稍后. */
   required: boolean;
-  /** 重启并更新 can be pressed (a portable copy only hears of it). */
+  /** 立即更新 can be pressed (a portable copy only hears of it). */
   ready: boolean;
   /** How many plugins (kind plugins). */
   count: number;
@@ -52,26 +52,29 @@ export interface UpdateNoticeProps {
   onOpenPlugins(): void;
 }
 
-/** The card in the full side bar. */
+/**
+ * The card in the full side bar: one row, the mark, the words, the button, then × (稍后). Narrow, the words are cut
+ * short (in full on hover); the button and × stay.
+ */
 export function UpdateCard({ notice, onInstall, onOpenPlugins }: UpdateNoticeProps) {
   return (
     <div className={notice.required ? 'update-card is-warning' : 'update-card'} role="status">
-      <div className="update-card-head">
-        <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
-        <span className="update-card-text">{notice.text}</span>
-        {notice.close ? (
-          <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
-            <Icon name="close" size={14} />
-          </button>
-        ) : null}
-      </div>
+      <SpicaStatusIcon name={notice.required ? 'warning' : 'done'} size={15} className="notice-icon" />
+      <span className="update-card-text" title={notice.text} data-tip-clipped="">
+        {notice.text}
+      </span>
       {notice.kind === 'app' && notice.ready ? (
         <button type="button" className="btn btn-small btn-primary update-card-action" onClick={onInstall}>
-          {t('重启并更新')}
+          {t('立即更新')}
         </button>
       ) : notice.kind === 'plugins' ? (
         <button type="button" className="btn btn-small update-card-action" onClick={onOpenPlugins}>
           {t('查看')}
+        </button>
+      ) : null}
+      {notice.close ? (
+        <button type="button" className="icon-btn notice-close" onClick={notice.close} aria-label={t('稍后')} title={t('稍后')}>
+          <Icon name="close" size={14} />
         </button>
       ) : null}
     </div>

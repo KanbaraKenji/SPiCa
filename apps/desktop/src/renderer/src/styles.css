@@ -5765,15 +5765,15 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* Updates (shell/UpdateNotice.tsx): a card in the side bar, right above the bottom row; the same look as the
-   title bar's line (raised, bordered, a warning tint when the version must update). */
+   title bar's line (raised, bordered, a warning tint when the version must update). One row: the mark, the words
+   (cut short when narrow), the button, × at the end. */
 .update-card {
   flex: none;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   margin: 0 8px 8px;
-  padding: 8px 4px 8px 12px;
+  padding: 6px 4px 6px 12px;
   border-radius: var(--radius-m);
   border: 1px solid var(--spica-border);
   background: var(--spica-raised);
@@ -5786,12 +5786,8 @@ section.plugins-part > .plugins-part-title {
   background: var(--spica-warning-soft);
 }
 
-.update-card-head {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 22px;
+.update-card .notice-icon {
+  flex: none;
 }
 
 .update-card-text {
@@ -5802,12 +5798,17 @@ section.plugins-part > .plugins-part-title {
   text-overflow: ellipsis;
 }
 
-/* Under the words, where they start (past the icon). */
+/* The button keeps its words whole; × right after it. */
 .update-card-action {
-  margin-left: 23px;
+  flex: none;
   height: 22px;
   font-size: var(--fs-caption);
   line-height: var(--lh-caption);
+}
+
+.update-card .notice-close {
+  flex: none;
+  margin-left: -4px;
 }
 
 /* In the column of icons: one icon in the same place; a dot for a downloaded update, the whole icon in the

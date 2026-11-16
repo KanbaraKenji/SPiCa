@@ -56,7 +56,7 @@ export function About({ version, update, onCheck, onInstall, whenIdle, onWhenIdl
         >
           {update?.status === 'ready' ? (
             <button type="button" className="btn btn-primary" onClick={onInstall}>
-              {t('重启并更新')}
+              {t('立即更新')}
             </button>
           ) : null}
         </Row>

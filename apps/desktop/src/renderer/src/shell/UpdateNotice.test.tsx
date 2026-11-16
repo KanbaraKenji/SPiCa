@@ -16,11 +16,11 @@ function Place({ update, compact = false, onInstall = vi.fn(), onOpenPlugins = v
 }
 
 describe('updates in the side bar › the card', () => {
-  it('a downloaded update: 重启并更新, and 稍后 closes it', () => {
+  it('a downloaded update: 立即更新, and 稍后 closes it', () => {
     const onInstall = vi.fn();
     render(<Place update={{ ...base, status: 'ready', available: '0.2.1' }} onInstall={onInstall} />);
     expect(screen.getByRole('status').textContent).toContain('新版本 0.2.1 已下载');
-    fireEvent.click(screen.getByRole('button', { name: '重启并更新' }));
+    fireEvent.click(screen.getByRole('button', { name: '立即更新' }));
     expect(onInstall).toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '稍后' }));
     expect(screen.queryByRole('status')).toBeNull();
@@ -29,14 +29,14 @@ describe('updates in the side bar › the card', () => {
   it('a version that must update: the card stays (no 稍后), marked as a warning', () => {
     render(<Place update={{ ...base, status: 'ready', available: '0.2.1', required: true }} />);
     expect(screen.getByRole('status').className).toContain('is-warning');
-    expect(screen.getByRole('button', { name: '重启并更新' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '立即更新' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: '稍后' })).toBeNull();
   });
 
   it('a portable copy only hears of it; a development run hears nothing here', () => {
     render(<Place update={{ ...base, status: 'manual', available: '0.2.1', portable: true }} />);
     expect(screen.getByRole('status').textContent).toContain('新版本 0.2.1');
-    expect(screen.queryByRole('button', { name: '重启并更新' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '立即更新' })).toBeNull();
     cleanup();
     render(<Place update={{ ...base, status: 'manual', available: '0.2.1' }} />);
     expect(screen.queryByRole('status')).toBeNull();
