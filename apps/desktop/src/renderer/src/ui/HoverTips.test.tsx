@@ -114,4 +114,13 @@ describe('where the bubble goes', () => {
   it('anything else: above the element, centred', () => {
     expect(placeTip({ text: '更多', rect: rect(227, 202, 24, 24) }, 40, 26, win)).toEqual({ left: 219, top: 170 });
   });
+
+  it('marked to go below: under the element; above it only when there is no room under it', () => {
+    const num = rect(1150, 120, 56, 28);
+    expect(placeTip({ text: '回到 100%', rect: num, below: num }, 70, 26, win)).toEqual({ left: 1143, top: 154 });
+    // under the box round it (the zoom layer), centred on the element still
+    expect(placeTip({ text: '回到 100%', rect: num, below: rect(1114, 116, 128, 36) }, 70, 26, win)).toEqual({ left: 1143, top: 158 });
+    const low = rect(1150, 760, 56, 28);
+    expect(placeTip({ text: '回到 100%', rect: low, below: low }, 70, 26, win)).toEqual({ left: 1143, top: 728 });
+  });
 });

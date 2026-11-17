@@ -49,7 +49,7 @@ export interface FilePreviewProps {
   page?: string | null;
   /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
   blocked?: string[];
-  /** The page's own zoom (Ctrl + wheel in it): a lens at the end of the row's gap when not 100%, a layer with 重置 just after a change (shell/ZoomMark.tsx). */
+  /** The page's own zoom (Ctrl + wheel in it): a lens at the end of the row's gap when not 100%, a layer with − the zoom + just after a change (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 

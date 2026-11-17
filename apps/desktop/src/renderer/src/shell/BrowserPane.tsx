@@ -42,7 +42,7 @@ export interface BrowserPaneProps {
    * address row and a frame round the page. 接手 / 停止 while acting, 交还 when taken. Absent: nothing.
    */
   agent?: { mode: 'acting' | 'taken'; onTakeOver(): void; onStop(): void; onGiveBack(): void } | null;
-  /** Pages' own zoom (Ctrl + wheel in a page): a lens at the end of the address when not 100%, a layer with 重置 just after a change (shell/ZoomMark.tsx). */
+  /** Pages' own zoom (Ctrl + wheel in a page): a lens at the end of the address when not 100%, a layer with − the zoom + just after a change (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 
@@ -140,6 +140,7 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
           </button>
           <form
             className="browser-address-form"
+            data-zoom-frame=""
             onSubmit={(e) => {
               e.preventDefault();
               go();

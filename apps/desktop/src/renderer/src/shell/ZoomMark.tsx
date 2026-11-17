@@ -6,7 +6,8 @@
 // − or + in it is a change too, so it stays where it is. The lens pressed opens the layer again, and it stays until
 // a press elsewhere, a press in the page or Escape (as Chrome's, opened by hand). The lens sits in room kept for it
 // (styles.css .zoom-mark), so nothing moves when it comes or goes. A screen reader hears the new zoom once; nothing
-// is left for it after.
+// is left for it after. − and + carry no hover note (the icons say it); the number's goes under the layer, so nothing
+// it was opened from is covered.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { DesktopBridge } from '../../../shared/bridge';
@@ -21,6 +22,17 @@ export type PageZoomBridge = Pick<DesktopBridge['browser'], 'zoom' | 'onZoom'>;
 export const ZOOM_MARK_MS = 1500;
 
 const atDefault = (v: number) => Math.abs(v - DEFAULT_ZOOM) < 0.001;
+
+/** Room between the layer and what it hangs from, and from the window's edges: the menus' (ui/ContextMenu.tsx). */
+const GAP = 4;
+
+/**
+ * Where the layer goes: under the frame the lens is in (the address box; marked `data-zoom-frame`), or under the
+ * lens itself where it has none, its right edge at that frame's, kept inside the window.
+ */
+export function placeZoomLayer(frame: { right: number; bottom: number }, width: number, winWidth: number): { left: number; top: number } {
+  return { left: Math.max(GAP, Math.min(frame.right - width, winWidth - width - GAP)), top: frame.bottom + GAP };
+}
 
 export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: number | null }) {
   // The page's zoom as drawn, for the page it was read for.
@@ -89,13 +101,12 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
     if (byHand) lens.current?.focus();
   });
 
-  // Under the lens, its right edge at the lens's, inside the window.
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useLayoutEffect(() => {
     if (!open) return;
-    const a = lens.current?.getBoundingClientRect();
+    const frame = (lens.current?.closest('[data-zoom-frame]') ?? lens.current)?.getBoundingClientRect();
     const r = layer.current?.getBoundingClientRect();
-    if (a && r) setPos({ left: Math.max(4, Math.min(a.right - r.width, window.innerWidth - r.width - 4)), top: a.bottom + 4 });
+    if (frame && r) setPos(placeZoomLayer(frame, r.width, window.innerWidth));
   }, [open, label]);
 
   // A press in the page itself reaches this window only as its losing the focus (no pointerdown, no focusin):
@@ -146,7 +157,8 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
           type="button"
           className="icon-btn zoom-mark"
           aria-label={t('缩放 {zoom}', { zoom: label })}
-          title={t('缩放 {zoom}', { zoom: label })}
+          // With the layer open its number says it already.
+          title={open ? undefined : t('缩放 {zoom}', { zoom: label })}
           aria-haspopup="dialog"
           aria-expanded={open !== null}
           onClick={() => {
@@ -181,7 +193,6 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
                 disabled={value <= Math.min(...ZOOM_STEPS)}
                 onClick={() => void bridge.zoom(wcId, 'out')}
                 aria-label={t('缩小')}
-                title={t('缩小')}
               >
                 <Icon name="minus" size={15} />
               </button>
@@ -192,6 +203,7 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
                 onClick={() => void bridge.zoom(wcId, 'reset')}
                 aria-label={t('{zoom}，回到 100%', { zoom: label })}
                 title={t('回到 100%')}
+                data-tip-below=".zoom-layer"
               >
                 {label}
               </button>
@@ -201,7 +213,6 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
                 disabled={value >= Math.max(...ZOOM_STEPS)}
                 onClick={() => void bridge.zoom(wcId, 'in')}
                 aria-label={t('放大')}
-                title={t('放大')}
               >
                 <Icon name="plus" size={15} />
               </button>

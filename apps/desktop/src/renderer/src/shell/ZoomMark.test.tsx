@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stepZoom } from '../../../shared/zoom';
-import { ZOOM_MARK_MS, ZoomMark, type PageZoomBridge } from './ZoomMark';
+import { ZOOM_MARK_MS, ZoomMark, placeZoomLayer, type PageZoomBridge } from './ZoomMark';
 
 type Z = { wcId: number; zoom: number; stepped: boolean };
 
@@ -195,6 +195,25 @@ describe('ZoomMark', () => {
     expect(layer()?.textContent).toBe('110%');
     act(() => vi.advanceTimersByTime(ZOOM_MARK_MS * 2));
     expect(layer()).not.toBeNull();
+  });
+
+  it('− and + carry no hover note (the icons say it); the number’s goes under the layer, so the lens is not covered', async () => {
+    const bridge = fakeBridge();
+    render(<ZoomMark zoom={bridge} wcId={7} />);
+    await settle();
+    bridge.say({ wcId: 7, zoom: 1.25, stepped: true });
+    expect(out().getAttribute('title')).toBeNull();
+    expect(into().getAttribute('title')).toBeNull();
+    expect(reset()!.getAttribute('title')).toBe('回到 100%');
+    expect(reset()!.getAttribute('data-tip-below')).toBe('.zoom-layer');
+    // the lens's own note would say the number again while the layer shows
+    expect(lens()!.getAttribute('title')).toBeNull();
+  });
+
+  it('the layer: under the address box, its right edge at the box’s; kept inside the window', () => {
+    expect(placeZoomLayer({ right: 1238, bottom: 112 }, 112, 1280)).toEqual({ left: 1126, top: 116 });
+    expect(placeZoomLayer({ right: 1290, bottom: 112 }, 112, 1280)).toEqual({ left: 1280 - 112 - 4, top: 116 });
+    expect(placeZoomLayer({ right: 60, bottom: 112 }, 112, 1280)).toEqual({ left: 4, top: 116 });
   });
 
   it('at the smallest step − is grey and cannot be pressed; at the biggest, +', async () => {
