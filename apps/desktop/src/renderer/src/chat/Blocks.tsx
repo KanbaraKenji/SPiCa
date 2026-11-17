@@ -934,7 +934,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   const sendTicked = () => submit(askAnswerLines([...ticked.map((i) => block.options[i] ?? ''), draft]));
   const canSend = multi ? ticked.length > 0 || draft.trim() !== '' : draft.trim() !== '';
   // A several-option answer comes back one a line: shown on one line, 、 between.
-  const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join('、') : block.answer;
+  const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join(t('、')) : block.answer;
   // Mockup A (Claude Code's question box, Gemini CLI's label, Devin's 其他): a card no wider than its reading width,
   // 单选 / 多选 in a small label on top, the question, then the options as rows of a list: a round mark (one) or a
   // square (several), the number, the words, 建议 after the suggested one; last a row 其他 to type in. One: a click
