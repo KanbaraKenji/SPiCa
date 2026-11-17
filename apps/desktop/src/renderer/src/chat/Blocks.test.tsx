@@ -61,9 +61,24 @@ describe('AskCard', () => {
     const title = document.querySelector('.ask-card .ask-question')!;
     expect([...title.querySelectorAll('ol > li')].map((li) => li.textContent)).toEqual(['日期和时段', '人数']);
     cleanup();
-    // lines without a list: one paragraph, its line breaks in its text (shown as lines: white-space pre-line)
-    render(<AskCard block={{ ...block, question: '还缺几项：\n日期\n人数' }} onAnswer={vi.fn()} />);
-    expect(document.querySelector('.ask-question p')?.textContent).toBe('还缺几项：\n日期\n人数');
+    // lines without a list (full-width 1） is no list marker): one paragraph, a line break at each
+    render(<AskCard block={{ ...block, question: '还缺几项：\n1）日期\n2）人数' }} onAnswer={vi.fn()} />);
+    const p = document.querySelector('.ask-question p')!;
+    expect(p.querySelectorAll('br')).toHaveLength(2);
+    // (a <br> is followed by a newline in the text, as Markdown writes it: drawn as nothing)
+    expect(p.textContent?.replace(/\n/g, '')).toBe('还缺几项：1）日期2）人数');
+    cleanup();
+    // a loose list (blank lines between items) and a nested one: no line breaks of their own (no blank lines)
+    render(<AskCard block={{ ...block, question: '还缺几项：\n\n1. 日期\n\n2. 地点：\n   - 楼层\n   - 朝向' }} onAnswer={vi.fn()} />);
+    const q = document.querySelector('.ask-question')!;
+    expect(q.querySelectorAll('br')).toHaveLength(0);
+    expect(q.querySelectorAll('ol > li')).toHaveLength(2);
+    expect([...q.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['楼层', '朝向']);
+  });
+
+  it('answers keep Markdown’s soft line breaks (lineBreaks is the question card’s)', () => {
+    render(<MarkdownText text={'一行\n两行'} />);
+    expect(document.querySelectorAll('.md br')).toHaveLength(0);
   });
 
   it('options numbered in order, one a row; 建议 on the suggested one only', () => {

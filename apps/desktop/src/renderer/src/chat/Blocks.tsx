@@ -419,12 +419,33 @@ function MdImage({ src, alt }: { src?: string | undefined; alt?: string | undefi
   );
 }
 
-export const MarkdownText = memo(function MarkdownText({ text }: { text: string }) {
+type BreakNode = { type: string; value?: string; children?: BreakNode[] };
+
+/**
+ * Every single line break inside a paragraph (or a list item's text) drawn as a line break, not a space (code keeps its
+ * own: its text is not a text node). For a question card: the model writes a line per thing it needs, often without
+ * a Markdown list.
+ */
+export function remarkLineBreaks() {
+  const walk = (node: BreakNode) => {
+    if (!node.children) return;
+    node.children = node.children.flatMap((c): BreakNode[] => {
+      if (c.type !== 'text' || !c.value?.includes('\n')) {
+        walk(c);
+        return [c];
+      }
+      return c.value.split(/\r?\n/).flatMap((line, i): BreakNode[] => [...(i ? [{ type: 'break' }] : []), ...(line ? [{ type: 'text', value: line }] : [])]);
+    });
+  };
+  return (tree: BreakNode) => walk(tree);
+}
+
+export const MarkdownText = memo(function MarkdownText({ text, lineBreaks = false }: { text: string; /** single line breaks as lines (remarkLineBreaks) */ lineBreaks?: boolean }) {
   // Kept in a memo: redrawn when the language changes too (the words of its cards and buttons).
   useLocale();
   // Every path of the answer, filled in as Markdown reads it (before any part of it is drawn).
   const paths = useMemo<string[]>(() => [], []);
-  const plugins = useMemo(() => [remarkGfm, remarkLocalPaths(paths)], [paths]);
+  const plugins = useMemo(() => [remarkGfm, ...(lineBreaks ? [remarkLineBreaks] : []), remarkLocalPaths(paths)], [paths, lineBreaks]);
   return (
     <div className="md" onCopy={copyFullPaths}>
       <AnswerPathsContext.Provider value={paths}>
@@ -912,9 +933,9 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
           nothing the question and its options do not), and once closed the answer (or 已中断) at its right end;
           the options and the box below, in a part of their own. */}
       <header className="card-head">
-        {/* The question as the answers are written (Markdown: its list a list, its lines lines, ask-question). */}
+        {/* The question as the answers are written (Markdown: its list a list), its single line breaks kept as lines. */}
         <div className="card-title ask-question">
-          <MarkdownText text={block.question} />
+          <MarkdownText text={block.question} lineBreaks />
         </div>
         <span className="confirm-spacer" />
         {closed ? (

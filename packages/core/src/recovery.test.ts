@@ -93,7 +93,7 @@ describe('recovery', () => {
 
   it('a pending question survives a restart and the answer continues the run', async () => {
     const path = join(dir, 'spica.db');
-    gw.enqueue({ toolCalls: [{ id: 'q1', name: 'ask_user', args: { question: 'Which color?' } }] }, { text: 'Blue it is.' });
+    gw.enqueue({ toolCalls: [{ id: 'q1', name: 'ask_user', args: { question: 'Which color?', options: ['red', 'blue'], recommended: 'blue' } }] }, { text: 'Blue it is.' });
     const rt1 = makeRuntime(gw, { store: new SqliteStore(path), tools: [askUserTool] });
     const s1 = rt1.createSession();
     expect((await s1.send('paint').done).reason).toBe('awaiting_answer');
@@ -103,7 +103,8 @@ describe('recovery', () => {
     expect(rt2.restore()).toMatchObject({ awaiting: [s1.id], interrupted: [] });
     const s2 = rt2.session(s1.id)!;
     expect(s2.status).toBe('awaiting_answer');
-    expect(s2.pending()).toMatchObject([{ kind: 'ask', question: 'Which color?' }]);
+    // the suggested option too (the card marks it 建议 after a restart as before)
+    expect(s2.pending()).toMatchObject([{ kind: 'ask', question: 'Which color?', options: ['red', 'blue'], recommended: 'blue' }]);
     expect((await s2.answer('q1', 'blue')!).text).toBe('Blue it is.');
     await rt2.close();
   });

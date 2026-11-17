@@ -2341,16 +2341,10 @@ pre .hl-punctuation {
   color: var(--spica-accent-text);
 }
 
-/* The question: the card title's size (not an answer's), single line breaks kept (the model writes a line per thing it
-   needs, often without a Markdown list), paragraphs and the list closer than in an answer. */
+/* The question: the card title's size (not an answer's), paragraphs and the list closer than in an answer. */
 .ask-question .md {
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.ask-question .md p,
-.ask-question .md li {
-  white-space: pre-line;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
 }
 
 .ask-question .md p,
