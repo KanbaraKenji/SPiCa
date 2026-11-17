@@ -40,7 +40,6 @@ export const EN_CHAT: Catalog = {
   '{n} 个文件': { one: '{n} file', other: '{n} files' },
   '打开 {path}': 'Open {path}',
   提问: 'Question',
-  或输入回答: 'Or type an answer',
   输入回答: 'Type an answer',
   回答: 'Answer',
   已中断: 'Interrupted',
