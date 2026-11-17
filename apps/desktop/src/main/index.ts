@@ -178,9 +178,13 @@ const UV_EXE = join(app.isPackaged ? process.resourcesPath : app.getAppPath(), '
  * Where the app's own Python goes. An installed copy on Windows: %LOCALAPPDATA%\<name>\python, on this computer only
  * (the settings folder is in the roaming profile, which would carry hundreds of MB from one computer to the next);
  * the uninstaller removes that folder (resources/installer/finish-options.nsh). Elsewhere: in the settings folder.
+ * Worked out when asked, not when this file loads: the settings folder is only final after the
+ * app.setPath('userData', …) below (SPICA_USER_DATA, a screenshot run's temp folder); read before it, a development
+ * run would put its Python into the installed Spica's folder.
  */
-const PYTHON_ROOT =
-  app.isPackaged && process.platform === 'win32' && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, APP_NAME, 'python') : join(app.getPath('userData'), 'python');
+function pythonRoot(): string {
+  return app.isPackaged && process.platform === 'win32' && process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, APP_NAME, 'python') : join(app.getPath('userData'), 'python');
+}
 /** deploy.json "python" (core python-deploy.ts): on unless the company switched it off. */
 const deployedPython = deployPython(readDeployJson());
 
@@ -312,7 +316,7 @@ function backendConfig(): DesktopBackendConfig {
       ...(deployedPython.enabled
         ? {
             python: {
-              root: PYTHON_ROOT,
+              root: pythonRoot(),
               ...(existsSync(UV_EXE) ? { uvExe: UV_EXE } : {}),
               ...(deployedPython.pythonMirror ? { pythonMirror: deployedPython.pythonMirror } : {}),
               ...(deployedPython.packageIndex ? { packageIndex: deployedPython.packageIndex } : {}),
@@ -439,6 +443,8 @@ const backend: AgentBackend =
       })
     : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
+// A development run says where it keeps things (SPICA_USER_DATA moves all of it), so a check can see it.
+if (!app.isPackaged) console.log(`[spica] data: ${app.getPath('userData')} · documents: ${app.getPath('documents')} · app's Python: ${pythonRoot()}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
 // 外观 › 显示 › 语言: set before anything builds words (menus, the tray, the core's locale).
 setLocale(resolveLocale(settings.get().language, systemLanguages()));
