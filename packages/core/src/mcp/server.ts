@@ -108,7 +108,7 @@ export function spicaMcpTools(rt: Runtime, events: CoreEvent[]): McpTool[] {
       run: (a) => api.setApprovalMode!(String(a.session_id), a.mode === 'auto' ? 'auto' : 'manual'),
     },
     { name: 'spica_steer', description: 'Insert a message into a running session; mode "next" (turn boundary) or "interrupt".', inputSchema: obj({ session_id: str, text: str, mode: { type: 'string', enum: ['next', 'interrupt'] } }, ['session_id', 'text']), run: (a) => api.steer(String(a.session_id), String(a.text), a.mode === 'interrupt' ? 'interrupt' : 'next') },
-    { name: 'spica_answer', description: 'Answer an ask_user question card.', inputSchema: obj({ session_id: str, call_id: str, answer: str }, ['session_id', 'call_id', 'answer']), run: (a) => api.answer(String(a.session_id), String(a.call_id), String(a.answer)) },
+    { name: 'spica_answer', description: 'Answer an ask_user question card (several chosen options of a multiSelect question: one a line).', inputSchema: obj({ session_id: str, call_id: str, answer: str }, ['session_id', 'call_id', 'answer']), run: (a) => api.answer(String(a.session_id), String(a.call_id), String(a.answer)) },
     {
       name: 'spica_confirm',
       description: `Approve or decline an action waiting for confirmation. Settings changes asked for through this service are answered only in the ${rt.appName} window.`,
