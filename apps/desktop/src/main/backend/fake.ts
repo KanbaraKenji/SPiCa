@@ -36,6 +36,8 @@ import type {
   SessionStatus,
   SetCwdResult,
   SteerMode,
+  SendOptions,
+  AttachmentMeta,
   ToolCategory,
   UsageQuery,
   UsageSummary,
@@ -458,19 +460,25 @@ export class FakeBackend implements AgentBackend {
     return structuredClone(this.#pending.get(sessionId) ?? []);
   }
 
-  async send(sessionId: string, text: string): Promise<SendResult> {
+  async send(sessionId: string, text: string, opts?: SendOptions): Promise<SendResult> {
     this.#requireSession(sessionId);
     const run = this.#runs.get(sessionId);
-    if (run) return this.steer(sessionId, text, 'next');
-    const message = this.#append(sessionId, 'user', 'user', [{ type: 'text', text }], { author: 'user' });
+    const attachments = pictureAttachments(opts?.attachments);
+    if (run) return this.#steer(sessionId, text, 'next', attachments);
+    const message = this.#append(sessionId, 'user', 'user', [{ type: 'text', text }], { author: 'user', ...(attachments ? { attachments } : {}) });
     void this.#run(sessionId, text);
     return { messageId: message.id, started: true };
   }
 
   async steer(sessionId: string, text: string, mode: SteerMode): Promise<SendResult> {
+    return this.#steer(sessionId, text, mode);
+  }
+
+  /** A message sent while a run goes on (a steer); `attachments`: the pictures sent with it (the demo shows them). */
+  async #steer(sessionId: string, text: string, mode: SteerMode, attachments?: DemoAttachment[]): Promise<SendResult> {
     this.#requireSession(sessionId);
     const run = this.#runs.get(sessionId);
-    if (!run) return this.send(sessionId, text);
+    if (!run) return this.send(sessionId, text, attachments ? { attachments: attachments.map((a) => ({ path: a.path })) } : undefined);
     const message: Message = {
       id: this.#id('m'),
       sessionId,
@@ -479,7 +487,7 @@ export class FakeBackend implements AgentBackend {
       kind: 'steer',
       content: [{ type: 'text', text }],
       createdAt: isoAt(this.#now()),
-      meta: { author: 'user' },
+      meta: { author: 'user', ...(attachments ? { attachments } : {}) },
     };
     run.steers.push(message);
     this.#emit(sessionId, { type: 'steer.queued', messageId: message.id, mode });
@@ -1756,4 +1764,21 @@ export class FakeBackend implements AgentBackend {
     this.#setStatus(sessionId, status);
     this.#emit(sessionId, detail ? { type: 'run.end', reason, detail } : { type: 'run.end', reason });
   }
+}
+
+type DemoAttachment = AttachmentMeta;
+
+/**
+ * The pictures sent with a demo message (MessageMeta.attachments, as the core keeps them; the window shows a
+ * picture by its path, not its size). Other files are left out (the demo reads no files).
+ */
+function pictureAttachments(list: { path: string }[] | undefined): DemoAttachment[] | undefined {
+  const out: DemoAttachment[] = [];
+  for (const { path } of list ?? []) {
+    const ext = /\.(png|jpe?g|gif|webp)$/i.exec(path)?.[1]?.toLowerCase();
+    if (!ext) continue;
+    const mediaType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : (`image/${ext}` as 'image/png');
+    out.push({ path, name: path.split(/[\\/]/).pop() ?? path, block: null, image: { path, mediaType, width: 0, height: 0, bytes: 0, resized: false } });
+  }
+  return out.length ? out : undefined;
 }
