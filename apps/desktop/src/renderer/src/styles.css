@@ -2399,8 +2399,8 @@ label.ask-row:active {
   color: var(--spica-accent-text);
 }
 
-/* The last row: its mark and number as an option's, then the box (the app's field) and 确定 at the end; the row is
-   as tall as the box, the mark and number centred on it. */
+/* The last row: its mark and number as an option's, then the box (the app's field) to the row's end; the row is
+   as tall as the box, the mark and number centred on it. 确定 is on a row of its own under it, at the right. */
 .ask-row.ask-other {
   align-items: center;
   padding-top: 4px;
@@ -2417,8 +2417,11 @@ label.ask-row:active {
   flex: 1;
 }
 
-.ask-other .btn {
-  flex: none;
+.ask-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding: 0 8px;
 }
 
 /* Waiting, the card stands in the input area just above the message box (Conversation), as wide as the box: it is
@@ -2440,6 +2443,12 @@ label.ask-row:active {
   box-shadow: var(--spica-input-shadow);
 }
 
+/* Docked, its place says it waits on the user: the boxes' edge, not the accent, so it does not stack a second blue
+   frame on the message box's (blue while it has the focus). */
+.ask-card.is-open.is-docked {
+  border-color: var(--spica-border-strong);
+}
+
 .ask-card.is-docked .ask-scroll {
   min-height: 0;
   overflow-y: auto;
@@ -2455,12 +2464,12 @@ label.ask-row:active {
   font-variant-numeric: tabular-nums;
 }
 
-.ask-card.is-open > .ask-other {
+.ask-form > .ask-other {
   margin-top: 2px;
 }
 
 /* No options (a question to answer in words): the box right under the question, as far from it as the options are. */
-.ask-scroll:not(:has(.ask-options)) + .ask-other {
+.ask-scroll:not(:has(.ask-options)) + .ask-form > .ask-other {
   margin-top: 8px;
 }
 

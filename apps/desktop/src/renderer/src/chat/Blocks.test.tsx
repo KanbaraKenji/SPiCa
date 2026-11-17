@@ -82,7 +82,8 @@ describe('AskCard', () => {
     expect(document.querySelector('.ask-card .ask-options')).toBeTruthy();
     rerender(<AskCard block={{ ...block, question, answer: '只写结论' }} onAnswer={vi.fn()} />);
     const title = document.querySelector('.ask-card.is-done .card-title')!;
-    expect(title.textContent).toBe('订会议室还缺几项信息：');
+    // its colon dropped (it led into the list, now not shown); the full question on hover
+    expect(title.textContent).toBe('订会议室还缺几项信息');
     expect(title.getAttribute('title')).toBe(question);
     expect(document.querySelector('.ask-card .card-answer')?.textContent).toBe('只写结论');
     expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(false);
@@ -113,6 +114,13 @@ describe('AskCard', () => {
     render(<AskCard block={block} onAnswer={vi.fn()} />);
     expect(document.querySelector('.ask-head')?.textContent).toBe('纪要按哪种口径写？');
     expect(document.querySelector('.ask-rest')).toBeNull();
+  });
+
+  it('确定 on a row of its own, not in the row to type in', () => {
+    render(<AskCard block={block} onAnswer={vi.fn()} />);
+    const ok = screen.getByRole('button', { name: '确定' });
+    expect(ok.closest('.ask-other')).toBeNull();
+    expect(ok.parentElement?.classList.contains('ask-foot')).toBe(true);
   });
 
   it('askQuestionParts: a first line that is a list item is no head', () => {

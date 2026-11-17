@@ -973,7 +973,8 @@ export function AskCard({
   // A several-option answer comes back one a line: shown on one line, 、 between.
   const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join(t('、')) : block.answer;
   if (closed) {
-    const line = (head || rest.split('\n')[0] || '').replace(/\*\*|`/g, '');
+    // a first line ending in a colon (请补充：) leads into what is under it; on its own, before the answer, without it
+    const line = (head || rest.split('\n')[0] || '').replace(/\*\*|`/g, '').replace(/\s*[:：]\s*$/, '');
     return (
       <section className="card ask-card is-done" aria-label={t('提问')}>
         <div className="card-head">
@@ -1035,43 +1036,48 @@ export function AskCard({
         ) : null}
       </div>
       <form
-        className="ask-row ask-other"
+        className="ask-form"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        {options.length ? (
-          <>
-            <input
-              type={mark}
-              name={name}
-              aria-label={t('其他')}
-              checked={on(OTHER)}
-              disabled={sent}
-              onChange={() => {
-                // an empty box: its row is chosen once there are words in it; until then the box takes them
-                if (draft.trim()) choose(OTHER);
-                box.current?.focus();
-              }}
-            />
-            <span className="ask-option-n" aria-hidden="true">
-              {OTHER + 1}
-            </span>
-          </>
-        ) : null}
-        <input
-          ref={box}
-          className="input ask-other-input"
-          value={draft}
-          placeholder={options.length ? t('其他') : t('输入回答')}
-          onChange={(e) => type(e.target.value)}
-          aria-label={t('输入回答')}
-          disabled={sent}
-        />
-        <button type="submit" className="btn btn-primary" disabled={!canSend}>
-          {t('确定')}
-        </button>
+        <div className="ask-row ask-other">
+          {options.length ? (
+            <>
+              <input
+                type={mark}
+                name={name}
+                aria-label={t('其他')}
+                checked={on(OTHER)}
+                disabled={sent}
+                onChange={() => {
+                  // an empty box: its row is chosen once there are words in it; until then the box takes them
+                  if (draft.trim()) choose(OTHER);
+                  box.current?.focus();
+                }}
+              />
+              <span className="ask-option-n" aria-hidden="true">
+                {OTHER + 1}
+              </span>
+            </>
+          ) : null}
+          <input
+            ref={box}
+            className="input ask-other-input"
+            value={draft}
+            placeholder={options.length ? t('其他') : t('输入回答')}
+            onChange={(e) => type(e.target.value)}
+            aria-label={t('输入回答')}
+            disabled={sent}
+          />
+        </div>
+        {/* 确定 on a row of its own at the card's right end: what is chosen is sent by it, not by the box */}
+        <div className="ask-foot">
+          <button type="submit" className="btn btn-primary" disabled={!canSend}>
+            {t('确定')}
+          </button>
+        </div>
       </form>
     </section>
   );
