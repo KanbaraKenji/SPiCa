@@ -1,6 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
-import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
+import { createContext, memo, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import { askAnswerLines, type ChangePreview, type InstallPreview, type FileCardMeta, type HistoryCardMeta, type SourceCardMeta, type SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -912,102 +912,141 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
   );
 }
 
+/** A question's first line, when the rest is under it: what it asks, in the title's weight; the rest (the things to
+ * fill in, one a line) in the body's. A first line that is already a list item belongs to the rest. */
+export function askQuestionParts(question: string): { head: string; rest: string } {
+  const q = question.trim();
+  const nl = q.indexOf('\n');
+  const first = nl < 0 ? q : q.slice(0, nl);
+  if (/^\s*([-*+]|\d+[.)）、])\s*/.test(first) && nl >= 0) return { head: '', rest: q };
+  return { head: first, rest: nl < 0 ? '' : q.slice(nl + 1).replace(/^\n+/, '') };
+}
+
 /**
- * A question card. Answered, it shows the answer; dropped unanswered (the run was stopped), 已中断 in the same
- * place. Once an answer is sent it takes no second one (a second would be refused: the question is gone).
+ * A question card. Waiting: the question (its first line in the title's weight, the rest under it), the options
+ * one a row (a round mark for one, a square for several, the number, the words, 建议 after the suggested one), last
+ * a row of its own to type in, and 确定: nothing is sent until it is pressed, one option chosen or several. Answered,
+ * one row: the question's first line, the answer at its right end; dropped unanswered (the run was stopped), 已中断
+ * there. Once an answer is sent it takes no second one (a second would be refused: the question is gone).
  */
 export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'ask' }>; onAnswer(answer: string): void }) {
   const [draft, setDraft] = useState('');
   const [sent, setSent] = useState(false);
-  // Several may be chosen (multiSelect): the options ticked, by their place; sent together with the box's words.
-  const [ticked, setTicked] = useState<readonly number[]>([]);
-  const multi = block.multiSelect === true && block.options.length > 0;
+  // What is chosen, by place; the row to type in is the place after the last option (OTHER).
+  const [chosen, setChosen] = useState<readonly number[]>([]);
+  const name = useId();
+  const box = useRef<HTMLInputElement>(null);
+  const options = block.options;
+  const OTHER = options.length;
+  const multi = block.multiSelect === true && options.length > 0;
   const answered = block.answer !== undefined;
   const closed = answered || block.cancelled === true;
-  const submit = (value: string) => {
-    const v = value.trim();
-    if (!v || sent) return;
-    setSent(true);
-    onAnswer(v);
+  const { head, rest } = askQuestionParts(block.question);
+  const on = (i: number) => chosen.includes(i);
+  const choose = (i: number) => setChosen((was) => (!multi ? [i] : was.includes(i) ? was.filter((x) => x !== i) : [...was, i].sort((a, b) => a - b)));
+  const type = (v: string) => {
+    setDraft(v);
+    // words in the box choose its row (one: instead of an option); emptied, it is off again
+    const has = v.trim() !== '';
+    setChosen((was) => (has ? (was.includes(OTHER) ? was : multi ? [...was, OTHER] : [OTHER]) : was.filter((x) => x !== OTHER)));
   };
-  const tick = (i: number) => setTicked((was) => (was.includes(i) ? was.filter((x) => x !== i) : [...was, i].sort((a, b) => a - b)));
-  const sendTicked = () => submit(askAnswerLines([...ticked.map((i) => block.options[i] ?? ''), draft]));
-  const canSend = multi ? ticked.length > 0 || draft.trim() !== '' : draft.trim() !== '';
+  const answer = askAnswerLines(chosen.map((i) => (i === OTHER ? draft : (options[i] ?? ''))));
+  const canSend = !sent && answer.trim() !== '';
+  const submit = () => {
+    if (!canSend) return;
+    setSent(true);
+    onAnswer(answer.trim());
+  };
   // A several-option answer comes back one a line: shown on one line, 、 between.
   const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join(t('、')) : block.answer;
-  // Mockup A (Claude Code's question box, Gemini CLI's label, Devin's 其他): a card no wider than its reading width,
-  // 单选 / 多选 in a small label on top, the question, then the options as rows of a list: a round mark (one) or a
-  // square (several), the number, the words, 建议 after the suggested one; last a row 其他 to type in. One: a click
-  // answers. Several: tick, then 确定. Answered: the question, and under it the answer (or 已中断).
+  if (closed) {
+    const line = (head || rest.split('\n')[0] || '').replace(/\*\*|`/g, '');
+    return (
+      <section className="card ask-card is-done" aria-label={t('提问')}>
+        <div className="card-head">
+          <span className="card-title ask-done-title" title={block.question}>
+            {line}
+          </span>
+          <p className={answered ? 'card-answer' : 'card-answer is-stopped'} title={answered ? shownAnswer : undefined}>
+            <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
+            <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
+          </p>
+        </div>
+      </section>
+    );
+  }
+  const mark = multi ? 'checkbox' : 'radio';
   return (
-    <section className={closed ? 'card ask-card ask-a is-done' : 'card ask-card ask-a'} aria-label={t('提问')}>
-      {closed ? null : <span className="ask-a-label">{multi ? t('多选') : t('单选')}</span>}
-      <div className="card-title ask-question">
-        <MarkdownText text={block.question} lineBreaks />
+    <section className="card ask-card is-open" aria-label={t('提问')}>
+      <div className="ask-question">
+        {head ? (
+          <div className="ask-head">
+            <MarkdownText text={head} />
+          </div>
+        ) : null}
+        {rest ? (
+          <div className="ask-rest">
+            <MarkdownText text={rest} lineBreaks />
+          </div>
+        ) : null}
       </div>
-      {closed ? (
-        <p className={answered ? 'card-answer ask-a-answer' : 'card-answer ask-a-answer is-stopped'}>
-          <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-          <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
-        </p>
-      ) : (
-        <form
-          className="ask-a-body"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (multi) sendTicked();
-            else submit(draft);
-          }}
-        >
-          <ol className="ask-options ask-a-list">
-            {block.options.map((o, i) => (
-              <li key={i}>
-                <button
-                  type="button"
-                  className={multi && ticked.includes(i) ? 'ask-a-row is-ticked' : 'ask-a-row'}
-                  disabled={sent}
-                  onClick={() => (multi ? tick(i) : submit(o))}
-                  {...(multi ? { role: 'checkbox', 'aria-checked': ticked.includes(i) } : {})}
-                >
-                  <span className={multi ? 'ask-a-mark is-box' : 'ask-a-mark'} aria-hidden="true">
-                    {multi && ticked.includes(i) ? <Icon name="check" size={11} /> : null}
-                  </span>
-                  <span className="ask-option-n ask-a-n" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  <span className="ask-a-text">
-                    {o}
-                    {o === block.recommended ? <span className="ask-option-tag ask-a-tag">{t('建议')}</span> : null}
-                  </span>
-                </button>
-              </li>
-            ))}
-            <li className="ask-a-other">
-              <span className={multi ? 'ask-a-mark is-box' : 'ask-a-mark'} aria-hidden="true" />
-              {block.options.length ? (
-                <span className="ask-option-n ask-a-n" aria-hidden="true">
-                  {block.options.length + 1}
+      <form
+        className="ask-body"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <ol className="ask-options" role={multi ? 'group' : 'radiogroup'} aria-label={head || t('提问')}>
+          {options.map((o, i) => (
+            <li key={i}>
+              <label className={on(i) ? 'ask-row is-on' : 'ask-row'}>
+                <input type={mark} name={name} checked={on(i)} disabled={sent} onChange={() => choose(i)} />
+                <span className="ask-option-n" aria-hidden="true">
+                  {i + 1}
                 </span>
-              ) : null}
-              <input
-                className="ask-a-input"
-                value={draft}
-                placeholder={block.options.length ? t('其他') : t('输入回答')}
-                onChange={(e) => setDraft(e.target.value)}
-                aria-label={t('回答')}
-                disabled={sent}
-              />
+                <span className="ask-option-text">
+                  {o}
+                  {o === block.recommended ? <span className="ask-option-tag">{t('建议')}</span> : null}
+                </span>
+              </label>
             </li>
-          </ol>
-          {multi || draft.trim() ? (
-            <div className="ask-a-foot">
-              <button type="submit" className="btn btn-primary btn-small" disabled={sent || !canSend}>
-                {multi ? t('确定') : t('回答')}
-              </button>
-            </div>
-          ) : null}
-        </form>
-      )}
+          ))}
+          <li className="ask-row ask-other">
+            {options.length ? (
+              <>
+                <input
+                  type={mark}
+                  name={name}
+                  aria-label={t('其他')}
+                  checked={on(OTHER)}
+                  disabled={sent}
+                  onChange={() => {
+                    // an empty box: its row is chosen once there are words in it; until then the box takes them
+                    if (draft.trim()) choose(OTHER);
+                    box.current?.focus();
+                  }}
+                />
+                <span className="ask-option-n" aria-hidden="true">
+                  {OTHER + 1}
+                </span>
+              </>
+            ) : null}
+            <input
+              ref={box}
+              className="input ask-other-input"
+              value={draft}
+              placeholder={options.length ? t('其他') : t('输入回答')}
+              onChange={(e) => type(e.target.value)}
+              aria-label={t('输入回答')}
+              disabled={sent}
+            />
+            <button type="submit" className="btn btn-primary" disabled={!canSend}>
+              {t('确定')}
+            </button>
+          </li>
+        </ol>
+      </form>
     </section>
   );
 }

@@ -1570,8 +1570,9 @@ export class FakeBackend implements AgentBackend {
         blocks.push({ type: 'text', text: after });
       } else if (/问|选|会议室|场地/.test(text)) {
         const callId = this.#id('call');
-        // For the card's shots. 会议室: several things to fill in as a list, and a suggested option. 场地: the same as
-        // plain lines (full-width 1）, no list), long options, the suggested one long.
+        // For the card's shots. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
+        // as plain lines numbered by the model itself (full-width 1）, no list: shown as written), long options, the
+        // suggested one long.
         // 多选: several may be chosen (the answer: the chosen ones, one a line).
         const multi = /多选/.test(text);
         const room = !multi && /会议室/.test(text);
@@ -1579,7 +1580,7 @@ export class FakeBackend implements AgentBackend {
         const question = multi
           ? '周报要写进哪几部分？可以多选。'
           : room
-            ? '订会议室还缺几项信息，请补充：\n1. 日期和时段\n2. 人数\n3. 是否需要投影或视频会议'
+            ? '订会议室还缺几项信息，请补充：\n- 日期和时段\n- 人数\n- 是否需要投影或视频会议'
             : venue
               ? '年会场地还缺几项信息：\n1）日期\n2）人数\n3）预算'
               : '纪要按哪种口径写？';

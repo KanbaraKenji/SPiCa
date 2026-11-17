@@ -26,7 +26,7 @@ export const askUserTool: Tool = {
           type: 'string',
           description:
             'Markdown. Start with one short sentence: what you need. When you need several things, put each on its own line ' +
-            'as a numbered list ("1. ...", "2. ..."), never several items run together in one paragraph.',
+            'as a bulleted list ("- ..."), never several items run together in one paragraph. Do not number them: the card numbers the options.',
         },
         options: { type: 'array', items: { type: 'string' }, description: 'Short answers to choose from (optional); the card numbers them.' },
         recommended: { type: 'string', description: 'The option you would pick, copied exactly from options. Set it whenever you have a reason to prefer one.' },

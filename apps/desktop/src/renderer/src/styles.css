@@ -2294,75 +2294,39 @@ pre .hl-punctuation {
   background: var(--spica-surface);
 }
 
-/* Under a question card's row: the options, then the box for an answer of one's own. */
-.ask-body {
-  border-top: 1px solid var(--spica-border);
-  padding: 10px 12px 12px;
-}
-
-/* The options one a row (long ones wrap in their row, a short one is as wide as the card all the same), each its
-   number in grey first and, on the suggested one, 建议 in the accent colour at its end. */
-.ask-options {
-  margin: 0 0 10px;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.ask-option {
+/* A question waiting for its answer: what is asked, the options one a row, a row to type in with 确定 at its end.
+   Its edge in the accent (mixed with the boxes' edge): the one card in the conversation waiting on the user, told
+   from the tool cards and the answer's text by it and by 确定. Answered it is a row as a confirmation is (above). */
+.card.ask-card {
+  align-self: flex-start;
   width: 100%;
-  height: auto;
-  min-height: var(--control-h);
-  justify-content: flex-start;
-  gap: 10px;
-  white-space: normal;
-  text-align: left;
-  padding: 4px var(--control-pad-x);
+  max-width: 560px;
 }
 
-/* Several may be chosen: a box before each, ticked when chosen. */
-.ask-option-box {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--spica-border-strong);
-  border-radius: 3px;
+.ask-card.is-open {
+  padding: 12px 12px 10px;
+  border-color: color-mix(in srgb, var(--spica-accent) 55%, var(--spica-border-strong));
 }
 
-.ask-option.is-ticked .ask-option-box {
-  border-color: var(--spica-accent);
-  background: var(--spica-accent);
-  color: var(--spica-on-accent);
+/* The question: its first line in the title's weight; the things to fill in under it (a list, or lines as the model
+   wrote them) in the body's. Paragraphs and lists closer than in an answer. */
+.ask-question {
+  padding: 0 4px;
+  overflow-wrap: anywhere;
 }
 
-.ask-option-n {
-  flex: none;
-  min-width: 1ch;
-  color: var(--spica-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.ask-option-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.ask-option-tag {
-  flex: none;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  color: var(--spica-accent-text);
-}
-
-/* The question: the card title's size (not an answer's), paragraphs and the list closer than in an answer. */
 .ask-question .md {
   font-size: var(--fs-body);
   line-height: var(--lh-body);
+}
+
+.ask-head .md {
+  font-weight: 500;
+}
+
+.ask-rest {
+  margin-top: 4px;
+  color: var(--spica-ink);
 }
 
 .ask-question .md p,
@@ -2375,14 +2339,94 @@ pre .hl-punctuation {
   margin-bottom: 0;
 }
 
-.ask-free {
-  margin: 0;
-  display: flex;
-  gap: 8px;
+.ask-body {
+  margin: 8px 0 0;
 }
 
-.ask-free .input {
+/* One option a row: the mark (round: one; square: several), the number, the words (a long one wraps under itself,
+   the mark and number staying on its first line), 建议 after the suggested one. The whole row is the click. */
+.ask-options {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ask-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-m);
+  cursor: pointer;
+}
+
+.ask-row > input[type='radio'],
+.ask-row > input[type='checkbox'] {
+  /* on the first line of the words (20 high): centred in it */
+  margin-top: 2px;
+}
+
+label.ask-row:hover {
+  background: var(--spica-hover);
+}
+
+label.ask-row:active {
+  background: var(--spica-active);
+}
+
+.ask-option-n {
+  flex: none;
+  min-width: 2ch;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-option-n::after {
+  content: '.';
+}
+
+.ask-option-text {
+  min-width: 0;
+}
+
+.ask-option-tag {
+  margin-left: 8px;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--spica-accent-text);
+}
+
+/* The last row: its mark and number as an option's, then the box (the app's field) and 确定 at the end; the row is
+   as tall as the box, the mark and number centred on it. */
+.ask-row.ask-other {
+  align-items: center;
+  padding-top: 4px;
+  padding-bottom: 0;
+  cursor: default;
+}
+
+.ask-row.ask-other > input[type='radio'],
+.ask-row.ask-other > input[type='checkbox'] {
+  margin-top: 0;
+}
+
+.ask-other-input {
   flex: 1;
+}
+
+.ask-other .btn {
+  flex: none;
+}
+
+/* Answered: the question's first line, cut at its end (in full on hover), as a confirmation's title is. */
+.ask-done-title {
+  font-weight: 400;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .file-cards {
@@ -6637,131 +6681,15 @@ section.plugins-part > .plugins-part-title {
 .ask-card > .card-head .card-answer {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 50%;
-  overflow-wrap: anywhere;
+  max-width: 65%;
 }
 
-/* Mockup A: a card no wider than a comfortable line (not the conversation's width), 单选 / 多选 on top, the options as
-   rows of a list. Placed after the question card's shared rules so it wins over them. */
-.ask-card.ask-a {
-  align-self: flex-start;
-  width: 100%;
-  max-width: 560px;
-  padding: 10px 12px 10px;
-}
-
-.ask-a-label {
-  display: inline-block;
-  margin-bottom: 6px;
-  padding: 0 6px;
-  border-radius: 4px;
-  background: var(--spica-accent-soft);
-  color: var(--spica-accent-text);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-}
-
-.ask-a .ask-question {
-  display: block;
-}
-
-.ask-a-body {
-  margin: 8px 0 0;
-}
-
-.ask-a-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-}
-
-.ask-a-row,
-.ask-a-other {
-  width: 100%;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border: 0;
-  border-radius: var(--radius-m);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.ask-a-row:hover:not(:disabled) {
-  background: var(--spica-hover);
-}
-
-.ask-a-mark {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--spica-border-strong);
-  border-radius: 50%;
-}
-
-.ask-a-mark.is-box {
-  border-radius: 3px;
-}
-
-.ask-a-row.is-ticked .ask-a-mark {
-  border-color: var(--spica-accent);
-  background: var(--spica-accent);
-  color: var(--spica-on-accent);
-}
-
-.ask-a-n {
-  flex: none;
-  min-width: 2ch;
-  color: var(--spica-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.ask-a-n::after {
-  content: '.';
-}
-
-.ask-a-text {
+/* One row: an answer longer than its room is cut at its end (in full on hover), as the question is. */
+.ask-card > .card-head .card-answer > span {
   min-width: 0;
-}
-
-.ask-a-tag {
-  margin-left: 8px;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
-  color: var(--spica-accent-text);
-}
-
-.ask-a-input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  border-bottom: 1px solid var(--spica-border);
-  background: transparent;
-  color: inherit;
-  padding: 2px 0;
-  outline: none;
-}
-
-.ask-a-input:focus {
-  border-bottom-color: var(--spica-accent);
-}
-
-.ask-a-foot {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
-}
-
-.ask-a-answer {
-  margin: 6px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Stopped while it waited (已中断), and the answer's （中断）: red, the colour of 无法撤销, the mark too. */
