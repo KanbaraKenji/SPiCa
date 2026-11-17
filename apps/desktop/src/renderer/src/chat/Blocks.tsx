@@ -935,70 +935,78 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
   const canSend = multi ? ticked.length > 0 || draft.trim() !== '' : draft.trim() !== '';
   // A several-option answer comes back one a line: shown on one line, 、 between.
   const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join('、') : block.answer;
+  // Mockup A (Claude Code's question box, Gemini CLI's label, Devin's 其他): a card no wider than its reading width,
+  // 单选 / 多选 in a small label on top, the question, then the options as rows of a list: a round mark (one) or a
+  // square (several), the number, the words, 建议 after the suggested one; last a row 其他 to type in. One: a click
+  // answers. Several: tick, then 确定. Answered: the question, and under it the answer (or 已中断).
   return (
-    <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label={t('提问')}>
-      {/* One row as on a confirmation card: the question (no mark before it: 他问「为什么要有问号」, it says
-          nothing the question and its options do not), and once closed the answer (or 已中断) at its right end;
-          the options and the box below, in a part of their own. */}
-      <header className="card-head">
-        {/* The question as the answers are written (Markdown: its list a list), its single line breaks kept as lines. */}
-        <div className="card-title ask-question">
-          <MarkdownText text={block.question} lineBreaks />
-        </div>
-        <span className="confirm-spacer" />
-        {closed ? (
-          <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
-            <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-            <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
-          </p>
-        ) : null}
-      </header>
-      {closed ? null : (
-        <div className="ask-body">
-          {/* The options one a row, numbered, the suggested one (if any) marked 建议 at its end. */}
-          {block.options.length ? (
-            <ol className="ask-options">
-              {block.options.map((o, i) => (
-                <li key={i}>
-                  <button
-                    type="button"
-                    className={multi && ticked.includes(i) ? 'btn ask-option is-ticked' : 'btn ask-option'}
-                    disabled={sent}
-                    onClick={() => (multi ? tick(i) : submit(o))}
-                    {...(multi ? { role: 'checkbox', 'aria-checked': ticked.includes(i) } : {})}
-                  >
-                    {multi ? <span className="ask-option-box" aria-hidden="true">{ticked.includes(i) ? <Icon name="check" size={12} /> : null}</span> : null}
-                    <span className="ask-option-n" aria-hidden="true">
-                      {i + 1}
-                    </span>
-                    <span className="ask-option-text">{o}</span>
-                    {o === block.recommended ? <span className="ask-option-tag">{t('建议')}</span> : null}
-                  </button>
-                </li>
-              ))}
-            </ol>
+    <section className={closed ? 'card ask-card ask-a is-done' : 'card ask-card ask-a'} aria-label={t('提问')}>
+      {closed ? null : <span className="ask-a-label">{multi ? t('多选') : t('单选')}</span>}
+      <div className="card-title ask-question">
+        <MarkdownText text={block.question} lineBreaks />
+      </div>
+      {closed ? (
+        <p className={answered ? 'card-answer ask-a-answer' : 'card-answer ask-a-answer is-stopped'}>
+          <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
+          <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
+        </p>
+      ) : (
+        <form
+          className="ask-a-body"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (multi) sendTicked();
+            else submit(draft);
+          }}
+        >
+          <ol className="ask-options ask-a-list">
+            {block.options.map((o, i) => (
+              <li key={i}>
+                <button
+                  type="button"
+                  className={multi && ticked.includes(i) ? 'ask-a-row is-ticked' : 'ask-a-row'}
+                  disabled={sent}
+                  onClick={() => (multi ? tick(i) : submit(o))}
+                  {...(multi ? { role: 'checkbox', 'aria-checked': ticked.includes(i) } : {})}
+                >
+                  <span className={multi ? 'ask-a-mark is-box' : 'ask-a-mark'} aria-hidden="true">
+                    {multi && ticked.includes(i) ? <Icon name="check" size={11} /> : null}
+                  </span>
+                  <span className="ask-option-n ask-a-n" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <span className="ask-a-text">
+                    {o}
+                    {o === block.recommended ? <span className="ask-option-tag ask-a-tag">{t('建议')}</span> : null}
+                  </span>
+                </button>
+              </li>
+            ))}
+            <li className="ask-a-other">
+              <span className={multi ? 'ask-a-mark is-box' : 'ask-a-mark'} aria-hidden="true" />
+              {block.options.length ? (
+                <span className="ask-option-n ask-a-n" aria-hidden="true">
+                  {block.options.length + 1}
+                </span>
+              ) : null}
+              <input
+                className="ask-a-input"
+                value={draft}
+                placeholder={block.options.length ? t('其他') : t('输入回答')}
+                onChange={(e) => setDraft(e.target.value)}
+                aria-label={t('回答')}
+                disabled={sent}
+              />
+            </li>
+          </ol>
+          {multi || draft.trim() ? (
+            <div className="ask-a-foot">
+              <button type="submit" className="btn btn-primary btn-small" disabled={sent || !canSend}>
+                {multi ? t('确定') : t('回答')}
+              </button>
+            </div>
           ) : null}
-          <form
-            className="ask-free"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (multi) sendTicked();
-              else submit(draft);
-            }}
-          >
-            <input
-              className="input"
-              value={draft}
-              placeholder={block.options.length ? t('或输入回答') : t('输入回答')}
-              onChange={(e) => setDraft(e.target.value)}
-              aria-label={t('回答')}
-              disabled={sent}
-            />
-            <button type="submit" className="btn btn-primary" disabled={sent || !canSend}>
-              {t('回答')}
-            </button>
-          </form>
-        </div>
+        </form>
       )}
     </section>
   );

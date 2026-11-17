@@ -44,16 +44,14 @@ describe('AskCard', () => {
     expect((screen.getByRole('textbox', { name: '回答' }) as HTMLInputElement).disabled).toBe(true);
   });
 
-  it('no mark before the question (it says nothing the question does not); answered, the answer stands at the row’s end', () => {
+  it('no mark before the question (it says nothing the question does not); answered, the answer instead of the options', () => {
     const { rerender } = render(<AskCard block={block} onAnswer={vi.fn()} />);
-    const head = document.querySelector('.ask-card > .card-head')!;
-    expect(head.firstElementChild?.classList.contains('card-title')).toBe(true);
-    expect(head.querySelector('svg')).toBeNull();
-    expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
+    expect(document.querySelector('.ask-card .ask-question')?.previousElementSibling?.querySelector('svg') ?? null).toBeNull();
+    expect(document.querySelector('.ask-card .ask-options')).toBeTruthy();
     rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
-    expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
-    expect(head.querySelector('.card-answer')?.classList.contains('is-stopped')).toBe(false);
-    expect(document.querySelector('.ask-body')).toBeNull();
+    expect(document.querySelector('.ask-card .card-answer')?.textContent).toBe('只写结论');
+    expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(false);
+    expect(document.querySelector('.ask-card .ask-options')).toBeNull();
   });
 
   it('the question as Markdown: its list a list, its single line breaks kept as lines', () => {
@@ -83,7 +81,7 @@ describe('AskCard', () => {
 
   it('options numbered in order, one a row; 建议 on the suggested one only', () => {
     render(<AskCard block={{ ...block, options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' }} onAnswer={vi.fn()} />);
-    const rows = [...document.querySelectorAll('.ask-options > li')];
+    const rows = [...document.querySelectorAll('.ask-options > li')].filter((li) => li.querySelector('.ask-option-n') && !li.querySelector('input'));
     expect(rows.map((li) => li.querySelector('.ask-option-n')?.textContent)).toEqual(['1', '2', '3']);
     expect(rows.map((li) => li.querySelector('.ask-option-tag')?.textContent ?? null)).toEqual([null, '建议', null]);
     // the number is the list's (read out by the list), not part of the button's name
@@ -92,7 +90,7 @@ describe('AskCard', () => {
 
   it('no suggested option (or one stored before there were any): no 建议', () => {
     render(<AskCard block={block} onAnswer={vi.fn()} />);
-    expect(document.querySelectorAll('.ask-options > li')).toHaveLength(2);
+    expect(screen.getAllByRole('button').filter((b) => b.closest('.ask-options'))).toHaveLength(2);
     expect(document.querySelector('.ask-option-tag')).toBeNull();
   });
 
@@ -109,7 +107,7 @@ describe('AskCard', () => {
     it('options tick and untick; 回答 sends the ticked ones in their order, one a line, with the box’s words', () => {
       const onAnswer = vi.fn();
       render(<AskCard block={multi} onAnswer={onAnswer} />);
-      const send = screen.getByRole('button', { name: '回答' }) as HTMLButtonElement;
+      const send = screen.getByRole('button', { name: /^(回答|确定)$/ }) as HTMLButtonElement;
       expect(send.disabled).toBe(true);
       fireEvent.click(screen.getByRole('checkbox', { name: /数据和图表/ }));
       fireEvent.click(screen.getByRole('checkbox', { name: /本周完成的事/ }));
