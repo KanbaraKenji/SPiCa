@@ -1,14 +1,16 @@
 // A page's own zoom (Ctrl + wheel, Ctrl + plus / minus / 0 in the page; main/browser/page-zoom.ts), as Chrome
 // shows it: a lens at the end of the address box (or of a run HTML file's row gap) whenever the page is not at
 // 100%, with a plus when bigger, a minus when smaller; nothing at 100%. Just after a change a small layer under it
-// says the zoom with 重置 beside it, and goes ZOOM_MARK_MS after the last change (Chrome's own delay) unless the
-// pointer is on it. The lens pressed opens the layer again, and it stays until a press elsewhere or Escape (as
-// Chrome's, opened by hand; a press in the page closes it too). The lens sits in room kept for it (styles.css .zoom-mark), so nothing moves when it
-// comes or goes. A screen reader hears the new zoom once; nothing is left for it after.
+// shows − the zoom +: − and + one step (the Ctrl + minus / plus steps, grey at either end), the number pressed back
+// to 100%. It goes ZOOM_MARK_MS after the last change (Chrome's own delay) unless the pointer is on it; pressing
+// − or + in it is a change too, so it stays where it is. The lens pressed opens the layer again, and it stays until
+// a press elsewhere, a press in the page or Escape (as Chrome's, opened by hand). The lens sits in room kept for it
+// (styles.css .zoom-mark), so nothing moves when it comes or goes. A screen reader hears the new zoom once; nothing
+// is left for it after.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { DesktopBridge } from '../../../shared/bridge';
-import { DEFAULT_ZOOM, zoomLabel } from '../../../shared/zoom';
+import { DEFAULT_ZOOM, ZOOM_STEPS, zoomLabel } from '../../../shared/zoom';
 import { t } from '../../../shared/i18n';
 import { Icon } from '../ui/Icon';
 import { useEscape } from '../ui/escape';
@@ -113,10 +115,10 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Opened by hand: 重置 has the focus. A press or the focus elsewhere in the window, the window resized: gone.
+  // Opened by hand: the number (back to 100%) has the focus. A press or the focus elsewhere in the window, the window resized: gone.
   useEffect(() => {
     if (open !== 'hand') return undefined;
-    layer.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    layer.current?.querySelector<HTMLButtonElement>('[data-zoom-reset]')?.focus();
     const outside = (e: Event) => {
       const n = e.target as Node;
       if (!layer.current?.contains(n) && !lens.current?.contains(n)) close();
@@ -173,15 +175,35 @@ export function ZoomMark({ zoom: bridge, wcId }: { zoom: PageZoomBridge; wcId: n
                 if (open === 'auto') later();
               }}
             >
-              <span className="zoom-layer-value num">{label}</span>
               <button
                 type="button"
-                className="btn btn-small"
-                onClick={() => {
-                  void bridge.zoom(wcId, 'reset');
-                }}
+                className="icon-btn"
+                disabled={value <= Math.min(...ZOOM_STEPS)}
+                onClick={() => void bridge.zoom(wcId, 'out')}
+                aria-label={t('缩小')}
+                title={t('缩小')}
               >
-                {t('重置')}
+                <Icon name="minus" size={15} />
+              </button>
+              <button
+                type="button"
+                className="zoom-layer-value num"
+                data-zoom-reset
+                onClick={() => void bridge.zoom(wcId, 'reset')}
+                aria-label={t('{zoom}，回到 100%', { zoom: label })}
+                title={t('回到 100%')}
+              >
+                {label}
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={value >= Math.max(...ZOOM_STEPS)}
+                onClick={() => void bridge.zoom(wcId, 'in')}
+                aria-label={t('放大')}
+                title={t('放大')}
+              >
+                <Icon name="plus" size={15} />
               </button>
             </div>,
             document.body,

@@ -8940,8 +8940,8 @@ input[type='radio']:disabled {
 }
 /* A page's own zoom when it is not 100% (shell/ZoomMark.tsx), as Chrome shows it: a lens (an .icon-btn, its grey)
    in the room kept at the end of the address box, or at the end of a run HTML file's row gap; nothing moves when
-   it comes or goes. Under it, just after a change or when it is pressed, a layer in the menus' look: the zoom and
-   重置. */
+   it comes or goes. Under it, just after a change or when it is pressed, a layer in the menus' look: − the zoom +
+   (the number, pressed, back to 100%; as wide as the widest, so − and + stay put). */
 :root {
   --zoom-mark-room: 28px;
 }
@@ -8957,12 +8957,24 @@ input[type='radio']:disabled {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 6px 6px 6px 12px;
+  gap: 2px;
+  padding: 4px;
 }
 .zoom-layer-value {
-  min-width: 4ch;
+  width: 6ch;
+  height: var(--control-h);
+  border-radius: var(--radius-s);
+  color: var(--spica-ink);
   font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+/* On the menu's own ground, its rows' hover (the page hover is too faint there). */
+.zoom-layer .icon-btn:hover:not(:disabled),
+.zoom-layer-value:hover {
+  background: var(--spica-menu-hover);
+}
+.zoom-layer-value:active {
+  background: var(--spica-active);
 }
 
 /* Sound and video in the preview (FilePreview): Chromium's own player, video as wide as the panel. */

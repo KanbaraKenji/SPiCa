@@ -1,30 +1,38 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { stepZoom } from '../../../shared/zoom';
 import { ZOOM_MARK_MS, ZoomMark, type PageZoomBridge } from './ZoomMark';
 
 type Z = { wcId: number; zoom: number; stepped: boolean };
 
-/** A page at `start`; 重置 (reset) brings it to 100% as the main process does: a stepped change. */
+/** A page at `start`; −, + and the number act as the main process does: a stepped change (Ctrl + minus / plus / 0). */
 function fakeBridge(start = 1) {
   const listeners = new Set<(z: Z) => void>();
+  const now = new Map<number, number>();
+  const at = (wcId: number) => now.get(wcId) ?? start;
   const bridge: PageZoomBridge & { say(z: Z): void } = {
     onZoom: (l) => {
       listeners.add(l);
       return () => listeners.delete(l);
     },
     zoom: vi.fn(async (wcId: number, how: string) => {
-      if (how === 'reset') bridge.say({ wcId, zoom: 1, stepped: true });
-      return how === 'get' ? start : 1;
+      if (how !== 'get') bridge.say({ wcId, zoom: how === 'reset' ? 1 : stepZoom(at(wcId), how as 'in' | 'out'), stepped: true });
+      return at(wcId);
     }),
-    say: (z) => act(() => listeners.forEach((l) => l(z))),
+    say: (z) => {
+      now.set(z.wcId, z.zoom);
+      act(() => listeners.forEach((l) => l(z)));
+    },
   };
   return bridge;
 }
 
-const lens = () => screen.queryByRole('button', { name: /缩放/ });
+const lens = () => screen.queryByRole('button', { name: /^缩放/ });
 const layer = () => screen.queryByRole('dialog', { name: '缩放' });
-const reset = () => screen.queryByRole('button', { name: '重置' });
+const reset = () => screen.queryByRole('button', { name: /回到 100%/ });
+const out = () => screen.getByRole('button', { name: '缩小' }) as HTMLButtonElement;
+const into = () => screen.getByRole('button', { name: '放大' }) as HTMLButtonElement;
 const said = (c: HTMLElement) => c.querySelector('[aria-live]')?.textContent ?? null;
 // The lens's sign: a plus has the upright stroke.
 const plus = () => lens()!.querySelector('path')!.getAttribute('d')!.includes('v3.6');
@@ -55,13 +63,13 @@ describe('ZoomMark', () => {
     expect(layer()).toBeNull();
   });
 
-  it('just after a change: the layer under the lens with the zoom and 重置, gone about 1.5 s after; the lens stays', async () => {
+  it('just after a change: the layer under the lens, − the zoom +, gone about 1.5 s after; the lens stays', async () => {
     const bridge = fakeBridge();
     const { container } = render(<ZoomMark zoom={bridge} wcId={7} />);
     await settle();
     bridge.say({ wcId: 7, zoom: 1.25, stepped: true });
-    expect(layer()?.textContent).toContain('125%');
-    expect(reset()).not.toBeNull();
+    expect(layer()?.textContent).toBe('125%');
+    expect(reset()?.getAttribute('aria-label')).toBe('125%，回到 100%');
     expect(said(container)).toBe('缩放 125%');
     act(() => vi.advanceTimersByTime(ZOOM_MARK_MS - 1));
     expect(layer()).not.toBeNull();
@@ -104,7 +112,7 @@ describe('ZoomMark', () => {
     expect(lens()).toBeNull();
   });
 
-  it('the pointer on the layer keeps it; 重置 brings the page back to 100%; it goes after the pointer leaves', async () => {
+  it('the pointer on the layer keeps it; the number pressed brings the page back to 100%; it goes after the pointer leaves', async () => {
     const bridge = fakeBridge();
     render(<ZoomMark zoom={bridge} wcId={7} />);
     await settle();
@@ -121,7 +129,7 @@ describe('ZoomMark', () => {
     expect(lens()).toBeNull();
   });
 
-  it('the lens pressed opens the layer, which stays, with 重置 focused; Escape closes it back to the lens', async () => {
+  it('the lens pressed opens the layer, which stays, with the number focused; Escape closes it back to the lens', async () => {
     const bridge = fakeBridge(1.25);
     render(<ZoomMark zoom={bridge} wcId={7} />);
     await settle();
@@ -169,6 +177,36 @@ describe('ZoomMark', () => {
     });
     act(() => vi.advanceTimersByTime(ZOOM_MARK_MS));
     expect(layer()).toBeNull();
+  });
+
+  it('− and + in the layer: one step each, the layer kept (the pointer is on it) and the number the new zoom', async () => {
+    const bridge = fakeBridge();
+    render(<ZoomMark zoom={bridge} wcId={7} />);
+    await settle();
+    bridge.say({ wcId: 7, zoom: 1.1, stepped: true });
+    fireEvent.pointerEnter(layer()!);
+    fireEvent.click(out());
+    expect(bridge.zoom).toHaveBeenLastCalledWith(7, 'out');
+    expect(layer()?.textContent).toBe('100%');
+    fireEvent.click(out());
+    expect(layer()?.textContent).toBe('90%');
+    fireEvent.click(into());
+    fireEvent.click(into());
+    expect(layer()?.textContent).toBe('110%');
+    act(() => vi.advanceTimersByTime(ZOOM_MARK_MS * 2));
+    expect(layer()).not.toBeNull();
+  });
+
+  it('at the smallest step − is grey and cannot be pressed; at the biggest, +', async () => {
+    const bridge = fakeBridge();
+    render(<ZoomMark zoom={bridge} wcId={7} />);
+    await settle();
+    bridge.say({ wcId: 7, zoom: 0.67, stepped: true });
+    expect(out().disabled).toBe(true);
+    expect(into().disabled).toBe(false);
+    bridge.say({ wcId: 7, zoom: 2, stepped: true });
+    expect(out().disabled).toBe(false);
+    expect(into().disabled).toBe(true);
   });
 
   it('Escape just after a change: closed, the focus left where it was', async () => {
