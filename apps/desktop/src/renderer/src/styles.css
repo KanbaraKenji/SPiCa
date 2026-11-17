@@ -2339,8 +2339,8 @@ pre .hl-punctuation {
   margin-bottom: 0;
 }
 
-.ask-body {
-  margin: 8px 0 0;
+.ask-question + .ask-options {
+  margin-top: 8px;
 }
 
 /* One option a row: the mark (round: one; square: several), the number, the words (a long one wraps under itself,
@@ -2419,6 +2419,44 @@ label.ask-row:active {
 
 .ask-other .btn {
   flex: none;
+}
+
+/* Waiting, the card stands in the input area just above the message box (Conversation), as wide as the box: it is
+   what the box is waiting for (as VS Code's question carousel stands there). Its question and options scroll in it
+   when they are long, the row to type in and 确定 staying in sight under them. */
+.ask-dock {
+  flex: none;
+  width: calc(100% - 28px);
+  max-width: 760px;
+  margin: 0 auto 8px;
+  translate: var(--centre-shift, 0px) 0;
+}
+
+.card.ask-card.is-docked {
+  max-width: none;
+  max-height: min(45vh, 460px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--spica-input-shadow);
+}
+
+.ask-card.is-docked .ask-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Which of the waiting questions this is (1 / 2): at the question's right, in the caption's grey. */
+.ask-place {
+  float: right;
+  margin: 1px 4px 0 12px;
+  color: var(--spica-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-card.is-open > .ask-other {
+  margin-top: 2px;
 }
 
 /* Answered: the question's first line, cut at its end (in full on hover), as a confirmation's title is. */

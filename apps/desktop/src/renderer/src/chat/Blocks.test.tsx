@@ -116,7 +116,7 @@ describe('AskCard', () => {
   it('options numbered in order, one a row, then the row to type in; 建议 on the suggested one only', () => {
     render(<AskCard block={{ ...block, options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' }} onAnswer={vi.fn()} />);
     expect([...document.querySelectorAll('.ask-option-n')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4']);
-    expect([...document.querySelectorAll('.ask-options > li')].map((li) => li.querySelector('.ask-option-tag')?.textContent ?? null)).toEqual([null, '建议', null, null]);
+    expect([...document.querySelectorAll('.ask-options > li')].map((li) => li.querySelector('.ask-option-tag')?.textContent ?? null)).toEqual([null, '建议', null]);
     // the row to type in is the app's own field (bordered), not a line under the words
     expect(screen.getByRole('textbox', { name: '输入回答' }).classList.contains('input')).toBe(true);
     // nothing chosen beforehand, the suggested one neither

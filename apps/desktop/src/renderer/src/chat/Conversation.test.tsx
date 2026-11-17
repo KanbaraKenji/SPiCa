@@ -169,3 +169,41 @@ describe('DetailPanel', () => {
     expect(screen.getByText('整理报价')).toBeTruthy();
   });
 });
+
+describe('a question waiting for its answer', () => {
+  const ask = (callId: string, question: string, answer?: string) => ({ type: 'ask' as const, callId, question, options: ['只写结论', '按议题逐条写'], ...(answer !== undefined ? { answer } : {}) });
+
+  it('stands above the message box, not in the conversation; several waiting: the oldest first, 1 / n', () => {
+    const answer = vi.fn();
+    render(
+      <Conversation
+        session={session({ id: 's', status: 'awaiting_answer' })}
+        transcript={{ items: [{ kind: 'user', id: 'u1', text: '起草纪要', steer: false }, { kind: 'response', id: 'r1', blocks: [ask('a0', '用哪个模板？', '新模板'), ask('a1', '纪要按哪种口径写？'), ask('a2', '发给谁？')], interrupted: false }] }}
+        actions={{ answer } as unknown as ConversationActions}
+      />,
+    );
+    // the answered one stays in the conversation, in one row
+    expect(document.querySelector('.transcript-column .ask-card.is-done .card-answer')?.textContent).toBe('新模板');
+    // the waiting ones are not in the conversation; the oldest stands in the input area, above the box
+    expect(document.querySelector('.transcript-column .ask-card.is-open')).toBeNull();
+    const docked = document.querySelector('.transcript-foot .ask-dock .ask-card.is-open.is-docked')!;
+    expect(docked.querySelector('.ask-head')?.textContent).toBe('纪要按哪种口径写？');
+    expect(docked.querySelector('.ask-place')?.textContent).toBe('1 / 2');
+    expect(docked.parentElement?.nextElementSibling?.classList.contains('composer-wrap')).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /按议题逐条写/ }));
+    fireEvent.click(screen.getByRole('button', { name: '确定' }));
+    expect(answer).toHaveBeenCalledWith('a1', '按议题逐条写');
+  });
+
+  it('one waiting: no 1 / 1', () => {
+    render(
+      <Conversation
+        session={session({ id: 's', status: 'awaiting_answer' })}
+        transcript={{ items: [{ kind: 'response', id: 'r1', blocks: [ask('a1', '纪要按哪种口径写？')], interrupted: false }] }}
+        actions={{} as unknown as ConversationActions}
+      />,
+    );
+    expect(document.querySelector('.ask-dock .ask-card')).toBeTruthy();
+    expect(document.querySelector('.ask-place')).toBeNull();
+  });
+});

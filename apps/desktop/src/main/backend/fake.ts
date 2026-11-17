@@ -1568,6 +1568,31 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n邮件已经发出。' : '\n\n好的，这封邮件没有发。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/两个问题/.test(text)) {
+        // Two questions waiting at once (a round's parallel calls; the card above the message box shows the oldest,
+        // 1 / 2, the next once it is answered): answered in that order.
+        const asks = [
+          { id: this.#id('call'), input: { question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' } },
+          { id: this.#id('call'), input: { question: '纪要发给谁？', options: ['项目组全员', '只发给我'] } },
+        ];
+        this.#commitAssistant(sessionId, [...blocks.splice(0), ...asks.map((a) => ({ type: 'tool_use' as const, id: a.id, name: 'ask_user', input: a.input }))]);
+        for (const a of asks) {
+          this.#addPending(sessionId, { kind: 'ask', callId: a.id, createdAt: isoAt(this.#now()), ...a.input });
+          this.#emit(sessionId, { type: 'ask.request', callId: a.id, ...a.input });
+        }
+        this.#setStatus(sessionId, 'awaiting_answer');
+        const answers: string[] = [];
+        for (const a of asks) {
+          waiting = { id: a.id, name: 'ask_user', input: a.input, stored: true };
+          const answer = await this.#waitFor(run, a.id);
+          waiting = undefined;
+          answers.push(answer);
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: a.id, content: answer }]);
+        }
+        this.#setStatus(sessionId, 'thinking');
+        const after = `好，${answers.join('，')}。`;
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/问|选|会议室|场地/.test(text)) {
         const callId = this.#id('call');
         // For the card's shots. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
