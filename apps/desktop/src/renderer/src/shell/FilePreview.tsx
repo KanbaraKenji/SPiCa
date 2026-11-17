@@ -49,7 +49,7 @@ export interface FilePreviewProps {
   page?: string | null;
   /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
   blocked?: string[];
-  /** The page's own zoom (Ctrl + wheel in it): just after a change, grey text at the end of the row's gap (shell/ZoomMark.tsx). */
+  /** The page's own zoom (Ctrl + wheel in it): a lens at the end of the row's gap when not 100%, a layer with 重置 just after a change (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 
@@ -306,7 +306,7 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string | nu
 }
 
 export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children, tabs, page, blocked, zoom }: FilePreviewProps) {
-  // The page's WebContents id once it is there (an HTML file run as a page), for its zoom mark.
+  // The page's WebContents id once it is there (an HTML file run as a page), for its zoom lens.
   const [pageWc, setPageWc] = useState<number | null>(null);
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
@@ -341,7 +341,7 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
           </span>
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
-        {/* A run page's gap keeps room for its zoom just after it changed, at its end (so nothing moves). */}
+        {/* A run page's gap keeps room for its zoom lens at its end (so nothing moves). */}
         {zoom && page && info?.kind === 'html' && !asCode ? (
           <span className="preview-head-gap has-zoom">
             <ZoomMark zoom={zoom} wcId={pageWc} />

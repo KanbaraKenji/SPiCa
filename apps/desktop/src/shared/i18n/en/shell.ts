@@ -282,7 +282,6 @@ export const EN_SHELL: Catalog = {
   交还: 'Hand back',
   // shell/FilePreview.tsx (a local page's stopped requests)
   '已拦截：{hosts}': 'Blocked: {hosts}',
-  重置缩放: 'Reset zoom',
-  '重置缩放（{zoom}）': 'Reset zoom ({zoom})',
+  重置: 'Reset',
   '缩放 {zoom}': 'Zoom {zoom}',
 };

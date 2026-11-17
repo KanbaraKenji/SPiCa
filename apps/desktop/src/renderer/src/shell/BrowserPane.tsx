@@ -42,7 +42,7 @@ export interface BrowserPaneProps {
    * address row and a frame round the page. 接手 / 停止 while acting, 交还 when taken. Absent: nothing.
    */
   agent?: { mode: 'acting' | 'taken'; onTakeOver(): void; onStop(): void; onGiveBack(): void } | null;
-  /** Pages' own zoom (Ctrl + wheel in a page): just after a change, grey text inside the end of the address (shell/ZoomMark.tsx). */
+  /** Pages' own zoom (Ctrl + wheel in a page): a lens at the end of the address when not 100%, a layer with 重置 just after a change (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 
@@ -105,7 +105,7 @@ function Page({ tab, shown, onChange, onState, register, onPage }: { tab: WebTab
 
 export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage, agent, zoom }: BrowserPaneProps) {
   const pages = useRef(new Map<string, WebviewElement>());
-  // Each page's WebContents id once it is there, for the zoom mark of the one shown.
+  // Each page's WebContents id once it is there, for the zoom lens of the one shown.
   const [wcIds, setWcIds] = useState<Record<string, number>>({});
   const [states, setStates] = useState<Record<string, PageState>>({});
   const tab = tabs.find((x) => x.id === active);

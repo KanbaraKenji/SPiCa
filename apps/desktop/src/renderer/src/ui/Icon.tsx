@@ -62,6 +62,9 @@ const PATHS = {
   copy: 'M5.5 5.5h7.5v8H5.5z M3 10.5V2.5h7.5',
   // 搜索设置: a lens.
   search: 'M7 2.8a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z M10.1 10.1l3.4 3.4',
+  // A page bigger or smaller than 100% (the address box's zoom mark): the lens with a plus or a minus.
+  zoomIn: 'M7 2.8a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z M10.1 10.1l3.4 3.4 M5.2 7h3.6 M7 5.2v3.6',
+  zoomOut: 'M7 2.8a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4z M10.1 10.1l3.4 3.4 M5.2 7h3.6',
   // 设置 › 账号: a head and shoulders.
   account: 'M8 2.6a2.6 2.6 0 1 0 0 5.2 2.6 2.6 0 0 0 0-5.2z M3 13.6c.6-2.4 2.6-3.8 5-3.8s4.4 1.4 5 3.8',
   // 设置 › 外观: a painter's palette.

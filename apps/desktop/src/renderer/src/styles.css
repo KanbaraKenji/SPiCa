@@ -6891,12 +6891,12 @@ section.plugins-part > .plugins-part-title {
 .preview-head-gap {
   flex: 1;
   min-width: 4px;
-  /* a run page's zoom mark sits at its end (.zoom-mark) */
+  /* a run page's zoom lens sits at its end (.zoom-mark) */
   position: relative;
   align-self: stretch;
 }
 
-/* A run page's row keeps the mark's room always (the path cut that much earlier), so nothing moves or is covered
+/* A run page's row keeps the lens's room always (the path cut that much earlier), so nothing moves or is covered
    when it comes. */
 .preview-head-gap.has-zoom {
   min-width: var(--zoom-mark-room);
@@ -8847,7 +8847,7 @@ input[type='radio']:disabled {
   position: relative;
 }
 
-/* Room kept at the end for the zoom mark (always, so the text does not move when it comes). */
+/* Room kept at the end for the zoom lens (always, so the text does not move when it comes). */
 .browser-address {
   flex: 1;
   padding-right: var(--zoom-mark-room);
@@ -8938,30 +8938,31 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
-/* A page's own zoom just after it changed (shell/ZoomMark.tsx): grey text, no frame, no fill, over the room kept
-   at the end of the address box, or at the end of a run HTML file's row gap; it comes and goes at once. Pressed:
-   back to 100%. */
+/* A page's own zoom when it is not 100% (shell/ZoomMark.tsx), as Chrome shows it: a lens (an .icon-btn, its grey)
+   in the room kept at the end of the address box, or at the end of a run HTML file's row gap; nothing moves when
+   it comes or goes. Under it, just after a change or when it is pressed, a layer in the menus' look: the zoom and
+   重置. */
 :root {
-  --zoom-mark-room: 52px;
+  --zoom-mark-room: 28px;
 }
-.zoom-mark {
+.icon-btn.zoom-mark {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  right: 0;
+  top: 50%;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+}
+.zoom-layer {
+  min-width: 0;
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  border: 0;
-  background: none;
-  color: var(--spica-muted);
-  font: inherit;
-  font-size: var(--fs-body);
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
+  gap: 12px;
+  padding: 6px 6px 6px 12px;
 }
-.zoom-mark:hover {
-  color: var(--spica-ink);
+.zoom-layer-value {
+  min-width: 4ch;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Sound and video in the preview (FilePreview): Chromium's own player, video as wide as the panel. */
