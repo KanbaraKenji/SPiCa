@@ -103,6 +103,37 @@ describe('AskCard', () => {
     expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
   });
 
+  describe('several may be chosen (multiSelect)', () => {
+    const multi = { ...block, options: ['本周完成的事', '下周计划', '数据和图表'], multiSelect: true };
+
+    it('options tick and untick; 回答 sends the ticked ones in their order, one a line, with the box’s words', () => {
+      const onAnswer = vi.fn();
+      render(<AskCard block={multi} onAnswer={onAnswer} />);
+      const send = screen.getByRole('button', { name: '回答' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(true);
+      fireEvent.click(screen.getByRole('checkbox', { name: /数据和图表/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /本周完成的事/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /下周计划/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /下周计划/ }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect(screen.getByRole('checkbox', { name: /本周完成的事/ }).getAttribute('aria-checked')).toBe('true');
+      expect(screen.getByRole('checkbox', { name: /下周计划/ }).getAttribute('aria-checked')).toBe('false');
+      fireEvent.change(screen.getByRole('textbox', { name: '回答' }), { target: { value: '加一段客户反馈' } });
+      fireEvent.click(send);
+      expect(onAnswer).toHaveBeenCalledWith('本周完成的事\n数据和图表\n加一段客户反馈');
+    });
+
+    it('answered: the chosen ones on one line', () => {
+      render(<AskCard block={{ ...multi, answer: '本周完成的事\n数据和图表' }} onAnswer={vi.fn()} />);
+      expect(document.querySelector('.ask-card .card-answer')?.textContent).toBe('本周完成的事、数据和图表');
+    });
+
+    it('a single-choice card (or one stored before multiSelect) has no boxes: a click answers', () => {
+      render(<AskCard block={block} onAnswer={vi.fn()} />);
+      expect(screen.queryByRole('checkbox')).toBeNull();
+    });
+  });
+
   it('shows the answer instead of controls once answered', () => {
     render(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(screen.queryByRole('button', { name: '回答' })).toBeNull();

@@ -214,6 +214,11 @@ export function askRecommended(options: readonly string[] | undefined, value: un
   return v ? options.find((o) => o.trim() === v) : undefined;
 }
 
+/** The answer to a question where several options may be chosen: the chosen ones (and any words of one's own), one a line. */
+export function askAnswerLines(chosen: readonly string[]): string {
+  return chosen.map((c) => c.trim()).filter(Boolean).join('\n');
+}
+
 export const AGENT_MESSAGES_LIMIT_MARK = 'Not sent: message limit reached.';
 
 /** Starts the note added for the model after the result of the same call repeated (not shown to the user). */
@@ -587,8 +592,11 @@ export type PendingItem =
       install?: InstallPreview;
       createdAt: string;
     }
-  /** `recommended`: the option the model suggests (one of `options`; see askRecommended). */
-  | { kind: 'ask'; callId: string; question: string; options?: string[]; recommended?: string; createdAt: string };
+  /**
+   * `recommended`: the option the model suggests (one of `options`; see askRecommended). `multiSelect`: several of the
+   * options may be chosen (the answer: the chosen ones, one a line; see askAnswerLines).
+   */
+  | { kind: 'ask'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean; createdAt: string };
 
 // ---------------------------------------------------------------------------
 // Events
@@ -663,7 +671,7 @@ export type CoreEventBody =
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
-  | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string }
+  | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }
   /**
    * Suggested next steps shown as a card (suggest_actions tool). The run does

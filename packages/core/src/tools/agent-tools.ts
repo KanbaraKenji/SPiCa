@@ -30,6 +30,10 @@ export const askUserTool: Tool = {
         },
         options: { type: 'array', items: { type: 'string' }, description: 'Short answers to choose from (optional); the card numbers them.' },
         recommended: { type: 'string', description: 'The option you would pick, copied exactly from options. Set it whenever you have a reason to prefer one.' },
+        multiSelect: {
+          type: 'boolean',
+          description: 'true when the user may choose several of the options (default: one). The answer then lists the chosen ones, one a line.',
+        },
       },
       required: ['question'],
     },

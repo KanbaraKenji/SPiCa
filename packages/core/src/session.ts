@@ -1098,6 +1098,7 @@ export class Session {
           question: String(obj.question ?? ''),
           ...(options ? { options } : {}),
           ...(recommended !== undefined ? { recommended } : {}),
+          ...(obj.multiSelect === true && options?.length ? { multiSelect: true } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1150,7 +1151,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       for (const p of pending) {
         this.#rt.store.putPending(p);
         if (p.item.kind === 'ask') {
-          this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}), ...(p.item.recommended !== undefined ? { recommended: p.item.recommended } : {}) });
+          this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}), ...(p.item.recommended !== undefined ? { recommended: p.item.recommended } : {}), ...(p.item.multiSelect ? { multiSelect: true } : {}) });
         } else {
           this.#emit({
             type: 'confirm.request',

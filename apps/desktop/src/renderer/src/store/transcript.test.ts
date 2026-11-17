@@ -60,6 +60,16 @@ describe('fromHistory', () => {
       expect(askOf(fromHistory(seed.messages[SEED_IDS.minutes]!, pending))).toMatchObject({ recommended: '按议题逐条写' });
     });
 
+    it('several may be chosen: from the stored call, a waiting question and ask.request; none on older calls', () => {
+      expect(askOf(fromHistory(withInput({ question: '?', options, multiSelect: true })))).toMatchObject({ multiSelect: true });
+      expect(askOf(fromHistory(withInput({ question: '?', options })))).not.toHaveProperty('multiSelect');
+      expect(askOf(fromHistory(withInput({ question: '?', multiSelect: true })))).not.toHaveProperty('multiSelect');
+      const pending = [{ ...seed.pending[SEED_IDS.minutes]![0]!, multiSelect: true }];
+      expect(askOf(fromHistory(seed.messages[SEED_IDS.minutes]!, pending))).toMatchObject({ multiSelect: true });
+      const ev = { type: 'ask.request', callId: 'q1', question: '?', options, multiSelect: true, seq: 1, at: '', sessionId: 's', parentChain: [] } as unknown as CoreEvent;
+      expect(askOf(applyEvent({ items: [] }, ev))).toMatchObject({ multiSelect: true });
+    });
+
     it('live, from ask.request; a later request without one clears it', () => {
       const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
       let t = applyEvent({ items: [] }, ev({ type: 'ask.request', callId: 'q1', question: '纪要按哪种口径写？', options, recommended: '只写结论' }));

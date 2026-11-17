@@ -59,7 +59,7 @@ export type Block =
     }
   /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
   /** `recommended`: the option the model suggests (marked 建议 on the card); none on older calls. */
-  | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; answer?: string; cancelled?: boolean }
+  | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
@@ -379,7 +379,7 @@ function asSuggest(callId: string, input: unknown): Block {
 }
 
 function asAsk(callId: string, input: unknown): Block {
-  const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown; recommended?: unknown };
+  const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown; recommended?: unknown; multiSelect?: unknown };
   const options = Array.isArray(v.options) ? v.options.map(String) : [];
   const recommended = askRecommended(options, v.recommended);
   return {
@@ -388,6 +388,7 @@ function asAsk(callId: string, input: unknown): Block {
     question: typeof v.question === 'string' ? v.question : '',
     options,
     ...(recommended !== undefined ? { recommended } : {}),
+    ...(v.multiSelect === true && options.length ? { multiSelect: true } : {}),
   };
 }
 
@@ -692,10 +693,11 @@ function applyPending(t: Transcript, p: PendingItem): void {
       const recommended = askRecommended(existing.options, p.recommended ?? existing.recommended);
       if (recommended !== undefined) existing.recommended = recommended;
       else delete existing.recommended;
+      if (p.multiSelect || existing.multiSelect) existing.multiSelect = true;
     } else {
       const options = p.options ?? [];
       const recommended = askRecommended(options, p.recommended);
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options, ...(recommended !== undefined ? { recommended } : {}) });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options, ...(recommended !== undefined ? { recommended } : {}), ...(p.multiSelect ? { multiSelect: true } : {}) });
     }
   } else {
     // The call is stored with its message before it is asked about, with no result yet: it has not run. Waiting
@@ -865,11 +867,13 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         const recommended = askRecommended(existing.options, e.recommended);
         if (recommended !== undefined) existing.recommended = recommended;
         else delete existing.recommended;
+        if (e.multiSelect) existing.multiSelect = true;
+        else delete existing.multiSelect;
         delete existing.cancelled;
       } else {
         const options = e.options ?? [];
         const recommended = askRecommended(options, e.recommended);
-        lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options, ...(recommended !== undefined ? { recommended } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options, ...(recommended !== undefined ? { recommended } : {}), ...(e.multiSelect ? { multiSelect: true } : {}) });
       }
       return t;
     }

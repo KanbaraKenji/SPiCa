@@ -1,7 +1,7 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import type { ChangePreview, InstallPreview, FileCardMeta, HistoryCardMeta, SourceCardMeta, SourceRow } from '@spica/protocol';
+import { askAnswerLines, type ChangePreview, type InstallPreview, type FileCardMeta, type HistoryCardMeta, type SourceCardMeta, type SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
@@ -919,6 +919,9 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
 export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'ask' }>; onAnswer(answer: string): void }) {
   const [draft, setDraft] = useState('');
   const [sent, setSent] = useState(false);
+  // Several may be chosen (multiSelect): the options ticked, by their place; sent together with the box's words.
+  const [ticked, setTicked] = useState<readonly number[]>([]);
+  const multi = block.multiSelect === true && block.options.length > 0;
   const answered = block.answer !== undefined;
   const closed = answered || block.cancelled === true;
   const submit = (value: string) => {
@@ -927,6 +930,11 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
     setSent(true);
     onAnswer(v);
   };
+  const tick = (i: number) => setTicked((was) => (was.includes(i) ? was.filter((x) => x !== i) : [...was, i].sort((a, b) => a - b)));
+  const sendTicked = () => submit(askAnswerLines([...ticked.map((i) => block.options[i] ?? ''), draft]));
+  const canSend = multi ? ticked.length > 0 || draft.trim() !== '' : draft.trim() !== '';
+  // A several-option answer comes back one a line: shown on one line, 、 between.
+  const shownAnswer = multi ? (block.answer ?? '').split('\n').filter(Boolean).join('、') : block.answer;
   return (
     <section className={closed ? 'card ask-card is-done' : 'card ask-card'} aria-label={t('提问')}>
       {/* One row as on a confirmation card: the question (no mark before it: 他问「为什么要有问号」, it says
@@ -941,7 +949,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
         {closed ? (
           <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
             <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-            <span>{answered ? block.answer : t(CARD_STOPPED)}</span>
+            <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
           </p>
         ) : null}
       </header>
@@ -952,7 +960,14 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
             <ol className="ask-options">
               {block.options.map((o, i) => (
                 <li key={i}>
-                  <button type="button" className="btn ask-option" disabled={sent} onClick={() => submit(o)}>
+                  <button
+                    type="button"
+                    className={multi && ticked.includes(i) ? 'btn ask-option is-ticked' : 'btn ask-option'}
+                    disabled={sent}
+                    onClick={() => (multi ? tick(i) : submit(o))}
+                    {...(multi ? { role: 'checkbox', 'aria-checked': ticked.includes(i) } : {})}
+                  >
+                    {multi ? <span className="ask-option-box" aria-hidden="true">{ticked.includes(i) ? <Icon name="check" size={12} /> : null}</span> : null}
                     <span className="ask-option-n" aria-hidden="true">
                       {i + 1}
                     </span>
@@ -967,7 +982,8 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
             className="ask-free"
             onSubmit={(e) => {
               e.preventDefault();
-              submit(draft);
+              if (multi) sendTicked();
+              else submit(draft);
             }}
           >
             <input
@@ -978,7 +994,7 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
               aria-label={t('回答')}
               disabled={sent}
             />
-            <button type="submit" className="btn btn-primary" disabled={sent || !draft.trim()}>
+            <button type="submit" className="btn btn-primary" disabled={sent || !canSend}>
               {t('回答')}
             </button>
           </form>

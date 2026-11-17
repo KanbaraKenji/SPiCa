@@ -244,6 +244,22 @@ describe('ask_user', () => {
     expect(s2.pending()[0]).not.toHaveProperty('recommended');
   });
 
+  it('several may be chosen (multiSelect): on the card and its request; not without options', async () => {
+    gw.enqueue({ toolCalls: [{ id: 'q1', name: 'ask_user', args: { question: 'Which?', options: ['EU', 'US'], multiSelect: true } }] });
+    const rt = makeRuntime(gw, { tools: [askUserTool] });
+    const events = captureEvents(rt);
+    const s = rt.createSession();
+    await s.send('set it up').done;
+    expect(events.find((e) => e.type === 'ask.request')).toMatchObject({ multiSelect: true });
+    expect(s.pending()).toMatchObject([{ kind: 'ask', multiSelect: true }]);
+
+    gw.enqueue({ toolCalls: [{ id: 'q2', name: 'ask_user', args: { question: 'Which?', multiSelect: true } }] });
+    const rt2 = makeRuntime(gw, { tools: [askUserTool] });
+    const s2 = rt2.createSession();
+    await s2.send('set it up').done;
+    expect(s2.pending()[0]).not.toHaveProperty('multiSelect');
+  });
+
   it('stopped while it waits: the result says cancelled (an error), the status aborted, and the question is gone', async () => {
     // The window marks the card from these two (there is no ask.resolved for a cancelled question).
     gw.enqueue({ toolCalls: [{ id: 'q1', name: 'ask_user', args: { question: 'Which region?', options: ['EU', 'US'] } }] });

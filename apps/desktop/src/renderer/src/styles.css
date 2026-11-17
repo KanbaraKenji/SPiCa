@@ -2322,6 +2322,24 @@ pre .hl-punctuation {
   padding: 4px var(--control-pad-x);
 }
 
+/* Several may be chosen: a box before each, ticked when chosen. */
+.ask-option-box {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: 3px;
+}
+
+.ask-option.is-ticked .ask-option-box {
+  border-color: var(--spica-accent);
+  background: var(--spica-accent);
+  color: var(--spica-on-accent);
+}
+
 .ask-option-n {
   flex: none;
   min-width: 1ch;
