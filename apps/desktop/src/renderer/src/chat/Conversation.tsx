@@ -484,9 +484,17 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               if (item.kind === 'user')
                 return (
                   <div key={item.id} className="turn-mine">
-                    <div className={item.steer ? 'turn-user is-steer' : 'turn-user'} {...mark(item.id)}>
-                      {item.steer ? <span className="turn-user-tag">{t('补充')}</span> : null}
-                      <p className="turn-user-text">{item.text}</p>
+                    <div className="turn-user" {...mark(item.id)}>
+                      <p className="turn-user-text">
+                        {/* Sent while the agent worked (a steer): a bubble as any of yours, a muted + before the words.
+                            Not a button; read as 补充; not part of the text 复制 copies (that is item.text). */}
+                        {item.steer ? (
+                          <span className="turn-user-steer" role="img" aria-label={t('补充')} title={t('补充')}>
+                            <Icon name="plus" size={14} />
+                          </span>
+                        ) : null}
+                        {item.text}
+                      </p>
                     </div>
                     {item.attachments?.some((a) => a.image) ? (
                       <div className="turn-pictures">

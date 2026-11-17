@@ -155,6 +155,14 @@ describe('the panels around the conversation (shell/layout.ts counts on these)',
     expect(img).not.toMatch(/(^|[^-])(width|height): 100%/);
   });
 
+  it('a message sent while the agent works: the bubble as any, a muted + before it (no dashed box, no tag line)', () => {
+    expect(css).not.toContain('.turn-user.is-steer');
+    expect(css).not.toContain('.turn-user-tag');
+    const mark = block('.turn-user-steer');
+    for (const rule of ['color: var(--spica-muted)', 'user-select: none']) expect(mark).toContain(rule);
+    expect(mark).not.toContain('cursor');
+  });
+
   it('a long file scrolls inside the preview: the preview stays the panel’s height', () => {
     // The right panel is a column: a flex item there is as tall as its content unless min-height says otherwise.
     expect(block('.preview')).toContain('min-height: 0');
