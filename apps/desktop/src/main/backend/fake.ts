@@ -1598,8 +1598,9 @@ export class FakeBackend implements AgentBackend {
         // For the card's shots. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
         // as plain lines numbered by the model itself (full-width 1）, no list: shown as written), long options, the
         // suggested one long.
-        // 多选: several may be chosen (the answer: the chosen ones, one a line).
+        // 多选: several may be chosen (the answer: the chosen ones, one a line). 开放问题: no options, only the box.
         const multi = /多选/.test(text);
+        const open = !multi && /开放问题/.test(text);
         const room = !multi && /会议室/.test(text);
         const venue = !multi && !room && /场地/.test(text);
         const question = multi
@@ -1608,16 +1609,20 @@ export class FakeBackend implements AgentBackend {
             ? '订会议室还缺几项信息，请补充：\n- 日期和时段\n- 人数\n- 是否需要投影或视频会议'
             : venue
               ? '年会场地还缺几项信息：\n1）日期\n2）人数\n3）预算'
-              : '纪要按哪种口径写？';
+              : open
+                ? '纪要发出前还要补充什么？'
+                : '纪要按哪种口径写？';
         const options = multi
           ? ['本周完成的事', '下周计划', '遇到的问题和需要的支持', '数据和图表']
           : room
             ? ['周二下午 2 点到 4 点，8 人，需要投影', '按上次的小会议室订', '我自己订']
             : venue
               ? ['下月第二个周五晚上，120 人左右，人均 300 元以内，市区交通方便、带舞台和音响的宴会厅', '先给我三家候选，我再定', '我自己联系']
-              : ['只写结论', '结论加讨论过程', '按议题逐条写'];
+              : open
+                ? []
+                : ['只写结论', '结论加讨论过程', '按议题逐条写'];
         const recommended = multi ? options[0] : room ? options[1] : venue ? options[0] : undefined;
-        const input = { question, options, ...(recommended ? { recommended } : {}), ...(multi ? { multiSelect: true } : {}) };
+        const input = { question, ...(options.length ? { options } : {}), ...(recommended ? { recommended } : {}), ...(multi ? { multiSelect: true } : {}) };
         this.#addPending(sessionId, { kind: 'ask', callId, createdAt: isoAt(this.#now()), ...input });
         this.#emit(sessionId, { type: 'ask.request', callId, ...input });
         this.#setStatus(sessionId, 'awaiting_answer');

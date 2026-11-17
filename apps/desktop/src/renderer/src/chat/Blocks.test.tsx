@@ -34,6 +34,16 @@ describe('AskCard', () => {
     expect(onAnswer).toHaveBeenCalledWith('写简短一点');
   });
 
+  it('Enter on a chosen option sends it, once', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={block} onAnswer={onAnswer} />);
+    const r = screen.getByRole('radio', { name: /按议题逐条写/ });
+    fireEvent.click(r);
+    fireEvent.keyDown(r, { key: 'Enter' });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
+  });
+
   it('a question with no options: the box and 确定', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={{ ...block, options: [] }} onAnswer={onAnswer} />);
@@ -106,6 +116,10 @@ describe('AskCard', () => {
   it('askQuestionParts: a first line that is a list item is no head', () => {
     expect(askQuestionParts('- 日期\n- 人数')).toEqual({ head: '', rest: '- 日期\n- 人数' });
     expect(askQuestionParts('缺：\n\n- 日期')).toEqual({ head: '缺：', rest: '- 日期' });
+    expect(askQuestionParts('1）日期\n2）人数').head).toBe('');
+    // no space after a half-width marker: no list item, the line is the head
+    expect(askQuestionParts('**会议室**还缺：\n- 日期').head).toBe('**会议室**还缺：');
+    expect(askQuestionParts('1.5 倍行距还是单倍？\n- 正文').head).toBe('1.5 倍行距还是单倍？');
   });
 
   it('answers keep Markdown’s soft line breaks (lineBreaks is the question card’s)', () => {

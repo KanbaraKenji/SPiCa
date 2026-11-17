@@ -2459,6 +2459,11 @@ label.ask-row:active {
   margin-top: 2px;
 }
 
+/* No options (a question to answer in words): the box right under the question, as far from it as the options are. */
+.ask-scroll:not(:has(.ask-options)) + .ask-other {
+  margin-top: 8px;
+}
+
 /* Answered: the question's first line, cut at its end (in full on hover), as a confirmation's title is. */
 .ask-done-title {
   font-weight: 400;

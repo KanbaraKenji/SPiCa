@@ -918,7 +918,8 @@ export function askQuestionParts(question: string): { head: string; rest: string
   const q = question.trim();
   const nl = q.indexOf('\n');
   const first = nl < 0 ? q : q.slice(0, nl);
-  if (/^\s*([-*+]|\d+[.)）、])\s*/.test(first) && nl >= 0) return { head: '', rest: q };
+  // a half-width marker wants a space after it (**bold**, 1.5 are no list items); a full-width one does not
+  if (/^\s*([-*+]\s|\d+[.)]\s|\d+[）、])/.test(first) && nl >= 0) return { head: '', rest: q };
   return { head: first, rest: nl < 0 ? '' : q.slice(nl + 1).replace(/^\n+/, '') };
 }
 
@@ -1004,22 +1005,34 @@ export function AskCard({
             </div>
           ) : null}
         </div>
-        <ol className="ask-options" role={multi ? 'group' : 'radiogroup'} aria-label={head || t('提问')}>
-          {options.map((o, i) => (
-            <li key={i}>
-              <label className={on(i) ? 'ask-row is-on' : 'ask-row'}>
-                <input type={mark} name={name} checked={on(i)} disabled={sent} onChange={() => choose(i)} />
-                <span className="ask-option-n" aria-hidden="true">
-                  {i + 1}
-                </span>
-                <span className="ask-option-text">
-                  {o}
-                  {o === block.recommended ? <span className="ask-option-tag">{t('建议')}</span> : null}
-                </span>
-              </label>
-            </li>
-          ))}
-        </ol>
+        {options.length ? (
+          <ol
+            className="ask-options"
+            role={multi ? 'group' : 'radiogroup'}
+            aria-label={head || t('提问')}
+            onKeyDown={(e) => {
+              // Enter on a mark sends what is chosen, as it does in the box
+              if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement) || (e.target.type !== 'radio' && e.target.type !== 'checkbox')) return;
+              e.preventDefault();
+              submit();
+            }}
+          >
+            {options.map((o, i) => (
+              <li key={i}>
+                <label className={on(i) ? 'ask-row is-on' : 'ask-row'}>
+                  <input type={mark} name={name} checked={on(i)} disabled={sent} onChange={() => choose(i)} />
+                  <span className="ask-option-n" aria-hidden="true">
+                    {i + 1}
+                  </span>
+                  <span className="ask-option-text">
+                    {o}
+                    {o === block.recommended ? <span className="ask-option-tag">{t('建议')}</span> : null}
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ol>
+        ) : null}
       </div>
       <form
         className="ask-row ask-other"
