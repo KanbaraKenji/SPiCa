@@ -218,6 +218,10 @@ export interface DesktopBridge extends SpicaBridge {
     onBlocked(listener: (b: { page: string; host: string }) => void): () => void;
     /** A local page went to a web address: open it as a link in the app is (asked, or as set). */
     onLocalLink(listener: (url: string) => void): () => void;
+    /** A page's own zoom changed (Ctrl + wheel, Ctrl + plus / minus / 0 in it; 1 = 100%). */
+    onZoom(listener: (z: { wcId: number; zoom: number }) => void): () => void;
+    /** A page's zoom: one step, back to 100%, or only read ('get'); resolves to it after. */
+    zoom(wcId: number, how: 'in' | 'out' | 'reset' | 'get'): Promise<number>;
   };
   /** 监控台: the back end's lines (kept in the main process, secrets removed there). */
   monitor: {

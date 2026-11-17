@@ -2,7 +2,7 @@
 // Markdown rendered, text and code with line numbers (code in colour), HTML in a sandbox
 // (no scripts, nothing from the network), images. Anything else: a sentence
 // and the system program.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react';
 import { createPortal } from 'react-dom';
 import type { PreviewInfo } from '../../../shared/bridge';
 import { MarkdownText } from '../chat/Blocks';
@@ -17,6 +17,7 @@ import { CopyButton } from '../ui/CopyButton';
 import { Select } from '../ui/Select';
 import { N_, t, tx } from '../../../shared/i18n';
 import { POPUPS } from './BrowserPane';
+import { ZoomMark, type PageZoomBridge } from './ZoomMark';
 
 export interface FilePreviewProps {
   /** null while loading. */
@@ -48,6 +49,8 @@ export interface FilePreviewProps {
   page?: string | null;
   /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
   blocked?: string[];
+  /** The page's own zoom (Ctrl + wheel in it): a mark in the row when it is not 100% (shell/ZoomMark.tsx). */
+  zoom?: PageZoomBridge;
 }
 
 /**
@@ -275,6 +278,23 @@ function cutNote(info: { name: string; size: number; blocks?: { shown: number; t
   return t('仅显示前 512 KB（共 {size}）', { size: formatBytes(info.size) });
 }
 
+
+/** An HTML file run as a page: the <webview>, and its WebContents id once it is there (null when gone). */
+function HtmlPage({ src, title, onPage }: { src: string; title: string; onPage(wcId: number | null): void }) {
+  const ref = useRef<HTMLElement & { getWebContentsId(): number }>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const ready = () => onPage(el.getWebContentsId());
+    el.addEventListener('dom-ready', ready);
+    return () => {
+      el.removeEventListener('dom-ready', ready);
+      onPage(null);
+    };
+  }, [onPage]);
+  return <webview ref={ref as unknown as Ref<HTMLWebViewElement>} className="preview-frame preview-html" src={src} title={title} {...POPUPS} />;
+}
+
 /** What can be shown both ways in the panel: as a page, picture or table, and as its code (and the code's language). */
 function codeOf(info: PreviewInfo | null): { text: string; language: string | null } | null {
   if (!info) return null;
@@ -285,7 +305,9 @@ function codeOf(info: PreviewInfo | null): { text: string; language: string | nu
   return null;
 }
 
-export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children, tabs, page, blocked }: FilePreviewProps) {
+export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onSheet, loadRows, onClose, max, source, note, children, tabs, page, blocked, zoom }: FilePreviewProps) {
+  // The page's WebContents id once it is there (an HTML file run as a page), for its zoom mark.
+  const [pageWc, setPageWc] = useState<number | null>(null);
   // 预览 / 代码: per file, kept while the panel is open (another file opens as its preview; back to this one, as left).
   const id = info ? `${info.kind}|${info.path}|${info.name}` : '';
   const [codeFor, setCodeFor] = useState<ReadonlySet<string>>(() => new Set());
@@ -321,6 +343,7 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
         <span className="preview-head-gap" />
         {/* What the page tried to load from the web and was stopped: a mark, not a button (the hosts on hover). */}
+        {zoom && page && info?.kind === 'html' && !asCode ? <ZoomMark zoom={zoom} wcId={pageWc} /> : null}
         {blocked?.length && !asCode ? (
           <span className="preview-blocked" role="status" title={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })} aria-label={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })}>
             <Icon name="shield" size={14} />
@@ -407,7 +430,7 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
             </div>
           ) : info.kind === 'html' && page ? (
             // In the built-in browser, scripts and all (its own process and storage; main/browser/local-pages.ts).
-            <webview className="preview-frame preview-html" src={page} title={info.name} {...POPUPS} />
+            <HtmlPage key={page} src={page} title={info.name} onPage={setPageWc} />
           ) : info.kind === 'html' ? (
             // Until its address is there (or without one): sandbox with no permissions, no scripts; only the page itself.
             <iframe className="preview-frame preview-html" sandbox="" srcDoc={info.text} title={info.name} />

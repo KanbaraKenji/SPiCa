@@ -8929,6 +8929,14 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
+/* A page's own zoom when it is not 100% (shell/ZoomMark.tsx): after the address (or in a run HTML file's row);
+   pressed, back to 100%. */
+.zoom-mark {
+  flex: none;
+  padding: 0 8px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Sound and video in the preview (FilePreview): Chromium's own player, video as wide as the panel. */
 .preview-media {
   display: flex;

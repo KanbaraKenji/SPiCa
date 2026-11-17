@@ -282,4 +282,6 @@ export const ZH_TW_SHELL: Catalog = {
   交还: '交還',
   // shell/FilePreview.tsx (a local page's stopped requests)
   '已拦截：{hosts}': '已攔截：{hosts}',
+  重置缩放: '重設縮放',
+  '重置缩放（{zoom}）': '重設縮放（{zoom}）',
 };
