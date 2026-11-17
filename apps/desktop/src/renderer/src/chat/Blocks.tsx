@@ -912,7 +912,10 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
           nothing the question and its options do not), and once closed the answer (or 已中断) at its right end;
           the options and the box below, in a part of their own. */}
       <header className="card-head">
-        <span className="card-title">{block.question}</span>
+        {/* The question as the answers are written (Markdown: its list a list, its lines lines, ask-question). */}
+        <div className="card-title ask-question">
+          <MarkdownText text={block.question} />
+        </div>
         <span className="confirm-spacer" />
         {closed ? (
           <p className={answered ? 'card-answer' : 'card-answer is-stopped'}>
@@ -923,14 +926,21 @@ export function AskCard({ block, onAnswer }: { block: Extract<Block, { type: 'as
       </header>
       {closed ? null : (
         <div className="ask-body">
+          {/* The options one a row, numbered, the suggested one (if any) marked 建议 at its end. */}
           {block.options.length ? (
-            <div className="ask-options">
-              {block.options.map((o) => (
-                <button key={o} type="button" className="btn ask-option" disabled={sent} onClick={() => submit(o)}>
-                  {o}
-                </button>
+            <ol className="ask-options">
+              {block.options.map((o, i) => (
+                <li key={i}>
+                  <button type="button" className="btn ask-option" disabled={sent} onClick={() => submit(o)}>
+                    <span className="ask-option-n" aria-hidden="true">
+                      {i + 1}
+                    </span>
+                    <span className="ask-option-text">{o}</span>
+                    {o === block.recommended ? <span className="ask-option-tag">{t('建议')}</span> : null}
+                  </button>
+                </li>
               ))}
-            </div>
+            </ol>
           ) : null}
           <form
             className="ask-free"

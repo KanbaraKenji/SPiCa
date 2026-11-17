@@ -2300,19 +2300,67 @@ pre .hl-punctuation {
   padding: 10px 12px 12px;
 }
 
+/* The options one a row (long ones wrap in their row, a short one is as wide as the card all the same), each its
+   number in grey first and, on the suggested one, 建议 in the accent colour at its end. */
 .ask-options {
   margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .ask-option {
+  width: 100%;
   height: auto;
   min-height: var(--control-h);
+  justify-content: flex-start;
+  gap: 10px;
   white-space: normal;
   text-align: left;
   padding: 4px var(--control-pad-x);
+}
+
+.ask-option-n {
+  flex: none;
+  min-width: 1ch;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ask-option-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.ask-option-tag {
+  flex: none;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-caption);
+  color: var(--spica-accent-text);
+}
+
+/* The question: the card title's size (not an answer's), single line breaks kept (the model writes a line per thing it
+   needs, often without a Markdown list), paragraphs and the list closer than in an answer. */
+.ask-question .md {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.ask-question .md p,
+.ask-question .md li {
+  white-space: pre-line;
+}
+
+.ask-question .md p,
+.ask-question .md ul,
+.ask-question .md ol {
+  margin-bottom: 4px;
+}
+
+.ask-question .md > :last-child {
+  margin-bottom: 0;
 }
 
 .ask-free {

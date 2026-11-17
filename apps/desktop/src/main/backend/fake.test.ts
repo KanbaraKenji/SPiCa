@@ -542,6 +542,23 @@ describe('FakeBackend', () => {
     b.dispose();
   });
 
+  it('会议室: a question with a line per thing to fill in and a suggested option, live, waiting and stored alike', async () => {
+    const b = new FakeBackend({ speed: 1 });
+    const { until } = collect(b);
+    const chat = await b.createSession({});
+    await b.send(chat.id, '帮我订下周的会议室');
+    const ask = (await until((e) => e.type === 'ask.request')) as { callId: string; question: string; options: string[]; recommended?: string };
+    expect(ask.question.split('\n')).toHaveLength(4);
+    expect(ask.recommended).toBe(ask.options[1]);
+    expect(await b.getPending(chat.id)).toMatchObject([{ kind: 'ask', recommended: ask.options[1] }]);
+    await b.answer(chat.id, ask.callId, ask.options[1]!);
+    await until((e) => e.type === 'run.end');
+    const messages = await b.getMessages(chat.id);
+    const call = messages.flatMap((m) => m.content).find((c) => c.type === 'tool_use' && c.id === ask.callId);
+    expect(call).toMatchObject({ input: { recommended: ask.options[1] } });
+    b.dispose();
+  });
+
   it('stops on abort and keeps what was already said', async () => {
     const b = new FakeBackend({ speed: 1 });
     const { until } = collect(b);

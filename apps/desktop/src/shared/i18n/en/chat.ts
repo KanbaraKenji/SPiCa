@@ -78,6 +78,7 @@ export const EN_CHAT: Catalog = {
   已拒绝: 'Denied',
   拒绝: 'Deny',
   允许: 'Allow',
+  建议: 'Suggested',
   操作建议: 'Suggested actions',
   已完成: 'Done',
   你的回复: 'Your reply',

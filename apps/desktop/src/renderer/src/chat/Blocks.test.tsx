@@ -47,13 +47,45 @@ describe('AskCard', () => {
   it('no mark before the question (it says nothing the question does not); answered, the answer stands at the row’s end', () => {
     const { rerender } = render(<AskCard block={block} onAnswer={vi.fn()} />);
     const head = document.querySelector('.ask-card > .card-head')!;
-    expect(head.firstElementChild?.className).toBe('card-title');
+    expect(head.firstElementChild?.classList.contains('card-title')).toBe(true);
     expect(head.querySelector('svg')).toBeNull();
     expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
     rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
     expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
     expect(head.querySelector('.card-answer')?.classList.contains('is-stopped')).toBe(false);
     expect(document.querySelector('.ask-body')).toBeNull();
+  });
+
+  it('the question as Markdown: its list a list, its single line breaks kept as lines', () => {
+    render(<AskCard block={{ ...block, question: '订会议室还缺几项信息：\n1. 日期和时段\n2. 人数' }} onAnswer={vi.fn()} />);
+    const title = document.querySelector('.ask-card .ask-question')!;
+    expect([...title.querySelectorAll('ol > li')].map((li) => li.textContent)).toEqual(['日期和时段', '人数']);
+    cleanup();
+    // lines without a list: one paragraph, its line breaks in its text (shown as lines: white-space pre-line)
+    render(<AskCard block={{ ...block, question: '还缺几项：\n日期\n人数' }} onAnswer={vi.fn()} />);
+    expect(document.querySelector('.ask-question p')?.textContent).toBe('还缺几项：\n日期\n人数');
+  });
+
+  it('options numbered in order, one a row; 建议 on the suggested one only', () => {
+    render(<AskCard block={{ ...block, options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' }} onAnswer={vi.fn()} />);
+    const rows = [...document.querySelectorAll('.ask-options > li')];
+    expect(rows.map((li) => li.querySelector('.ask-option-n')?.textContent)).toEqual(['1', '2', '3']);
+    expect(rows.map((li) => li.querySelector('.ask-option-tag')?.textContent ?? null)).toEqual([null, '建议', null]);
+    // the number is the list's (read out by the list), not part of the button's name
+    expect(screen.getByRole('button', { name: '只写结论' })).toBeTruthy();
+  });
+
+  it('no suggested option (or one stored before there were any): no 建议', () => {
+    render(<AskCard block={block} onAnswer={vi.fn()} />);
+    expect(document.querySelectorAll('.ask-options > li')).toHaveLength(2);
+    expect(document.querySelector('.ask-option-tag')).toBeNull();
+  });
+
+  it('answering the suggested option sends the option only (not 建议)', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={{ ...block, recommended: '按议题逐条写' }} onAnswer={onAnswer} />);
+    fireEvent.click(screen.getByRole('button', { name: /按议题逐条写/ }));
+    expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
   });
 
   it('shows the answer instead of controls once answered', () => {

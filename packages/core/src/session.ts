@@ -42,7 +42,7 @@ import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
 import { runtimesLine } from './runtimes.ts';
-import { REGENERATE_HINTS } from '@spica/protocol';
+import { askRecommended, REGENERATE_HINTS } from '@spica/protocol';
 import { comparableResult, repeatLimits, repeatReminder, repeatsBefore, repeatStopResult } from './repeat-guard.ts';
 
 export interface RunResult {
@@ -1091,11 +1091,13 @@ export class Session {
       if (tool.interaction === 'ask') {
         const obj = (input ?? {}) as Record<string, unknown>;
         const options = Array.isArray(obj.options) ? obj.options.map(String) : undefined;
+        const recommended = askRecommended(options, obj.recommended);
         const item: PendingItem = {
           kind: 'ask',
           callId: call.id,
           question: String(obj.question ?? ''),
           ...(options ? { options } : {}),
+          ...(recommended !== undefined ? { recommended } : {}),
           createdAt: isoNow(),
         };
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
@@ -1148,7 +1150,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       for (const p of pending) {
         this.#rt.store.putPending(p);
         if (p.item.kind === 'ask') {
-          this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}) });
+          this.#emit({ type: 'ask.request', callId: p.callId, question: p.item.question, ...(p.item.options ? { options: p.item.options } : {}), ...(p.item.recommended !== undefined ? { recommended: p.item.recommended } : {}) });
         } else {
           this.#emit({
             type: 'confirm.request',

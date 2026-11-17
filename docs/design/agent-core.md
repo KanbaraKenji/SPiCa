@@ -200,7 +200,7 @@
 | `web_fetch` | 所有 | 只收 http / https，内网照常放行；最多 5 次跳转、30 秒、5 MB；HTML 转纯文本保留链接；结果按外来内容围起来 |
 | `web_search` | 配了搜索接口时 | 接口可插（`SearchBackend`），自带通用的「GET 返回 JSON」适配器；会话用的模型有托管搜索且开着时改用托管搜索 |
 | `present_files` | 所有 | 把做出来的文件交给用户，出文件卡；只读，按文件时间标新建、修改或读取（见下面「做出来的文件出卡」） |
-| `ask_user` | 所有 | 提问卡，运行暂停到用户回答 |
+| `ask_user` | 所有 | 提问卡，运行暂停到用户回答。`question` 是 Markdown，说明里要求一句主问题在前、要补的几项各占一行（编号列表）；`options` 可选；`recommended` 可选，是建议的那个选项（要和某个选项一字不差，对不上就丢掉，`askRecommended`），随等待项和 `ask.request` 一起给出 |
 | `suggest_actions` | 所有 | 给几个「下一步」按钮，不等用户选；用户点哪个，外壳就把它的 prompt 当用户消息发进来 |
 | `spawn_agent` / `message_agent` / `wait_agents` / `record_decision` | 所有 | 会话树工具，见第 10 节 |
 | `create_project` / `list_projects` / `open_project` | 顶层 | 见第 15 节 |

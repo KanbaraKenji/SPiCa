@@ -203,6 +203,17 @@ export type RegenerateCode =
  * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
  * other agents since the user last wrote (RuntimeOptions.defaults.agentMessages). The window finds it by this.
  */
+/**
+ * The option an ask_user call suggests: its `recommended`, trimmed, when it is one of the options (compared trimmed);
+ * the option as written. Anything else (missing, not text, not among the options): none. The core and the window
+ * read it by this one rule, live and from a stored call alike.
+ */
+export function askRecommended(options: readonly string[] | undefined, value: unknown): string | undefined {
+  if (typeof value !== 'string' || !options) return undefined;
+  const v = value.trim();
+  return v ? options.find((o) => o.trim() === v) : undefined;
+}
+
 export const AGENT_MESSAGES_LIMIT_MARK = 'Not sent: message limit reached.';
 
 /** Starts the note added for the model after the result of the same call repeated (not shown to the user). */
@@ -576,7 +587,8 @@ export type PendingItem =
       install?: InstallPreview;
       createdAt: string;
     }
-  | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
+  /** `recommended`: the option the model suggests (one of `options`; see askRecommended). */
+  | { kind: 'ask'; callId: string; question: string; options?: string[]; recommended?: string; createdAt: string };
 
 // ---------------------------------------------------------------------------
 // Events
@@ -651,7 +663,7 @@ export type CoreEventBody =
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
-  | { type: 'ask.request'; callId: string; question: string; options?: string[] }
+  | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string }
   | { type: 'ask.resolved'; callId: string; answer: string }
   /**
    * Suggested next steps shown as a card (suggest_actions tool). The run does

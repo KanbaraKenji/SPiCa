@@ -18,12 +18,18 @@ export const askUserTool: Tool = {
     name: 'ask_user',
     description:
       'Ask the user a question and wait for the answer. Use it when you need a decision or information only the user has. ' +
-      'Offer short options when the answer is a choice.',
+      'When the answer is a choice, offer short options and set recommended to the one you would pick.',
     inputSchema: {
       type: 'object',
       properties: {
-        question: { type: 'string' },
-        options: { type: 'array', items: { type: 'string' }, description: 'Suggested answers (optional).' },
+        question: {
+          type: 'string',
+          description:
+            'Markdown. Start with one short sentence: what you need. When you need several things, put each on its own line ' +
+            'as a numbered list ("1. ...", "2. ..."), never several items run together in one paragraph.',
+        },
+        options: { type: 'array', items: { type: 'string' }, description: 'Short answers to choose from (optional); the card numbers them.' },
+        recommended: { type: 'string', description: 'The option you would pick, copied exactly from options. Set it whenever you have a reason to prefer one.' },
       },
       required: ['question'],
     },

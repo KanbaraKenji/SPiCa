@@ -1568,19 +1568,23 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n邮件已经发出。' : '\n\n好的，这封邮件没有发。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
-      } else if (/问|选/.test(text)) {
+      } else if (/问|选|会议室/.test(text)) {
         const callId = this.#id('call');
-        const question = '纪要按哪种口径写？';
-        const options = ['只写结论', '结论加讨论过程', '按议题逐条写'];
-        this.#addPending(sessionId, { kind: 'ask', callId, question, options, createdAt: isoAt(this.#now()) });
-        this.#emit(sessionId, { type: 'ask.request', callId, question, options });
+        // 会议室: a question with several things to fill in, one a line, and a suggested option (for the card's shots).
+        const room = /会议室/.test(text);
+        const question = room ? '订会议室还缺几项信息，请补充：\n1. 日期和时段\n2. 人数\n3. 是否需要投影或视频会议' : '纪要按哪种口径写？';
+        const options = room ? ['周二下午 2 点到 4 点，8 人，需要投影', '按上次的小会议室订', '我自己订'] : ['只写结论', '结论加讨论过程', '按议题逐条写'];
+        const recommended = room ? options[1] : undefined;
+        const input = { question, options, ...(recommended ? { recommended } : {}) };
+        this.#addPending(sessionId, { kind: 'ask', callId, createdAt: isoAt(this.#now()), ...input });
+        this.#emit(sessionId, { type: 'ask.request', callId, ...input });
         this.#setStatus(sessionId, 'awaiting_answer');
-        waiting = { id: callId, name: 'ask_user', input: { question, options } };
+        waiting = { id: callId, name: 'ask_user', input };
         const answer = await this.#waitFor(run, callId);
         waiting = undefined;
-        blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input: { question, options } }, { type: 'tool_result', toolUseId: callId, content: answer });
+        blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input }, { type: 'tool_result', toolUseId: callId, content: answer });
         this.#setStatus(sessionId, 'thinking');
-        const after = `好，按「${answer}」来写。`;
+        const after = room ? `好，按「${answer}」去订。` : `好，按「${answer}」来写。`;
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/流程/.test(text)) {
