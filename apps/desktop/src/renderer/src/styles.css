@@ -1210,16 +1210,13 @@ button.tree-twisty:hover {
   overflow-wrap: anywhere;
 }
 
-.turn-user.is-steer {
-  border: 1px dashed var(--spica-border-strong);
-}
-
-.turn-user-tag {
-  display: block;
-  font-size: var(--fs-caption);
-  line-height: var(--lh-caption);
+/* A message sent while the agent worked: a muted + in front of its first line (补充 on hover); the bubble as any. */
+.turn-user-steer {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -1px;
   color: var(--spica-muted);
-  margin-bottom: 2px;
+  user-select: none;
 }
 
 .turn-response {
