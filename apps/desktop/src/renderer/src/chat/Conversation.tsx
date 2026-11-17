@@ -409,6 +409,9 @@ export interface WaitingChild {
 
 const NO_MEMORY: MemoryLines = { items: null };
 
+/** What a question above the message box leaves of the conversation over it, at least: its last two lines (24 each). */
+const ASK_KEEP = 52;
+
 export function Conversation({ session, transcript, actions, demo, needsModel = false, onSetupModel, waiting = [], composerTools, found, memory = NO_MEMORY, welcome }: ConversationProps) {
   const running = isRunning(transcript.run?.status) || isRunning(session?.status);
   const { ref, away, toBottom, unpin } = useStickToBottom(transcript);
@@ -417,6 +420,27 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   // with 1 / n when there are more (a round's parallel calls can ask several at once).
   const openAsks = useMemo(() => items.flatMap((it) => (it.kind === 'response' ? it.blocks : [])).filter((b): b is Extract<Block, { type: 'ask' }> => b.type === 'ask' && b.answer === undefined && !b.cancelled), [items]);
   const openAsk = openAsks[0];
+  // The card above the message box is at most as tall as the conversation's box leaves over the rest of the input
+  // area, less ASK_KEEP for the conversation's last lines (a short window: its question gives way first, see .ask-card).
+  const dock = useRef<HTMLDivElement>(null);
+  const askId = openAsk?.callId;
+  useLayoutEffect(() => {
+    const box = ref.current;
+    const d = dock.current;
+    const foot = d?.parentElement;
+    if (!box || !d || !foot) return;
+    const fit = () => {
+      // the input area without the card: it stays as it is, the card takes what is left
+      const rest = foot.offsetHeight - d.offsetHeight;
+      d.style.setProperty('--ask-room', `${Math.max(0, box.clientHeight - rest - ASK_KEEP)}px`);
+    };
+    fit();
+    if (typeof ResizeObserver !== 'function') return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(box);
+    ro.observe(foot);
+    return () => ro.disconnect();
+  }, [askId, ref]);
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
@@ -597,7 +621,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           ) : null}
           <RunNotices notices={notices} />
           {openAsk ? (
-            <div className="ask-dock">
+            <div className="ask-dock" ref={dock}>
               <AskCard key={openAsk.callId} block={openAsk} docked {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
             </div>
           ) : null}

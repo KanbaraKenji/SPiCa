@@ -993,11 +993,11 @@ export function AskCard({
   return (
     <section className={docked ? 'card ask-card is-open is-docked' : 'card ask-card is-open'} aria-label={t('提问')}>
       <div className="ask-scroll">
-        {place ? <span className="ask-place">{`${place[0]} / ${place[1]}`}</span> : null}
         <div className="ask-question">
-          {head ? (
+          {head || place ? (
             <div className="ask-head">
-              <MarkdownText text={head} />
+              {place ? <span className="ask-place">{`${place[0]} / ${place[1]}`}</span> : null}
+              {head ? <MarkdownText text={head} /> : null}
             </div>
           ) : null}
           {rest ? (

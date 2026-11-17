@@ -2425,8 +2425,10 @@ label.ask-row:active {
 }
 
 /* Waiting, the card stands in the input area just above the message box (Conversation), as wide as the box: it is
-   what the box is waiting for (as VS Code's question carousel stands there). Its question and options scroll in it
-   when they are long, the row to type in and 确定 staying in sight under them. */
+   what the box is waiting for (as VS Code's question carousel stands there). At most as tall as the conversation's box
+   leaves (--ask-room: the last lines of the conversation stay in sight over it) and 460. Too short for all of it, the
+   question gives way first (its first line stays, what is under it scrolls in its own part), then the options; the row to type
+   in and 确定 stay in sight under them. */
 .ask-dock {
   flex: none;
   width: calc(100% - 28px);
@@ -2437,7 +2439,7 @@ label.ask-row:active {
 
 .card.ask-card.is-docked {
   max-width: none;
-  max-height: min(45vh, 460px);
+  max-height: min(var(--ask-room, 45vh), 460px);
   display: flex;
   flex-direction: column;
   box-shadow: var(--spica-input-shadow);
@@ -2450,8 +2452,38 @@ label.ask-row:active {
 }
 
 .ask-card.is-docked .ask-scroll {
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.ask-card.is-docked .ask-question {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+
+/* With lines under its first line it may give way, down to the first line and one more (4: the gap between them);
+   the first line stays, the lines under it scroll in their own part. */
+.ask-card.is-docked .ask-question:has(.ask-rest) {
+  flex: 0 1 auto;
+  min-height: calc(2 * var(--lh-body) + 4px);
+}
+
+.ask-card.is-docked .ask-head {
+  flex: none;
+}
+
+.ask-card.is-docked .ask-rest {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ask-card.is-docked .ask-options {
+  flex: none;
 }
 
 /* Which of the waiting questions this is (1 / 2): at the question's right, in the caption's grey. */

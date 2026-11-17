@@ -187,7 +187,9 @@ describe('a question waiting for its answer', () => {
     // the waiting ones are not in the conversation; the oldest stands in the input area, above the box
     expect(document.querySelector('.transcript-column .ask-card.is-open')).toBeNull();
     const docked = document.querySelector('.transcript-foot .ask-dock .ask-card.is-open.is-docked')!;
-    expect(docked.querySelector('.ask-head')?.textContent).toBe('纪要按哪种口径写？');
+    expect(docked.querySelector('.ask-head .md')?.textContent).toBe('纪要按哪种口径写？');
+    // its height bound by what the conversation's box leaves (measured; 0 in a page with no layout)
+    expect((docked.parentElement as HTMLElement).style.getPropertyValue('--ask-room')).toMatch(/^\d+px$/);
     expect(docked.querySelector('.ask-place')?.textContent).toBe('1 / 2');
     expect(docked.parentElement?.nextElementSibling?.classList.contains('composer-wrap')).toBe(true);
     fireEvent.click(screen.getByRole('radio', { name: /按议题逐条写/ }));
