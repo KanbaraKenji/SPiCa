@@ -126,7 +126,7 @@
     DeleteRegValue HKCU "${SPICA_RUN_KEY}" "${APP_ID}"
     ; Task Manager's on / off for that entry.
     DeleteRegValue HKCU "${SPICA_STARTUP_APPROVED}" "${APP_ID}"
-    ; The Python the app downloaded (main/index.ts PYTHON_ROOT): only that folder; settings and conversations stay.
+    ; The Python the app downloaded (main/index.ts pythonRoot): only that folder; settings and conversations stay.
     RMDir /r "$LOCALAPPDATA\${PRODUCT_NAME}\python"
   ${endIf}
 !macroend

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ProjectInfo, SessionInfo } from '@spica/protocol';
 import { DetailPanel } from '../shell/DetailPanel';
 import { Conversation, type ConversationActions } from './Conversation';
+import { clipboard } from './MessageActions';
 
 afterEach(cleanup);
 
@@ -22,6 +23,36 @@ const session = (over: Partial<SessionInfo>): SessionInfo => ({
   createdAt: at,
   updatedAt: at,
   ...over,
+});
+
+describe('a message sent while the agent works (补充)', () => {
+  it('is a bubble as any of yours, with a muted + before its words: read as 补充, not a button, not copied', async () => {
+    const write = vi.spyOn(clipboard, 'write').mockResolvedValue();
+    render(
+      <Conversation
+        session={session({ id: 's' })}
+        transcript={{ items: [{ kind: 'user', id: 'u1', text: '按新规格整理', steer: false }, { kind: 'user', id: 'u2', text: '规格模板在这', steer: true }] }}
+        actions={{} as unknown as ConversationActions}
+      />,
+    );
+    const [plain, steer] = [...document.querySelectorAll('.turn-user')];
+    // the same bubble: no other class, no tag line, no dashed box
+    expect([plain!.className, steer!.className]).toEqual(['turn-user', 'turn-user']);
+    expect(document.querySelector('.turn-user-tag, .is-steer')).toBeNull();
+    expect(plain!.querySelector('.turn-user-steer')).toBeNull();
+    const mark = screen.getByRole('img', { name: '补充' });
+    expect(steer!.contains(mark)).toBe(true);
+    expect(mark.getAttribute('title')).toBe('补充');
+    // before the words, in their first line; not something to press or to Tab to
+    expect(mark.parentElement?.className).toBe('turn-user-text');
+    expect(mark.parentElement?.firstChild).toBe(mark);
+    expect(mark.closest('button')).toBeNull();
+    expect(mark.hasAttribute('tabindex')).toBe(false);
+    // 复制 takes what was written, without the +
+    await act(async () => fireEvent.click(screen.getAllByRole('button', { name: '复制' })[1]!));
+    expect(write).toHaveBeenLastCalledWith('规格模板在这');
+    write.mockRestore();
+  });
 });
 
 describe('a sub-task that waits for the user', () => {
