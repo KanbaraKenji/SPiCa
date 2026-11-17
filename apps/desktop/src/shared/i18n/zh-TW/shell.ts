@@ -284,4 +284,5 @@ export const ZH_TW_SHELL: Catalog = {
   '已拦截：{hosts}': '已攔截：{hosts}',
   重置缩放: '重設縮放',
   '重置缩放（{zoom}）': '重設縮放（{zoom}）',
+  '缩放 {zoom}': '縮放 {zoom}',
 };

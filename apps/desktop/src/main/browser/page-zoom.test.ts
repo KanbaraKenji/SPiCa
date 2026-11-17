@@ -26,10 +26,10 @@ function fakePage(id: number, url: string) {
 const key = (k: Partial<ZoomKey>): ZoomKey => ({ type: 'keyDown', key: '', code: '', control: true, meta: false, alt: false, ...k });
 
 function setup(app = 1) {
-  const told: Array<[number, number]> = [];
+  const told: Array<[number, number, boolean]> = [];
   // a notch every 100 ms unless a test says otherwise
   const state = { app, at: 0, gap: 100 };
-  const zoom = pageZoom({ appZoom: () => state.app, notify: (id, z) => told.push([id, z]), now: () => (state.at += state.gap) });
+  const zoom = pageZoom({ appZoom: () => state.app, notify: (id, z, stepped) => told.push([id, z, stepped]), now: () => (state.at += state.gap) });
   return { zoom, told, state };
 }
 
@@ -72,7 +72,7 @@ describe('page zoom', () => {
     expect(b.factor).toBe(1);
     expect(zoom.zoomOf(1)).toBe(1.25);
     expect(zoom.zoomOf(2)).toBe(1);
-    expect(told.at(-1)).toEqual([1, 1.25]);
+    expect(told.at(-1)).toEqual([1, 1.25, true]);
     a.fire('zoom-changed', {}, 'out');
     expect(a.factor).toBe(1.1);
   });
@@ -113,7 +113,7 @@ describe('page zoom', () => {
   });
 
   it('kept per site: another tab of the same site follows, a page that goes to another site has that one\'s', () => {
-    const { zoom } = setup();
+    const { zoom, told } = setup();
     const a = fakePage(1, 'https://example.com/a');
     const b = fakePage(2, 'https://example.com/b');
     zoom.wire(a as unknown as ZoomGuest);
@@ -123,13 +123,14 @@ describe('page zoom', () => {
     b.url = 'https://other.example/';
     b.fire('did-navigate');
     expect(b.factor).toBe(1);
+    expect(told.at(-1)).toEqual([2, 1, false]);
     b.url = 'https://example.com/c';
     b.fire('did-navigate');
     expect(b.factor).toBe(1.1);
   });
 
   it('drawn at the app\'s zoom times its own, again after the app\'s changes', () => {
-    const { zoom, state } = setup(1.1);
+    const { zoom, state, told } = setup(1.1);
     const a = fakePage(1, 'https://example.com/');
     zoom.wire(a as unknown as ZoomGuest);
     zoom.step(1, 'in');
@@ -138,6 +139,7 @@ describe('page zoom', () => {
     a.factor = 1.5; // what Electron does to a page when the app's zoom changes
     zoom.appZoomChanged();
     expect(a.factor).toBeCloseTo(1.65);
+    expect(told.at(-1)).toEqual([1, 1.1, false]);
     expect(zoom.zoomOf(1)).toBe(1.1);
   });
 

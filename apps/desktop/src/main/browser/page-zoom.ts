@@ -70,16 +70,20 @@ export interface PageZoom {
   appZoomChanged(): void;
 }
 
-export function pageZoom(o: { appZoom(): number; notify(wcId: number, zoom: number): void; now?: () => number }): PageZoom {
+/**
+ * notify: a page's own zoom as drawn; `stepped` when it is because of a step (wheel, keys, the mark), not a page
+ * that went somewhere or the app's zoom (the mark shows itself only then, shell/ZoomMark.tsx).
+ */
+export function pageZoom(o: { appZoom(): number; notify(wcId: number, zoom: number, stepped: boolean): void; now?: () => number }): PageZoom {
   const now = o.now ?? (() => performance.now());
   const bySite = new Map<string, number>();
   const pages = new Map<number, ZoomGuest>();
   const siteOf = (g: ZoomGuest) => zoomSite(g.getURL());
   const own = (g: ZoomGuest) => bySite.get(siteOf(g)) ?? DEFAULT_ZOOM;
-  const draw = (g: ZoomGuest) => {
+  const draw = (g: ZoomGuest, stepped = false) => {
     if (g.isDestroyed()) return;
     g.setZoomFactor(o.appZoom() * own(g));
-    o.notify(g.id, own(g));
+    o.notify(g.id, own(g), stepped);
   };
   const set = (g: ZoomGuest, how: 'in' | 'out' | 'reset') => {
     const site = siteOf(g);
@@ -87,7 +91,7 @@ export function pageZoom(o: { appZoom(): number; notify(wcId: number, zoom: numb
     const next = how === 'reset' ? DEFAULT_ZOOM : stepZoom(own(g), how);
     if (next === DEFAULT_ZOOM) bySite.delete(site);
     else bySite.set(site, next);
-    for (const p of pages.values()) if (siteOf(p) === site) draw(p);
+    for (const p of pages.values()) if (siteOf(p) === site) draw(p, true);
   };
   return {
     wire(g) {

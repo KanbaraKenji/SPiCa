@@ -42,7 +42,7 @@ export interface BrowserPaneProps {
    * address row and a frame round the page. 接手 / 停止 while acting, 交还 when taken. Absent: nothing.
    */
   agent?: { mode: 'acting' | 'taken'; onTakeOver(): void; onStop(): void; onGiveBack(): void } | null;
-  /** Pages' own zoom (Ctrl + wheel in a page): a mark after the address when it is not 100% (shell/ZoomMark.tsx). */
+  /** Pages' own zoom (Ctrl + wheel in a page): just after a change, grey text inside the end of the address (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 
@@ -161,8 +161,8 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
                 }
               }}
             />
+            {zoom ? <ZoomMark zoom={zoom} wcId={wcIds[tab.id] ?? null} /> : null}
           </form>
-          {zoom ? <ZoomMark zoom={zoom} wcId={wcIds[tab.id] ?? null} /> : null}
           <button type="button" className="icon-btn" disabled={!tab.url} onClick={() => tab.url && onOpenExternal(tab.url)} aria-label={t('用系统浏览器打开')} title={t('用系统浏览器打开')}>
             <Icon name="external" size={15} />
           </button>

@@ -60,7 +60,7 @@ ipcMain.handle(DesktopChannel.BrowserGiveBack, (_e, tabId: unknown) => {
 // A page's own zoom (main/browser/page-zoom.ts): drawn at the app's zoom times its own.
 const pageZooms = pageZoom({
   appZoom: () => settings.get().zoom,
-  notify: (wcId, zoom) => sendToWindow(DesktopChannel.BrowserZoom, { wcId, zoom }),
+  notify: (wcId, zoom, stepped) => sendToWindow(DesktopChannel.BrowserZoom, { wcId, zoom, stepped }),
 });
 ipcMain.handle(DesktopChannel.BrowserZoomStep, (_e, wcId: unknown, how: unknown) => {
   if (typeof wcId !== 'number') return 1;

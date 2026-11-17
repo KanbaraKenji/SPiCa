@@ -49,7 +49,7 @@ export interface FilePreviewProps {
   page?: string | null;
   /** Hosts the page tried to load from and was stopped (not on the allowed lists): a mark with their number. */
   blocked?: string[];
-  /** The page's own zoom (Ctrl + wheel in it): a mark in the row when it is not 100% (shell/ZoomMark.tsx). */
+  /** The page's own zoom (Ctrl + wheel in it): just after a change, grey text at the end of the row's gap (shell/ZoomMark.tsx). */
   zoom?: PageZoomBridge;
 }
 
@@ -341,9 +341,15 @@ export function FilePreview({ info, loadingPath, onOpenExternal, onReveal, onShe
           </span>
         )}
         {info && hasFile ? <CopyButton className="icon-btn" label={t('复制路径')} copy={() => clipboard.write(info.path)} /> : null}
-        <span className="preview-head-gap" />
+        {/* A run page's gap keeps room for its zoom just after it changed, at its end (so nothing moves). */}
+        {zoom && page && info?.kind === 'html' && !asCode ? (
+          <span className="preview-head-gap has-zoom">
+            <ZoomMark zoom={zoom} wcId={pageWc} />
+          </span>
+        ) : (
+          <span className="preview-head-gap" />
+        )}
         {/* What the page tried to load from the web and was stopped: a mark, not a button (the hosts on hover). */}
-        {zoom && page && info?.kind === 'html' && !asCode ? <ZoomMark zoom={zoom} wcId={pageWc} /> : null}
         {blocked?.length && !asCode ? (
           <span className="preview-blocked" role="status" title={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })} aria-label={t('已拦截：{hosts}', { hosts: blocked.join(t('、')) })}>
             <Icon name="shield" size={14} />

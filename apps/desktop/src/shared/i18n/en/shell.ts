@@ -284,4 +284,5 @@ export const EN_SHELL: Catalog = {
   '已拦截：{hosts}': 'Blocked: {hosts}',
   重置缩放: 'Reset zoom',
   '重置缩放（{zoom}）': 'Reset zoom ({zoom})',
+  '缩放 {zoom}': 'Zoom {zoom}',
 };
