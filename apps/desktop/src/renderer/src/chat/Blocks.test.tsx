@@ -48,6 +48,8 @@ describe('AskCard', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={{ ...block, options: [] }} onAnswer={onAnswer} />);
     expect(screen.queryByRole('radio')).toBeNull();
+    // no empty list above the box
+    expect(document.querySelector('.ask-options')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '输入回答' }), { target: { value: '周三' } });
     fireEvent.click(ok());
     expect(onAnswer).toHaveBeenCalledWith('周三');
