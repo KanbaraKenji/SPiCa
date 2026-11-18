@@ -1136,8 +1136,8 @@ export function ConfirmTarget({ name, input, bare, change, outsideFolder }: { na
   // the element's number is the agent's, nothing a person reads.
   if (name === 'browser_click' || name === 'browser_type' || name === 'browser_press' || name === 'browser_select' || name === 'browser_hover' || name === 'browser_drag') return null;
   // a script in the page: the script itself, as a command is shown; an upload: the files, in full
-  if (name === 'browser_javascript' && typeof v.code === 'string') return <CommandBox command={v.code} marks={[]} bare={bare} />;
-  if (name === 'browser_file_upload' && Array.isArray(v.paths)) return <CommandBox command={v.paths.map(String).join('\n')} marks={[]} bare={bare} />;
+  if (name === 'browser_javascript' && typeof v.code === 'string') return <CommandBox command={v.code} bare={bare} code={{ label: 'JavaScript', language: 'javascript' }} />;
+  if (name === 'browser_file_upload' && Array.isArray(v.paths)) return <CommandBox command={v.paths.map(String).join('\n')} bare={bare} code={{ label: '' }} />;
   // A write or an edit: what it would change, as its row shows it after (the core worked it out when it asked: the
   // lines numbered, green in, red out; a new file all green). Without that (an older core) the arguments' own lines.
   if (name === 'write_file' || name === 'edit_file') {

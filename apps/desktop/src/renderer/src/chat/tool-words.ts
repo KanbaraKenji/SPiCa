@@ -250,6 +250,11 @@ export function runningWords(c: ToolCall): string {
     Deleted: 'Deleting',
     Recalled: 'Recalling',
     'Set up': 'Setting up',
+    'Looked for': 'Looking for',
+    Chose: 'Choosing',
+    Hovered: 'Hovering',
+    Dragged: 'Dragging',
+    Uploaded: 'Uploading',
   };
   if (c.name === 'run_command' && !c.summary && w.object === 'a command') return 'Running a command';
   return `${w.verb ? (ing[w.verb] ?? w.verb) : 'Running'} ${w.object}`;

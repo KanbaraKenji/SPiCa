@@ -43,22 +43,26 @@ export function browserHook(host: HostCall, roots?: UploadRoots): Hooks {
   return {
     async beforeTool(call, ctx) {
       if (!ACTIONS.has(call.name)) return;
-      const input = (call.input && typeof call.input === 'object' ? call.input : {}) as Record<string, unknown>;
-      // files from elsewhere are refused before anyone is asked about them
+      let input = (call.input && typeof call.input === 'object' ? call.input : {}) as Record<string, unknown>;
+      // files from elsewhere are refused before anyone is asked about them; the card names each file in full
+      let resolved = false;
       if (call.name === 'browser_file_upload' && roots) {
         const checked = uploadPaths(input.paths, ctx.session.cwd, roots(ctx.session.id));
         if ('error' in checked) return { action: 'deny', reason: checked.error };
+        input = { ...input, paths: checked.paths };
+        resolved = true;
       }
       let r: { verdict?: { action?: string; reason?: string }; expect?: string };
       try {
         // the main process keeps what the element is now under this call's id (nothing added to what the card shows)
         r = (await host('browser.inspect', [ctx.session.id, { ...input, tool: call.name, callId: call.callId }])) as typeof r;
       } catch {
-        return; // the tool itself will say what is wrong
+        return resolved ? { action: 'allow', input } : undefined; // the tool itself will say what is wrong
       }
       const v = r?.verdict;
       if (v?.action === 'deny') return { action: 'deny', reason: v.reason ?? 'left to the person' };
-      if (v?.action === 'confirm') return { action: 'confirm', reason: v.reason ?? call.name, irreversible: true };
+      if (v?.action === 'confirm') return { action: 'confirm', reason: v.reason ?? call.name, irreversible: true, ...(resolved ? { input } : {}) };
+      if (resolved) return { action: 'allow', input };
     },
   };
 }

@@ -238,7 +238,7 @@ describe('browser_file_upload: only files of the conversation or the ones the pe
     const hctx = { session: { id: 's1', cwd: dir }, runId: 'r', turn: 1 } as never;
     expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: [outside] }, irreversible: false }, hctx)).toMatchObject({ action: 'deny' });
     expect(asked).toEqual([]);
-    expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: ['report.pdf'] }, irreversible: false }, hctx)).toEqual({ action: 'confirm', reason: 'x', irreversible: true });
+    expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: ['report.pdf'] }, irreversible: false }, hctx)).toEqual({ action: 'confirm', reason: 'x', irreversible: true, input: { ref: 2, paths: [realpathSync(inside)] } });
   });
 
   it('a script and the new acting tools are judged by the main process too', async () => {
