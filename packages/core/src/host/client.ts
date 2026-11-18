@@ -51,6 +51,8 @@ const API_METHODS = [
   'resume',
   'regenerate',
   'abort',
+  'listCommandJobs',
+  'stopCommandJob',
   'exportTraces',
   'getTopSession',
   'createProject',
