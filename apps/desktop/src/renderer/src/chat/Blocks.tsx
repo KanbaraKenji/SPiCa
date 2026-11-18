@@ -928,8 +928,8 @@ export function askQuestionParts(question: string): { head: string; rest: string
  * when they are long): the question (its first line in the title's weight, the rest under it), the options
  * one a row (a round mark for one, a square for several, the number, the words, 建议 after the suggested one), last
  * a row of its own to type in, and 确定: nothing is sent until it is pressed, one option chosen or several. Answered,
- * one row: the question's first line, the answer at its right end; dropped unanswered (the run was stopped), 已中断
- * there. Once an answer is sent it takes no second one (a second would be refused: the question is gone).
+ * in the conversation: a done mark before the question's first line, the answer under it; dropped unanswered (the
+ * run was stopped), a stopped mark and 已中断. Once an answer is sent it takes no second one (a second would be refused: the question is gone).
  */
 export function AskCard({
   block,
@@ -973,15 +973,19 @@ export function AskCard({
   if (closed) {
     // a first line ending in a colon (请补充：) leads into what is under it; on its own, before the answer, without it
     const line = (head || rest.split('\n')[0] || '').replace(/\*\*|`/g, '').replace(/\s*[:：]\s*$/, '');
+    // The mark before the question's line (on that line, not centred on the card); the answer under the question,
+    // lined up with its words: a long answer wraps to a second line instead of squeezing the question.
     return (
-      <section className="card ask-card is-done" aria-label={t('提问')}>
-        <div className="card-head">
-          <span className="card-title ask-done-title" title={block.question}>
+      <section className={answered ? 'card ask-card is-done' : 'card ask-card is-done is-stopped'} aria-label={t('提问')}>
+        <span className="ask-done-mark">
+          <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
+        </span>
+        <div className="ask-done-text">
+          <p className="ask-done-title" title={block.question}>
             {line}
-          </span>
-          <p className={answered ? 'card-answer' : 'card-answer is-stopped'} title={answered ? shownAnswer : undefined}>
-            <SpicaStatusIcon name={answered ? 'done' : 'stopped'} size={15} />
-            <span>{answered ? shownAnswer : t(CARD_STOPPED)}</span>
+          </p>
+          <p className="ask-done-answer" title={answered ? shownAnswer : undefined}>
+            {answered ? shownAnswer : t(CARD_STOPPED)}
           </p>
         </div>
       </section>

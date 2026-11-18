@@ -60,9 +60,10 @@ describe('AskCard', () => {
     render(<AskCard block={{ ...block, cancelled: true }} onAnswer={onAnswer} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
-    expect(document.querySelector('.ask-card.is-done .card-answer')?.textContent).toBe('已中断');
+    expect(document.querySelector('.ask-card.is-done .ask-done-answer')?.textContent).toBe('已中断');
     // red (the colour of 无法撤销), its mark too: marked is-stopped; an answer is not
-    expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(true);
+    expect(document.querySelector('.ask-card.is-done')?.classList.contains('is-stopped')).toBe(true);
+    expect(document.querySelector('.ask-card .ask-done-mark .spica-status-icon')).toBeTruthy();
   });
 
   it('takes one answer: after 确定 everything is off until the card closes', () => {
@@ -76,17 +77,23 @@ describe('AskCard', () => {
     expect((screen.getByRole('textbox', { name: '输入回答' }) as HTMLInputElement).disabled).toBe(true);
   });
 
-  it('answered: one row, the question’s first line (in full on hover) and the answer; nothing to click', () => {
+  it('answered: the mark, the question’s first line (in full on hover) and the answer under it; nothing to click', () => {
     const question = '订会议室还缺几项信息：\n- 日期\n- 人数';
     const { rerender } = render(<AskCard block={{ ...block, question }} onAnswer={vi.fn()} />);
     expect(document.querySelector('.ask-card .ask-options')).toBeTruthy();
     rerender(<AskCard block={{ ...block, question, answer: '只写结论' }} onAnswer={vi.fn()} />);
-    const title = document.querySelector('.ask-card.is-done .card-title')!;
+    const title = document.querySelector('.ask-card.is-done .ask-done-title')!;
     // its colon dropped (it led into the list, now not shown); the full question on hover
     expect(title.textContent).toBe('订会议室还缺几项信息');
     expect(title.getAttribute('title')).toBe(question);
-    expect(document.querySelector('.ask-card .card-answer')?.textContent).toBe('只写结论');
-    expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(false);
+    // the mark first, then the question and under it the answer (not at the question's right end)
+    const done = document.querySelector('.ask-card.is-done')!;
+    expect([...done.children].map((c) => c.className)).toEqual(['ask-done-mark', 'ask-done-text']);
+    expect([...done.querySelector('.ask-done-text')!.children].map((c) => c.className)).toEqual(['ask-done-title', 'ask-done-answer']);
+    const answer = done.querySelector('.ask-done-answer')!;
+    expect(answer.textContent).toBe('只写结论');
+    expect(answer.getAttribute('title')).toBe('只写结论');
+    expect(done.classList.contains('is-stopped')).toBe(false);
     expect(document.querySelector('.ask-card .ask-options')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -195,7 +202,7 @@ describe('AskCard', () => {
 
     it('answered: the chosen ones on one line', () => {
       render(<AskCard block={{ ...multi, answer: '本周完成的事\n数据和图表' }} onAnswer={vi.fn()} />);
-      expect(document.querySelector('.ask-card .card-answer')?.textContent).toBe('本周完成的事、数据和图表');
+      expect(document.querySelector('.ask-card .ask-done-answer')?.textContent).toBe('本周完成的事、数据和图表');
     });
 
     it('a single-choice card (or one stored before multiSelect) has round marks, no boxes', () => {

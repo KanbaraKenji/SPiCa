@@ -2295,8 +2295,8 @@ pre .hl-punctuation {
 }
 
 /* A question card. Waiting for its answer it stands above the message box (.ask-dock, below): what is asked, the
-   options one a row, a row to type in, 确定 on a row of its own. Answered it is a row in the conversation as a
-   confirmation is (above). */
+   options one a row, a row to type in, 确定 on a row of its own. Answered it is back in the conversation: the
+   question's first line and the answer under it (.ask-done-*, below). */
 .card.ask-card {
   align-self: flex-start;
   width: 100%;
@@ -2500,12 +2500,57 @@ label.ask-row:active {
   margin-top: 8px;
 }
 
-/* Answered: the question's first line, cut at its end (in full on hover), as a confirmation's title is. */
+/* Answered (or stopped while it waited): the mark on the question's first line, before it (not centred on the card),
+   then the question and under it the answer (已中断), lined up with the question's words. The question in the ink, the
+   answer in the muted grey (已中断 in red, the mark too). As wide as the longer of the two up to 560, so a short
+   answer leaves no empty card at its right. The question is one line, cut at its end; the answer up to two lines,
+   cut at the end of the second; each in full on hover. */
+.card.ask-card.is-done {
+  width: fit-content;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px 10px 12px;
+}
+
+.ask-done-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--lh-body);
+}
+
+.ask-done-text {
+  min-width: 0;
+}
+
+.ask-done-title,
+.ask-done-answer {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
 .ask-done-title {
-  font-weight: 400;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.ask-done-answer {
+  margin-top: 2px;
+  color: var(--spica-muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.ask-card.is-stopped .ask-done-answer,
+.ask-card.is-stopped .ask-done-mark,
+.ask-card.is-stopped .ask-done-mark .spica-status-icon {
+  color: var(--spica-danger);
 }
 
 .file-cards {
@@ -6660,15 +6705,14 @@ section.plugins-part > .plugins-part-title {
 
 /* A confirmation: the card is what would run. A slim row (what it will do, 无法撤销, copy, 拒绝 / 允许), a thin line,
    then the command in full or the call's arguments, from edge to edge. */
-/* A question card and a confirmation card: one row (the ringed mark, the words, what is decided or the
-   buttons at the right end), then what belongs to it below. */
+/* A confirmation card: one row (the words, what is decided or the buttons at the right end), then what belongs to
+   it below. A question card has no rows of its own here: it is .ask-card (waiting, answered) above. */
 .ask-card,
 .confirm-card {
   padding: 0;
   overflow: hidden;
 }
 
-.ask-card > .card-head,
 .confirm-card > .card-head {
   align-items: center;
   gap: 8px;
@@ -6719,7 +6763,6 @@ section.plugins-part > .plugins-part-title {
   margin: 0;
 }
 
-.ask-card > .card-head .card-answer,
 .confirm-card > .card-head .card-answer {
   flex: none;
   margin: 0 4px 0 0;
@@ -6744,31 +6787,6 @@ section.plugins-part > .plugins-part-title {
 .confirm-card.is-narrow > .card-head > .card-answer {
   flex: 1 0 100%;
   justify-content: flex-end;
-}
-
-/* The answer at the question's right end, as wide as its words up to half the card: the question takes the rest
-   (it starts from nothing, so a long question no longer squeezes the answer into a column one character wide).
-   The spacer is not needed: the question fills the room up to the answer. */
-.ask-card > .card-head > .card-title {
-  flex: 1 1 0;
-}
-
-.ask-card > .card-head > .confirm-spacer {
-  display: none;
-}
-
-.ask-card > .card-head .card-answer {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 65%;
-}
-
-/* One row: an answer longer than its room is cut at its end (in full on hover), as the question is. */
-.ask-card > .card-head .card-answer > span {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* Stopped while it waited (已中断), and the answer's （中断）: red, the colour of 无法撤销, the mark too. */

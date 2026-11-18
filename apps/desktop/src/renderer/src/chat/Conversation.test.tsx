@@ -183,7 +183,7 @@ describe('a question waiting for its answer', () => {
       />,
     );
     // the answered one stays in the conversation, in one row
-    expect(document.querySelector('.transcript-column .ask-card.is-done .card-answer')?.textContent).toBe('新模板');
+    expect(document.querySelector('.transcript-column .ask-card.is-done .ask-done-answer')?.textContent).toBe('新模板');
     // the waiting ones are not in the conversation; the oldest stands in the input area, above the box
     expect(document.querySelector('.transcript-column .ask-card.is-open')).toBeNull();
     const docked = document.querySelector('.transcript-foot .ask-dock .ask-card.is-open')!;
