@@ -10,7 +10,6 @@ export const EN_SHELL: Catalog = {
   '{plugin}：{text}': '{plugin}: {text}',
   默认: 'Default',
   强模型: 'Strong model',
-  选择工作文件夹: 'Select working folder',
   添加附件: 'Add attachment',
   '（已移除）': '(Removed)',
   预览: 'Preview',
