@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -756,5 +756,47 @@ describe('a failed download for the app’s Python', () => {
     expect(t.installFailure?.reason).toBe('connect');
     t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 5));
     expect(t.installFailure).toBeUndefined();
+  });
+});
+
+describe('currentPlan (update_plan)', () => {
+  const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+  const plan = (callId: string, steps: [string, string][]) => ev({ type: 'tool.start', callId, name: 'update_plan', input: { plan: steps.map(([step, status]) => ({ step, status })) } });
+
+  it('live: the latest call; a refused call leaves the plan before it; not a step in the answer', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, plan('p1', [['读资料', 'in_progress'], ['写纪要', 'pending']]));
+    t = applyEvent(t, plan('p2', [['读资料', 'completed'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.steps.map((s) => s.status)).toEqual(['completed', 'in_progress']);
+    t = applyEvent(t, plan('p3', [['读资料', 'in_progress'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    t = applyEvent(t, plan('p4', [['读资料', 'completed'], ['写纪要', 'completed']]));
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'p4', name: 'update_plan', isError: true, preview: 'no' }));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    const r = t.items.at(-1);
+    expect(r?.kind === 'response' && r.blocks.some((b) => b.type === 'tool')).toBe(false);
+  });
+
+  it('an empty list clears it', () => {
+    let t = applyEvent({ items: [] }, plan('p1', [['读资料', 'pending']]));
+    t = applyEvent(t, plan('p2', []));
+    expect(currentPlan(t)).toBeUndefined();
+  });
+
+  it('read back from the stored conversation as it was live', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    const done = new Promise<void>((resolve) =>
+      b.onEvent((e: CoreEvent) => {
+        live = applyEvent(live, e, 1000);
+        if (e.type === 'run.end') resolve();
+      }),
+    );
+    await b.send(chat.id, '清单没做完');
+    await done;
+    const stored = fromHistory(await b.getMessages(chat.id));
+    expect(currentPlan(stored)?.steps).toEqual(currentPlan(live)?.steps);
+    expect(currentPlan(stored)?.steps.map((s) => s.status)).toEqual(['completed', 'completed', 'pending', 'pending', 'pending']);
   });
 });

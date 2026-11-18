@@ -15,9 +15,17 @@ function StepMark({ status, running }: { status: PlanStep['status']; running: bo
 
 const STATUS_WORDS: Record<PlanStep['status'], string> = { completed: '已完成', in_progress: '进行中', pending: '未开始' };
 
-/** `running`: the run is going (the step in progress turns). `record`: a finished plan back in the conversation. */
-export function PlanStrip({ steps, running, record = false }: { steps: PlanStep[]; running: boolean; record?: boolean }) {
+/**
+ * `running`: the run is going (the step in progress turns). `record`: a finished plan back in the conversation.
+ * `oneLine`: something else needs the room above the message box (a question waiting): opened, it closes to its line.
+ */
+export function PlanStrip({ steps, running, record = false, oneLine = false }: { steps: PlanStep[]; running: boolean; record?: boolean; oneLine?: boolean }) {
   const [open, setOpen] = useState(false);
+  const [wasOneLine, setWasOneLine] = useState(oneLine);
+  if (oneLine !== wasOneLine) {
+    setWasOneLine(oneLine);
+    if (oneLine) setOpen(false);
+  }
   const { done, total, current, currentIndex } = planProgress(steps);
   const all = done === total;
   const line = all ? t('已完成') : (current?.step ?? '');

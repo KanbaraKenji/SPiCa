@@ -468,7 +468,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
   const userAfterPlan = plan ? items.slice(plan.item + 1).some((it) => it.kind === 'user') : false;
   const planDocked = plan && (!planFinished || (mock.planDone === 'd1' && !userAfterPlan));
   const planRecordAt = plan && planFinished && mock.planDone !== 'd1' ? plan.item : -1;
-  const planStrip = planDocked ? <PlanStrip key={plan.callId} steps={plan.steps} running={running} /> : null;
+  const planStrip = planDocked ? <PlanStrip key="plan" steps={plan.steps} running={running} oneLine={!!openAsk} /> : null;
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
