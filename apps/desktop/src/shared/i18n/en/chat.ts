@@ -34,6 +34,7 @@ export const EN_CHAT: Catalog = {
   展开: 'Show more',
   未开始: 'Not started',
   清单: 'Plan',
+  '{step}（{status}）': '{step} ({status})',
   '全部 {n} 个': 'Show all {n}',
   '已停用，未执行': 'Disabled, not run',
   '重复，未执行': 'Repeated, not run',

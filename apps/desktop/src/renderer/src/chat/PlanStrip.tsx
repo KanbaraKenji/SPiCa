@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { planProgress, type PlanStep } from '@spica/protocol';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
-import { t } from '../../../shared/i18n';
+import { N_, t } from '../../../shared/i18n';
 
 /** A step's mark: done, being worked on (turning while the run goes), not started. */
 function StepMark({ status, running }: { status: PlanStep['status']; running: boolean }) {
@@ -13,7 +13,7 @@ function StepMark({ status, running }: { status: PlanStep['status']; running: bo
   return <span className={`plan-dot${status === 'in_progress' ? ' is-current' : ''}`} aria-hidden="true" />;
 }
 
-const STATUS_WORDS: Record<PlanStep['status'], string> = { completed: '已完成', in_progress: '进行中', pending: '未开始' };
+const STATUS_WORDS: Record<PlanStep['status'], string> = { completed: N_('已完成'), in_progress: N_('进行中'), pending: N_('未开始') };
 
 /**
  * `running`: the run is going (the step in progress turns). `record`: a finished plan back in the conversation.
@@ -34,7 +34,7 @@ export function PlanStrip({ steps, running, record = false, oneLine = false }: {
       {open ? (
         <ol className="plan-steps">
           {steps.map((s, i) => (
-            <li key={i} className={`plan-step is-${s.status}`} aria-label={`${s.step}（${t(STATUS_WORDS[s.status])}）`}>
+            <li key={i} className={`plan-step is-${s.status}`} aria-label={t('{step}（{status}）', { step: s.step, status: t(STATUS_WORDS[s.status]) })}>
               <span className="plan-mark">
                 <StepMark status={s.status} running={running} />
               </span>
