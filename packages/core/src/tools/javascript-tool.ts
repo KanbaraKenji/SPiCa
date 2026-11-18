@@ -71,8 +71,10 @@ process.stdin.on('end', () => {
     input.end();
   };
   // errors thrown by the code (also after an await) reach the REPL's domain, not the callback
-  r._domain.removeAllListeners('error');
-  r._domain.on('error', (e) => { if (done) { console.error('Uncaught', e); process.exitCode = 1; } else finish(e); });
+  if (r._domain) {
+    r._domain.removeAllListeners('error');
+    r._domain.on('error', (e) => { if (done) { console.error('Uncaught', e); process.exitCode = 1; } else finish(e); });
+  } else process.on('uncaughtException', (e) => { if (done) { console.error('Uncaught', e); process.exitCode = 1; } else finish(e); });
   r.eval(code, r.context, 'snippet.js', finish);
 });
 `;

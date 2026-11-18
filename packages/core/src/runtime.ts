@@ -445,6 +445,8 @@ export class Runtime implements RuntimeInternals {
     });
     // The assistant's conversations see what it remembers about the user.
     this.hooks.register('core:memory', memoryHook(this));
+    // background commands the app did not get to stop (it crashed): their conversations are told, once all is set up
+    if (this.#jobs) queueMicrotask(() => this.#jobs?.announceCrashed());
     // Sessions inside a project see their project and stage every turn.
     this.hooks.register('core:project', {
       inject: (ctx) => {

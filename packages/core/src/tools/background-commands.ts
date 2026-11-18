@@ -41,8 +41,10 @@ interface Live {
   /** Bytes written to the log (the rest was not kept). */
   written: number;
   dropped: number;
-  /** command_output calls waiting for it to end. */
-  waiters: Set<() => void>;
+  /** command_output calls waiting for it to end (the model will see that it ended). */
+  readers: Set<() => void>;
+  /** stop() calls waiting for it to end. */
+  stoppers: Set<() => void>;
   stopping?: CommandJobEnd;
   t0: number;
 }
@@ -104,7 +106,7 @@ export class CommandJobs {
       ...(child.pid ? { pid: child.pid } : {}),
     };
     const out = createWriteStream(outputPath);
-    const live: Live = { child, out, before, written: 0, dropped: 0, waiters: new Set(), t0: performance.now() };
+    const live: Live = { child, out, before, written: 0, dropped: 0, readers: new Set(), stoppers: new Set(), t0: performance.now() };
     const take = (d: Buffer) => {
       if (live.written + d.length <= MAX_LOG_BYTES) {
         out.write(d);
@@ -157,12 +159,12 @@ export class CommandJobs {
       await new Promise<void>((resolve) => {
         const done = () => {
           clearTimeout(timer);
-          live.waiters.delete(done);
+          live.readers.delete(done);
           signal?.removeEventListener('abort', done);
           resolve();
         };
         const timer = setTimeout(done, waitMs);
-        live.waiters.add(done);
+        live.readers.add(done);
         signal?.addEventListener('abort', done, { once: true });
       });
       job = this.#jobs.get(id)!;
@@ -178,7 +180,7 @@ export class CommandJobs {
     const live = this.#live.get(id);
     if (!live || job.end) return job;
     live.stopping ??= by;
-    const ended = new Promise<void>((r) => live.waiters.add(r));
+    const ended = new Promise<void>((r) => live.stoppers.add(r));
     killTree(live.child.pid, true);
     await Promise.race([ended, new Promise((r) => setTimeout(r, 5000))]);
     return this.#jobs.get(id)!;
@@ -268,8 +270,8 @@ export class CommandJobs {
     this.#changes.set(id, changed);
     if (live.dropped) this.#dropped.set(id, live.dropped);
     this.#live.delete(id);
-    const reading = live.waiters.size > 0;
-    for (const w of [...live.waiters]) w();
+    const reading = live.readers.size > 0;
+    for (const w of [...live.readers, ...live.stoppers]) w();
     this.#save();
     this.#host.changed(done);
     const secs = ((performance.now() - live.t0) / 1000).toFixed(1);
@@ -298,6 +300,7 @@ export class CommandJobs {
       return;
     }
     let crashed = false;
+    this.#crashed = [];
     for (const r of Array.isArray(records) ? records : []) {
       if (!r || typeof r.id !== 'string') continue;
       if (!r.end) {
@@ -307,12 +310,22 @@ export class CommandJobs {
         r.endedAt = new Date().toISOString();
         r.exitCode = null;
         crashed = true;
+        this.#crashed.push(r);
       }
       this.#jobs.set(r.id, r);
       const n = Number(/^cmd(\d+)$/.exec(r.id)?.[1] ?? 0);
       if (n > this.#seq) this.#seq = n;
     }
     if (crashed) this.#save();
+  }
+
+  /** Records the app found still marked running at start (it crashed), for announceCrashed. */
+  #crashed: CommandJob[] = [];
+
+  /** Tell the sessions whose commands the crash stopped (once the runtime can take notes). */
+  announceCrashed(): void {
+    for (const j of this.#crashed) this.#host.ended(j, `[Background command ${j.id} ${endWords(j)}. Its output so far can be read with command_output.]`);
+    this.#crashed = [];
   }
 
   #save(): void {
@@ -429,8 +442,8 @@ export function createCommandJobTools(jobs: CommandJobs, opts: CommandJobToolsOp
   };
   return [
     {
+      // not read-only: each read moves on past what it returned
       category: 'command',
-      readOnly: true,
       spec: {
         name: 'command_output',
         description:

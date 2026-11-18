@@ -98,6 +98,15 @@ describe('background commands', () => {
     expect(notes).toEqual([]);
   });
 
+  it('the model hears when the user stopped one, and when the app quit', async () => {
+    const a = idOf((await run.execute({ command: cmd('Start-Sleep -Seconds 60', 'sleep 60'), run_in_background: true }, ctx())).content);
+    const b = idOf((await run.execute({ command: cmd('Start-Sleep -Seconds 60', 'sleep 60'), run_in_background: true }, ctx())).content);
+    await jobs.stop(a, 'user');
+    expect(notes.map((n) => n.text)).toEqual([expect.stringContaining(`${a} was stopped by the user`)]);
+    await jobs.close();
+    expect(notes[1]!.text).toContain(`${b} was stopped: the app quit`);
+  });
+
   it('tells the session when one ends on its own', async () => {
     const r = await run.execute({ command: cmd("Write-Output 'x'; exit 3", 'echo x; exit 3'), run_in_background: true }, ctx());
     const id = idOf(r.content);
@@ -141,6 +150,9 @@ describe('background commands', () => {
     const again = make();
     expect(again.get('cmd7')!.end).toBe('app_crashed');
     expect(JSON.parse(readFileSync(file, 'utf8'))[0].end).toBe('app_crashed');
+    expect(notes).toEqual([]);
+    again.announceCrashed();
+    expect(notes.map((n) => n.text)).toEqual([expect.stringContaining('cmd7 was stopped: the app closed unexpectedly')]);
   });
 
   it('drop forgets a deleted conversation with its logs', async () => {
