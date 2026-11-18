@@ -12,6 +12,7 @@ import { flushBrowserSession, guardWebviews, setupBrowserSession } from './brows
 import { applyBrowserNetwork, proxyLogin } from './browser/network';
 import { BrowserAgent, type AgentTabInfo } from './browser/agent';
 import { agentPage } from './browser/page-input';
+import { pageZoom } from './browser/page-zoom';
 
 // The window answers for the browser's agent tools (App.tsx): open a tab, show one, list a conversation's tabs.
 const agentAsks = new Map<number, (answer: { ok: boolean; value?: unknown; error?: string }) => void>();
@@ -55,6 +56,16 @@ const browserAgent: BrowserAgent = new BrowserAgent({
 ipcMain.handle(DesktopChannel.BrowserGiveBack, (_e, tabId: unknown) => {
   if (typeof tabId === 'string') browserAgent.giveBack(tabId);
   return null;
+});
+// A page's own zoom (main/browser/page-zoom.ts): drawn at the app's zoom times its own.
+const pageZooms = pageZoom({
+  appZoom: () => settings.get().zoom,
+  notify: (wcId, zoom, stepped) => sendToWindow(DesktopChannel.BrowserZoom, { wcId, zoom, stepped }),
+});
+ipcMain.handle(DesktopChannel.BrowserZoomStep, (_e, wcId: unknown, how: unknown) => {
+  if (typeof wcId !== 'number') return 1;
+  if (how === 'in' || how === 'out' || how === 'reset') pageZooms.step(wcId, how);
+  return pageZooms.zoomOf(wcId);
 });
 ipcMain.handle(DesktopChannel.BrowserTakeOverPage, (_e, wcId: unknown) => {
   if (typeof wcId === 'number') browserAgent.humanInput(wcId);
@@ -791,6 +802,7 @@ function applyZoom(win: BrowserWindow, factor: number): void {
   const zoom = clampZoom(factor);
   win.webContents.setZoomFactor(zoom);
   if (settings.get().zoom !== zoom) settings.update({ zoom });
+  pageZooms.appZoomChanged();
 }
 
 function createMainWindow(): BrowserWindow {
@@ -927,6 +939,8 @@ function createMainWindow(): BrowserWindow {
     localLink: (url) => sendToWindow(DesktopChannel.BrowserLocalLink, url),
     log: (line) => console.log(line),
   });
+  // Ctrl + wheel and Ctrl + plus / minus / 0 in a page zoom that page, not the app (main/browser/page-zoom.ts).
+  win.webContents.on('did-attach-webview', (_e, guest) => pageZooms.wire(guest));
   // The page process gone (killed, crashed, out of memory): load it again, back on the open conversation;
   // the third time within a minute, ask first (main/page-recovery.ts).
   const onPageGone = pageRecovery({
@@ -1069,7 +1083,10 @@ ipcMain.handle(DesktopChannel.GetShellState, () => shellState());
 ipcMain.handle(DesktopChannel.UpdateSettings, (_e, patch: unknown) => {
   const p = patch && typeof patch === 'object' ? (patch as Partial<ShellSettings>) : {};
   const next = settings.update(p);
-  if (mainWindow && typeof p.zoom === 'number') mainWindow.webContents.setZoomFactor(next.zoom);
+  if (mainWindow && typeof p.zoom === 'number') {
+    mainWindow.webContents.setZoomFactor(next.zoom);
+    pageZooms.appZoomChanged();
+  }
   return next;
 });
 ipcMain.handle(DesktopChannel.Agent, async (_e, method: unknown, args: unknown) => {

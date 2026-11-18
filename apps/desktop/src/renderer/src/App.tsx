@@ -1392,6 +1392,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             <FilePreview
               tabs={paneStrip}
               page={htmlUrl}
+              zoom={bridge.browser}
               {...(htmlBlocked?.length ? { blocked: htmlBlocked } : {})}
               // A plugin page draws the file: the head still names it (and offers its buttons).
               info={pagePreview ? { kind: 'unsupported', name: preview.path.split(/[\\/]/).pop() ?? preview.path, path: preview.path, size: 0, message: '' } : previewInfo}
@@ -1429,6 +1430,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 onChange={(tabId, patch) => setPane((s) => updatePaneWeb(s, tabId, patch))}
                 onOpenExternal={(url) => void bridge.browser.openExternal(url).then(showNotice)}
                 agent={agentBar}
+                zoom={bridge.browser}
                 onPage={(tabId, wcId) => {
                   if (wcId === null) pagesRef.current.delete(tabId);
                   else pagesRef.current.set(tabId, wcId);

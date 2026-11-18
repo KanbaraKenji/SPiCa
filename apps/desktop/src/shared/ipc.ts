@@ -125,4 +125,8 @@ export const DesktopChannel = {
   BrowserBlocked: 'spica:browserBlocked',
   /** main -> renderer: a web address a local page went to; asked where to open it, as a link in the app */
   BrowserLocalLink: 'spica:browserLocalLink',
+  /** main -> renderer: { wcId, zoom } — a page's own zoom (1 = 100%) after it changed or the page went elsewhere */
+  BrowserZoom: 'spica:browserZoom',
+  /** invoke: (wcId, 'in' | 'out' | 'reset' | 'get') -> the page's own zoom after it */
+  BrowserZoomStep: 'spica:browserZoomStep',
 } as const;
