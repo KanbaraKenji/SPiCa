@@ -353,8 +353,9 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
           <span className="plugin-name">{was ? t('编辑「{name}」', { name: was.name }) : t('添加 MCP 服务')}</span>
         </div>
         <div className="plugin-head-actions">
-          <button type="button" className={pasting ? 'btn btn-small btn-square is-on' : 'btn btn-small btn-square'} aria-expanded={pasting} onClick={() => setPasting(!pasting)} aria-label={t('粘贴配置')} title={t('粘贴配置')}>
-            <Icon name="paste" size={15} />
+          <button type="button" className={pasting ? 'btn btn-small is-on' : 'btn btn-small'} aria-expanded={pasting} onClick={() => setPasting(!pasting)}>
+            <Icon name="paste" size={14} />
+            {t('粘贴配置')}
           </button>
         </div>
       </header>
