@@ -26,6 +26,57 @@ describe('fromHistory', () => {
     const ask = r.blocks.find((b) => b.type === 'ask');
     expect(ask).toMatchObject({ question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'] });
     expect(ask?.type === 'ask' ? ask.answer : 'x').toBeUndefined();
+    // stored before ask_user had a suggested option: none, the card as it was
+    expect(ask && 'recommended' in ask).toBe(false);
+  });
+
+  describe('the suggested option of a question (recommended)', () => {
+    const askOf = (t: Transcript) => {
+      const r = t.items.at(-1);
+      if (r?.kind !== 'response') throw new Error('expected response');
+      return r.blocks.find((b) => b.type === 'ask');
+    };
+    const options = ['只写结论', '结论加讨论过程', '按议题逐条写'];
+    /** The seed's question call, its input as given. */
+    const withInput = (input: Record<string, unknown>): Message[] =>
+      seed.messages[SEED_IDS.minutes]!.map((m) => ({
+        ...m,
+        content: m.content.map((c) => (c.type === 'tool_use' && c.name === 'ask_user' ? { ...c, input } : c)),
+      }));
+
+    it('from the stored call: kept when it is one of the options, as the option is written', () => {
+      const t = fromHistory(withInput({ question: '纪要按哪种口径写？', options, recommended: ' 结论加讨论过程 ' }));
+      expect(askOf(t)).toMatchObject({ options, recommended: '结论加讨论过程' });
+    });
+
+    it('from the stored call: dropped when it is not one of the options, or not text', () => {
+      expect(askOf(fromHistory(withInput({ question: '?', options, recommended: '都行' })))).not.toHaveProperty('recommended');
+      expect(askOf(fromHistory(withInput({ question: '?', options, recommended: 2 })))).not.toHaveProperty('recommended');
+      expect(askOf(fromHistory(withInput({ question: '?', recommended: '只写结论' })))).not.toHaveProperty('recommended');
+    });
+
+    it('from a question still waiting (reopened, or after a restart)', () => {
+      const pending = [{ ...seed.pending[SEED_IDS.minutes]![0]!, recommended: '按议题逐条写' }];
+      expect(askOf(fromHistory(seed.messages[SEED_IDS.minutes]!, pending))).toMatchObject({ recommended: '按议题逐条写' });
+    });
+
+    it('several may be chosen: from the stored call, a waiting question and ask.request; none on older calls', () => {
+      expect(askOf(fromHistory(withInput({ question: '?', options, multiSelect: true })))).toMatchObject({ multiSelect: true });
+      expect(askOf(fromHistory(withInput({ question: '?', options })))).not.toHaveProperty('multiSelect');
+      expect(askOf(fromHistory(withInput({ question: '?', multiSelect: true })))).not.toHaveProperty('multiSelect');
+      const pending = [{ ...seed.pending[SEED_IDS.minutes]![0]!, multiSelect: true }];
+      expect(askOf(fromHistory(seed.messages[SEED_IDS.minutes]!, pending))).toMatchObject({ multiSelect: true });
+      const ev = { type: 'ask.request', callId: 'q1', question: '?', options, multiSelect: true, seq: 1, at: '', sessionId: 's', parentChain: [] } as unknown as CoreEvent;
+      expect(askOf(applyEvent({ items: [] }, ev))).toMatchObject({ multiSelect: true });
+    });
+
+    it('live, from ask.request; a later request without one clears it', () => {
+      const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+      let t = applyEvent({ items: [] }, ev({ type: 'ask.request', callId: 'q1', question: '纪要按哪种口径写？', options, recommended: '只写结论' }));
+      expect(askOf(t)).toMatchObject({ callId: 'q1', recommended: '只写结论' });
+      t = applyEvent(t, ev({ type: 'ask.request', callId: 'q1', question: '纪要按哪种口径写？', options }));
+      expect(askOf(t)).not.toHaveProperty('recommended');
+    });
   });
 });
 

@@ -3,7 +3,7 @@
 import { relocate, shownPath } from './relocate';
 import type { ChangePreview, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
-import { AGENT_MESSAGES_LIMIT_MARK, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
 
@@ -58,7 +58,8 @@ export type Block =
       title?: string;
     }
   /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
-  | { type: 'ask'; callId: string; question: string; options: string[]; answer?: string; cancelled?: boolean }
+  /** `recommended`: the option the model suggests (marked 建议 on the card); none on older calls. */
+  | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
@@ -378,12 +379,16 @@ function asSuggest(callId: string, input: unknown): Block {
 }
 
 function asAsk(callId: string, input: unknown): Block {
-  const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown };
+  const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown; recommended?: unknown; multiSelect?: unknown };
+  const options = Array.isArray(v.options) ? v.options.map(String) : [];
+  const recommended = askRecommended(options, v.recommended);
   return {
     type: 'ask',
     callId,
     question: typeof v.question === 'string' ? v.question : '',
-    options: Array.isArray(v.options) ? v.options.map(String) : [],
+    options,
+    ...(recommended !== undefined ? { recommended } : {}),
+    ...(v.multiSelect === true && options.length ? { multiSelect: true } : {}),
   };
 }
 
@@ -685,8 +690,14 @@ function applyPending(t: Transcript, p: PendingItem): void {
     if (existing) {
       existing.question = p.question || existing.question;
       existing.options = p.options ?? existing.options;
+      const recommended = askRecommended(existing.options, p.recommended ?? existing.recommended);
+      if (recommended !== undefined) existing.recommended = recommended;
+      else delete existing.recommended;
+      if (p.multiSelect || existing.multiSelect) existing.multiSelect = true;
     } else {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options: p.options ?? [] });
+      const options = p.options ?? [];
+      const recommended = askRecommended(options, p.recommended);
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'ask', callId: p.callId, question: p.question, options, ...(recommended !== undefined ? { recommended } : {}), ...(p.multiSelect ? { multiSelect: true } : {}) });
     }
   } else {
     // The call is stored with its message before it is asked about, with no result yet: it has not run. Waiting
@@ -853,9 +864,16 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (existing) {
         existing.question = e.question;
         existing.options = e.options ?? [];
+        const recommended = askRecommended(existing.options, e.recommended);
+        if (recommended !== undefined) existing.recommended = recommended;
+        else delete existing.recommended;
+        if (e.multiSelect) existing.multiSelect = true;
+        else delete existing.multiSelect;
         delete existing.cancelled;
       } else {
-        lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options: e.options ?? [] });
+        const options = e.options ?? [];
+        const recommended = askRecommended(options, e.recommended);
+        lastResponse(items, respId).blocks.push({ type: 'ask', callId: e.callId, question: e.question, options, ...(recommended !== undefined ? { recommended } : {}), ...(e.multiSelect ? { multiSelect: true } : {}) });
       }
       return t;
     }

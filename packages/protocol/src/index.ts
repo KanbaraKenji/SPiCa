@@ -198,6 +198,22 @@ export type RegenerateCode =
   | 'regenerate.role'
   | 'regenerate.no_turn';
 
+/**
+ * The option an ask_user call suggests: its `recommended`, trimmed, when it is one of the options (compared trimmed);
+ * the option as written. Anything else (missing, not text, not among the options): none. The core and the window
+ * read it by this one rule, live and from a stored call alike.
+ */
+export function askRecommended(options: readonly string[] | undefined, value: unknown): string | undefined {
+  if (typeof value !== 'string' || !options) return undefined;
+  const v = value.trim();
+  return v ? options.find((o) => o.trim() === v) : undefined;
+}
+
+/** The answer to a question where several options may be chosen: the chosen ones (and any words of one's own), one a line. */
+export function askAnswerLines(chosen: readonly string[]): string {
+  return chosen.map((c) => c.trim()).filter(Boolean).join('\n');
+}
+
 /** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
 /**
  * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
@@ -576,7 +592,11 @@ export type PendingItem =
       install?: InstallPreview;
       createdAt: string;
     }
-  | { kind: 'ask'; callId: string; question: string; options?: string[]; createdAt: string };
+  /**
+   * `recommended`: the option the model suggests (one of `options`; see askRecommended). `multiSelect`: several of the
+   * options may be chosen (the answer: the chosen ones, one a line; see askAnswerLines).
+   */
+  | { kind: 'ask'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean; createdAt: string };
 
 // ---------------------------------------------------------------------------
 // Events
@@ -651,7 +671,7 @@ export type CoreEventBody =
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
   | { type: 'confirm.resolved'; callId: string; approved: boolean }
-  | { type: 'ask.request'; callId: string; question: string; options?: string[] }
+  | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }
   /**
    * Suggested next steps shown as a card (suggest_actions tool). The run does

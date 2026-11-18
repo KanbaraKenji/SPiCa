@@ -1568,19 +1568,70 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n邮件已经发出。' : '\n\n好的，这封邮件没有发。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
-      } else if (/问|选/.test(text)) {
-        const callId = this.#id('call');
-        const question = '纪要按哪种口径写？';
-        const options = ['只写结论', '结论加讨论过程', '按议题逐条写'];
-        this.#addPending(sessionId, { kind: 'ask', callId, question, options, createdAt: isoAt(this.#now()) });
-        this.#emit(sessionId, { type: 'ask.request', callId, question, options });
+      } else if (/两个问题/.test(text)) {
+        // Two questions waiting at once (a round's parallel calls; the card above the message box shows the oldest,
+        // 1 / 2, the next once it is answered): answered in that order.
+        const asks = [
+          { id: this.#id('call'), input: { question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' } },
+          { id: this.#id('call'), input: { question: '纪要发给谁？', options: ['项目组全员', '只发给我'] } },
+        ];
+        this.#commitAssistant(sessionId, [...blocks.splice(0), ...asks.map((a) => ({ type: 'tool_use' as const, id: a.id, name: 'ask_user', input: a.input }))]);
+        for (const a of asks) {
+          this.#addPending(sessionId, { kind: 'ask', callId: a.id, createdAt: isoAt(this.#now()), ...a.input });
+          this.#emit(sessionId, { type: 'ask.request', callId: a.id, ...a.input });
+        }
         this.#setStatus(sessionId, 'awaiting_answer');
-        waiting = { id: callId, name: 'ask_user', input: { question, options } };
+        const answers: string[] = [];
+        for (const a of asks) {
+          waiting = { id: a.id, name: 'ask_user', input: a.input, stored: true };
+          const answer = await this.#waitFor(run, a.id);
+          waiting = undefined;
+          answers.push(answer);
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: a.id, content: answer }]);
+        }
+        this.#setStatus(sessionId, 'thinking');
+        const after = `好，${answers.join('，')}。`;
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/问|选|会议室|场地/.test(text)) {
+        const callId = this.#id('call');
+        // The question card's kinds. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
+        // as plain lines numbered by the model itself (full-width 1）, no list: shown as written), long options, the
+        // suggested one long.
+        // 多选: several may be chosen (the answer: the chosen ones, one a line). 开放问题: no options, only the box.
+        const multi = /多选/.test(text);
+        const open = !multi && /开放问题/.test(text);
+        const room = !multi && /会议室/.test(text);
+        const venue = !multi && !room && /场地/.test(text);
+        const question = multi
+          ? '周报要写进哪几部分？可以多选。'
+          : room
+            ? '订会议室还缺几项信息，请补充：\n- 日期和时段\n- 人数\n- 是否需要投影或视频会议'
+            : venue
+              ? '年会场地还缺几项信息：\n1）日期\n2）人数\n3）预算'
+              : open
+                ? '纪要发出前还要补充什么？'
+                : '纪要按哪种口径写？';
+        const options = multi
+          ? ['本周完成的事', '下周计划', '遇到的问题和需要的支持', '数据和图表']
+          : room
+            ? ['周二下午 2 点到 4 点，8 人，需要投影', '按上次的小会议室订', '我自己订']
+            : venue
+              ? ['下月第二个周五晚上，120 人左右，人均 300 元以内，市区交通方便、带舞台和音响的宴会厅', '先给我三家候选，我再定', '我自己联系']
+              : open
+                ? []
+                : ['只写结论', '结论加讨论过程', '按议题逐条写'];
+        const recommended = multi ? options[0] : room ? options[1] : venue ? options[0] : undefined;
+        const input = { question, ...(options.length ? { options } : {}), ...(recommended ? { recommended } : {}), ...(multi ? { multiSelect: true } : {}) };
+        this.#addPending(sessionId, { kind: 'ask', callId, createdAt: isoAt(this.#now()), ...input });
+        this.#emit(sessionId, { type: 'ask.request', callId, ...input });
+        this.#setStatus(sessionId, 'awaiting_answer');
+        waiting = { id: callId, name: 'ask_user', input };
         const answer = await this.#waitFor(run, callId);
         waiting = undefined;
-        blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input: { question, options } }, { type: 'tool_result', toolUseId: callId, content: answer });
+        blocks.push({ type: 'tool_use', id: callId, name: 'ask_user', input }, { type: 'tool_result', toolUseId: callId, content: answer });
         this.#setStatus(sessionId, 'thinking');
-        const after = `好，按「${answer}」来写。`;
+        const after = multi ? `好，周报写这几部分：${answer.split('\n').join('、')}。` : room || venue ? `好，按「${answer}」去订。` : `好，按「${answer}」来写。`;
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/流程/.test(text)) {

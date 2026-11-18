@@ -2,26 +2,57 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import type { HistoryCardMeta } from '@spica/protocol';
-import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
+import { OpenSessionContext, HistoryCardsContext, HistoryRefContext, MarkdownText, AskCard, askQuestionParts, ConfirmCard, FileCards, RoundDoneContext, SuggestCard, ToolGroup } from './Blocks';
 
 afterEach(cleanup);
 
 describe('AskCard', () => {
   const block = { type: 'ask' as const, callId: 'c1', question: '纪要按哪种口径写？', options: ['只写结论', '按议题逐条写'] };
+  const ok = () => screen.getByRole('button', { name: '确定' }) as HTMLButtonElement;
 
-  it('answers with an option', () => {
+  it('one option: choosing it sends nothing; 确定 sends it', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={block} onAnswer={onAnswer} />);
-    fireEvent.click(screen.getByRole('button', { name: '只写结论' }));
-    expect(onAnswer).toHaveBeenCalledWith('只写结论');
+    expect(ok().disabled).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /只写结论/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /按议题逐条写/ }));
+    expect(onAnswer).not.toHaveBeenCalled();
+    expect((screen.getByRole('radio', { name: /只写结论/ }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(ok());
+    expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
   });
 
-  it('answers with free text', () => {
+  it('words of one’s own: typing chooses the row to type in (instead of an option); Enter sends them', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={block} onAnswer={onAnswer} />);
-    fireEvent.change(screen.getByRole('textbox', { name: '回答' }), { target: { value: '写简短一点' } });
-    fireEvent.click(screen.getByRole('button', { name: '回答' }));
+    fireEvent.click(screen.getByRole('radio', { name: /只写结论/ }));
+    const box = screen.getByRole('textbox', { name: '输入回答' });
+    fireEvent.change(box, { target: { value: '写简短一点' } });
+    expect((screen.getByRole('radio', { name: '其他' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('radio', { name: /只写结论/ }) as HTMLInputElement).checked).toBe(false);
+    fireEvent.submit(box.closest('form')!);
     expect(onAnswer).toHaveBeenCalledWith('写简短一点');
+  });
+
+  it('Enter on a chosen option sends it, once', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={block} onAnswer={onAnswer} />);
+    const r = screen.getByRole('radio', { name: /按议题逐条写/ });
+    fireEvent.click(r);
+    fireEvent.keyDown(r, { key: 'Enter' });
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
+  });
+
+  it('a question with no options: the box and 确定', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={{ ...block, options: [] }} onAnswer={onAnswer} />);
+    expect(screen.queryByRole('radio')).toBeNull();
+    // no empty list above the box
+    expect(document.querySelector('.ask-options')).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: '输入回答' }), { target: { value: '周三' } });
+    fireEvent.click(ok());
+    expect(onAnswer).toHaveBeenCalledWith('周三');
   });
 
   it('stopped while it waited: 已中断 where the answer goes, nothing to click', () => {
@@ -29,37 +60,156 @@ describe('AskCard', () => {
     render(<AskCard block={{ ...block, cancelled: true }} onAnswer={onAnswer} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByRole('textbox')).toBeNull();
-    expect(document.querySelector('.ask-card.is-done .card-answer')?.textContent).toBe('已中断');
+    expect(document.querySelector('.ask-card.is-done .ask-done-answer')?.textContent).toBe('已中断');
     // red (the colour of 无法撤销), its mark too: marked is-stopped; an answer is not
-    expect(document.querySelector('.ask-card .card-answer')?.classList.contains('is-stopped')).toBe(true);
+    expect(document.querySelector('.ask-card.is-done')?.classList.contains('is-stopped')).toBe(true);
+    expect(document.querySelector('.ask-card .ask-done-mark .spica-status-icon')).toBeTruthy();
   });
 
-  it('takes one answer: after a click the options and the box are off until the card closes', () => {
+  it('takes one answer: after 确定 everything is off until the card closes', () => {
     const onAnswer = vi.fn();
     render(<AskCard block={block} onAnswer={onAnswer} />);
-    fireEvent.click(screen.getByRole('button', { name: '只写结论' }));
-    fireEvent.click(screen.getByRole('button', { name: '按议题逐条写' }));
+    fireEvent.click(screen.getByRole('radio', { name: /只写结论/ }));
+    fireEvent.click(ok());
+    fireEvent.click(ok());
     expect(onAnswer).toHaveBeenCalledTimes(1);
-    expect((screen.getByRole('button', { name: '按议题逐条写' }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole('textbox', { name: '回答' }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('radio', { name: /按议题逐条写/ }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole('textbox', { name: '输入回答' }) as HTMLInputElement).disabled).toBe(true);
   });
 
-  it('no mark before the question (it says nothing the question does not); answered, the answer stands at the row’s end', () => {
-    const { rerender } = render(<AskCard block={block} onAnswer={vi.fn()} />);
-    const head = document.querySelector('.ask-card > .card-head')!;
-    expect(head.firstElementChild?.className).toBe('card-title');
-    expect(head.querySelector('svg')).toBeNull();
-    expect(document.querySelector('.ask-card > .ask-body .ask-options')).toBeTruthy();
-    rerender(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
-    expect(head.querySelector('.card-answer')?.textContent).toBe('只写结论');
-    expect(head.querySelector('.card-answer')?.classList.contains('is-stopped')).toBe(false);
-    expect(document.querySelector('.ask-body')).toBeNull();
+  it('answered: the mark, the question’s first line (in full on hover) and the answer under it; nothing to click', () => {
+    const question = '订会议室还缺几项信息：\n- 日期\n- 人数';
+    const { rerender } = render(<AskCard block={{ ...block, question }} onAnswer={vi.fn()} />);
+    expect(document.querySelector('.ask-card .ask-options')).toBeTruthy();
+    rerender(<AskCard block={{ ...block, question, answer: '只写结论' }} onAnswer={vi.fn()} />);
+    const title = document.querySelector('.ask-card.is-done .ask-done-title')!;
+    // its colon dropped (it led into the list, now not shown); the full question on hover
+    expect(title.textContent).toBe('订会议室还缺几项信息');
+    expect(title.getAttribute('title')).toBe(question);
+    // the mark first, then the question and under it the answer (not at the question's right end)
+    const done = document.querySelector('.ask-card.is-done')!;
+    expect([...done.children].map((c) => c.className)).toEqual(['ask-done-mark', 'ask-done-text']);
+    expect([...done.querySelector('.ask-done-text')!.children].map((c) => c.className)).toEqual(['ask-done-title', 'ask-done-answer']);
+    const answer = done.querySelector('.ask-done-answer')!;
+    expect(answer.textContent).toBe('只写结论');
+    expect(answer.getAttribute('title')).toBe('只写结论');
+    expect(done.classList.contains('is-stopped')).toBe(false);
+    expect(document.querySelector('.ask-card .ask-options')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
   });
 
-  it('shows the answer instead of controls once answered', () => {
-    render(<AskCard block={{ ...block, answer: '只写结论' }} onAnswer={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: '回答' })).toBeNull();
-    expect(screen.getByText('只写结论')).toBeTruthy();
+  it('the question: its first line apart (the title’s weight), the rest as Markdown, single line breaks kept', () => {
+    render(<AskCard block={{ ...block, question: '订会议室还缺几项信息：\n- 日期和时段\n- 人数' }} onAnswer={vi.fn()} />);
+    expect(document.querySelector('.ask-head')?.textContent).toBe('订会议室还缺几项信息：');
+    expect([...document.querySelectorAll('.ask-rest ul > li')].map((li) => li.textContent)).toEqual(['日期和时段', '人数']);
+    cleanup();
+    // numbered by the model itself (full-width 1）, no list marker): shown as written, a line each
+    render(<AskCard block={{ ...block, question: '还缺几项：\n1）日期\n2）人数' }} onAnswer={vi.fn()} />);
+    expect(document.querySelector('.ask-head')?.textContent).toBe('还缺几项：');
+    const p = document.querySelector('.ask-rest p')!;
+    expect(p.querySelectorAll('br')).toHaveLength(1);
+    expect(p.textContent?.replace(/\n/g, '')).toBe('1）日期2）人数');
+    cleanup();
+    // a loose list and a nested one: no line breaks of their own
+    render(<AskCard block={{ ...block, question: '还缺几项：\n\n1. 日期\n\n2. 地点：\n   - 楼层\n   - 朝向' }} onAnswer={vi.fn()} />);
+    const q = document.querySelector('.ask-rest')!;
+    expect(q.querySelectorAll('br')).toHaveLength(0);
+    expect(q.querySelectorAll('ol > li')).toHaveLength(2);
+    expect([...q.querySelectorAll('ul > li')].map((li) => li.textContent)).toEqual(['楼层', '朝向']);
+    cleanup();
+    // one line: all of it the head
+    render(<AskCard block={block} onAnswer={vi.fn()} />);
+    expect(document.querySelector('.ask-head')?.textContent).toBe('纪要按哪种口径写？');
+    expect(document.querySelector('.ask-rest')).toBeNull();
+  });
+
+  it('确定 on a row of its own, not in the row to type in', () => {
+    render(<AskCard block={block} onAnswer={vi.fn()} />);
+    const ok = screen.getByRole('button', { name: '确定' });
+    expect(ok.closest('.ask-other')).toBeNull();
+    expect(ok.parentElement?.classList.contains('ask-foot')).toBe(true);
+  });
+
+  it('askQuestionParts: a first line that is a list item is no head', () => {
+    expect(askQuestionParts('- 日期\n- 人数')).toEqual({ head: '', rest: '- 日期\n- 人数' });
+    expect(askQuestionParts('缺：\n\n- 日期')).toEqual({ head: '缺：', rest: '- 日期' });
+    expect(askQuestionParts('1）日期\n2）人数').head).toBe('');
+    // no space after a half-width marker: no list item, the line is the head
+    expect(askQuestionParts('**会议室**还缺：\n- 日期').head).toBe('**会议室**还缺：');
+    expect(askQuestionParts('1.5 倍行距还是单倍？\n- 正文').head).toBe('1.5 倍行距还是单倍？');
+  });
+
+  it('answers keep Markdown’s soft line breaks (lineBreaks is the question card’s)', () => {
+    render(<MarkdownText text={'一行\n两行'} />);
+    expect(document.querySelectorAll('.md br')).toHaveLength(0);
+  });
+
+  it('options numbered in order, one a row, then the row to type in; 建议 on the suggested one only', () => {
+    render(<AskCard block={{ ...block, options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' }} onAnswer={vi.fn()} />);
+    expect([...document.querySelectorAll('.ask-option-n')].map((n) => n.textContent)).toEqual(['1', '2', '3', '4']);
+    expect([...document.querySelectorAll('.ask-options > li')].map((li) => li.querySelector('.ask-option-tag')?.textContent ?? null)).toEqual([null, '建议', null]);
+    // the row to type in is the app's own field (bordered), not a line under the words
+    expect(screen.getByRole('textbox', { name: '输入回答' }).classList.contains('input')).toBe(true);
+    // nothing chosen beforehand, the suggested one neither
+    expect(screen.getAllByRole('radio').some((r) => (r as HTMLInputElement).checked)).toBe(false);
+  });
+
+  it('no suggested option (or one stored before there were any): no 建议', () => {
+    render(<AskCard block={block} onAnswer={vi.fn()} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(3);
+    expect(document.querySelector('.ask-option-tag')).toBeNull();
+  });
+
+  it('answering the suggested option sends the option only (not 建议)', () => {
+    const onAnswer = vi.fn();
+    render(<AskCard block={{ ...block, recommended: '按议题逐条写' }} onAnswer={onAnswer} />);
+    fireEvent.click(screen.getByRole('radio', { name: /按议题逐条写/ }));
+    fireEvent.click(ok());
+    expect(onAnswer).toHaveBeenCalledWith('按议题逐条写');
+  });
+
+  describe('several may be chosen (multiSelect)', () => {
+    const multi = { ...block, options: ['本周完成的事', '下周计划', '数据和图表'], multiSelect: true };
+
+    it('options tick and untick; 确定 sends the ticked ones in their order, one a line, with the box’s words', () => {
+      const onAnswer = vi.fn();
+      render(<AskCard block={multi} onAnswer={onAnswer} />);
+      expect(ok().disabled).toBe(true);
+      fireEvent.click(screen.getByRole('checkbox', { name: /数据和图表/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /本周完成的事/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /下周计划/ }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /下周计划/ }));
+      expect(onAnswer).not.toHaveBeenCalled();
+      expect((screen.getByRole('checkbox', { name: /本周完成的事/ }) as HTMLInputElement).checked).toBe(true);
+      expect((screen.getByRole('checkbox', { name: /下周计划/ }) as HTMLInputElement).checked).toBe(false);
+      fireEvent.change(screen.getByRole('textbox', { name: '输入回答' }), { target: { value: '加一段客户反馈' } });
+      expect((screen.getByRole('checkbox', { name: '其他' }) as HTMLInputElement).checked).toBe(true);
+      fireEvent.click(ok());
+      expect(onAnswer).toHaveBeenCalledWith('本周完成的事\n数据和图表\n加一段客户反馈');
+    });
+
+    it('the box emptied: its row off again, the ticked ones only', () => {
+      const onAnswer = vi.fn();
+      render(<AskCard block={multi} onAnswer={onAnswer} />);
+      fireEvent.click(screen.getByRole('checkbox', { name: /下周计划/ }));
+      const box = screen.getByRole('textbox', { name: '输入回答' });
+      fireEvent.change(box, { target: { value: '加' } });
+      fireEvent.change(box, { target: { value: '' } });
+      expect((screen.getByRole('checkbox', { name: '其他' }) as HTMLInputElement).checked).toBe(false);
+      fireEvent.click(ok());
+      expect(onAnswer).toHaveBeenCalledWith('下周计划');
+    });
+
+    it('answered: the chosen ones on one line', () => {
+      render(<AskCard block={{ ...multi, answer: '本周完成的事\n数据和图表' }} onAnswer={vi.fn()} />);
+      expect(document.querySelector('.ask-card .ask-done-answer')?.textContent).toBe('本周完成的事、数据和图表');
+    });
+
+    it('a single-choice card (or one stored before multiSelect) has round marks, no boxes', () => {
+      render(<AskCard block={block} onAnswer={vi.fn()} />);
+      expect(screen.queryByRole('checkbox')).toBeNull();
+      expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
+    });
   });
 });
 
