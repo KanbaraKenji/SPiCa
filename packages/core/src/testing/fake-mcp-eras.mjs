@@ -4,6 +4,8 @@
 //   silent   an older server that never answers unknown methods
 //   future   a newer server that knows only a later version (-32022 on discover)
 //   needs    modern, but tools/call answers input_required
+//   slow     modern, but reads nothing for its first 600 ms (a program slow to start)
+//   dies     an older server that quits when it gets anything it does not know
 // Every request it gets is written to stderr as one JSON line, so a test can see what was sent.
 import { createInterface } from 'node:readline';
 
@@ -11,9 +13,16 @@ const kind = process.argv[2] ?? 'modern';
 const send = (m) => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...m })}\n`);
 const META = 'io.modelcontextprotocol/protocolVersion';
 const tools = [{ name: 'hello', description: 'Says hello', inputSchema: { type: 'object', properties: { who: { type: 'string' } } } }];
-const modern = kind === 'modern' || kind === 'needs';
+const modern = kind === 'modern' || kind === 'needs' || kind === 'slow';
+const started = Date.now();
 
 createInterface({ input: process.stdin }).on('line', (line) => {
+  const wait = kind === 'slow' ? 600 - (Date.now() - started) : 0;
+  if (wait > 0) return void setTimeout(() => handle(line), wait);
+  handle(line);
+});
+
+function handle(line) {
   let msg;
   try {
     msg = JSON.parse(line);
@@ -26,6 +35,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (m === 'server/discover') {
     if (kind === 'future') return send({ id: msg.id, error: { code: -32022, message: 'Unsupported protocol version', data: { supported: ['2027-01-01'], requested: msg.params?._meta?.[META] } } });
     if (modern) return send({ id: msg.id, result: { resultType: 'complete', supportedVersions: ['2026-07-28'], capabilities: { tools: {} }, _meta: { 'io.modelcontextprotocol/serverInfo': { name: 'eras', version: '2.0.0' } } } });
+    if (kind === 'dies') process.exit(3);
     if (kind === 'refuses') return send({ id: msg.id, error: { code: -32601, message: `Method not found: ${m}` } });
     return; // silent
   }
@@ -42,4 +52,4 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (m === 'tools/list') return send({ id: msg.id, result: { tools } });
   if (m === 'tools/call') return send({ id: msg.id, result: { content: [{ type: 'text', text: `hello ${msg.params.arguments?.who ?? ''}` }] } });
   send({ id: msg.id, error: { code: -32601, message: `Method not found: ${m}` } });
-});
+}

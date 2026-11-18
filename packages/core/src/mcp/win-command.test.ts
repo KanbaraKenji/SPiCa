@@ -34,13 +34,27 @@ describe('windowsLaunch', () => {
     mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, 'echo-args.js'), 'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
     writeFileSync(join(bin, 'echo-args.cmd'), `@"${process.execPath}" "%~dp0echo-args.js" %*\r\n`);
-    const args = ['-y', 'D:\\Team Share\\Docs (2026)', 'a&b', 'say "hi"', '50%', 'x^y', 'semi;colon', 'trail\\', 'pipe|it', '<in>', ''];
+    const args = ['-y', 'D:\\Team Share\\Docs (2026)', 'a&b', 'say "hi"', '50%', '%OS%', 'x^y', 'semi;colon', 'trail\\', 'pipe|it', '<in>', ''];
     const env = { PATH: `${bin};${process.env.PATH ?? ''}`, PATHEXT: '.COM;.EXE;.BAT;.CMD', SystemRoot: process.env.SystemRoot ?? '' };
     const l = windowsLaunch('echo-args', args, env);
     expect(l.windowsVerbatimArguments).toBe(true);
     const r = spawnSync(l.command, l.args, { env, windowsVerbatimArguments: true, encoding: 'utf8', windowsHide: true });
     expect(r.error).toBeUndefined();
     expect(JSON.parse(r.stdout)).toEqual(args);
+  });
+
+  it.runIf(win)('with both Path and PATH: the one Node gives the program (names sorted, the first)', () => {
+    const one = join(dir, 'one');
+    const two = join(dir, 'two');
+    mkdirSync(one, { recursive: true });
+    mkdirSync(two, { recursive: true });
+    writeFileSync(join(one, 'pick.cmd'), '@echo one\r\n');
+    writeFileSync(join(two, 'pick.cmd'), '@echo two\r\n');
+    const env = { Path: one, PATH: two, SystemRoot: process.env.SystemRoot ?? '' };
+    expect(findCommand('pick', env)?.toLowerCase()).toBe(join(two, 'pick.cmd').toLowerCase());
+    // and it is the one a child started with this env sees
+    const r = spawnSync(process.execPath, ['-e', 'process.stdout.write(process.env.PATH ?? process.env.Path ?? "")'], { env, encoding: 'utf8' });
+    expect(r.stdout).toBe(two);
   });
 
   it.runIf(win)('starts a program that is not a batch file directly', () => {

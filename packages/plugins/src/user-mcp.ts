@@ -5,6 +5,7 @@
 // destructive still asks by default). The host keeps the list, secrets sealed, and hands it over in the clear.
 import { homedir } from 'node:os';
 import type { McpLaunch, PluginHost } from './host.ts';
+import { scrubSecrets } from './user-config.ts';
 import { newRun, startServer, stopServer, type ServerStatus, type SupervisedRun, type Supervision } from './supervisor.ts';
 
 export type UserMcpApproval = 'ask' | 'auto';
@@ -37,7 +38,7 @@ export interface UserMcpState {
 export type UserMcpEvent = { type: 'user-mcp.status'; name: string; status: ServerStatus | 'off'; message?: string } | { type: 'user-mcp.error'; name: string; message: string };
 
 export interface UserMcpOptions {
-  host: Pick<PluginHost, 'connectMcp' | 'registerHooks'>;
+  host: Pick<PluginHost, 'connectMcp' | 'registerHooks' | 'addRedactions'>;
   /** Host variables a service may inherit (whitelist); secret-looking names never pass. */
   inheritEnv?: string[];
   /** Stopping a service also ends what it started (Windows). Default true. */
@@ -58,7 +59,15 @@ interface Running extends SupervisedRun {
   log: string[];
   /** Withdraws its approval hook. */
   unhook?: () => void;
+  /**
+   * Speak only the handshake to it: it quit when asked server/discover, or it answered the handshake last time
+   * (the spec lets a client remember that across restarts), so a restart does not wait for the probe again.
+   */
+  legacy?: boolean;
 }
+
+/** The version without a handshake (MCP 2026-07-28), as the core reports it. */
+const MODERN = '2026-07-28';
 
 const same = (a: UserMcpConfig, b: UserMcpConfig): boolean => JSON.stringify({ ...a, approval: '' }) === JSON.stringify({ ...b, approval: '' });
 
@@ -86,6 +95,8 @@ export class UserMcpServers {
   set(configs: readonly UserMcpConfig[]): Promise<void> {
     return this.#serial(async () => {
       this.#configs = configs.map((c) => ({ ...c, args: [...c.args], env: { ...c.env } }));
+      // its variables' values are secrets: never in what the core shows or stores
+      this.#o.host.addRedactions?.(this.#configs.flatMap((c) => Object.values(c.env)).filter((v) => v.length >= 6));
       const wanted = new Map(this.#configs.filter((c) => c.enabled).map((c) => [c.name, c]));
       for (const [name, run] of [...this.#runs]) {
         const next = wanted.get(name);
@@ -102,7 +113,7 @@ export class UserMcpServers {
         const run: Running = { ...newRun(), config, log: [] };
         this.#runs.set(name, run);
         run.unhook = this.#hook(run);
-        await startServer(run, this.#supervision(run)).catch(() => undefined);
+        await this.#start(run);
       }
     });
   }
@@ -116,7 +127,7 @@ export class UserMcpServers {
         name: c.name,
         status: run.status,
         tools: run.handle?.tools ?? [],
-        ...(run.lastError ? { lastError: run.lastError } : {}),
+        ...(run.lastError ? { lastError: this.#scrub(run, run.lastError) } : {}),
         logTail: [...run.log],
         ...(run.handle?.protocolVersion ? { protocolVersion: run.handle.protocolVersion } : {}),
       };
@@ -129,7 +140,7 @@ export class UserMcpServers {
       for (const run of this.#runs.values()) {
         await stopServer(run, this.#supervision(run));
         run.restarts = [];
-        await startServer(run, this.#supervision(run)).catch(() => undefined);
+        await this.#start(run);
       }
     });
   }
@@ -140,6 +151,18 @@ export class UserMcpServers {
       for (const run of [...this.#runs.values()].reverse()) await this.#stop(run);
       this.#runs.clear();
     });
+  }
+
+  /** Start it; one that quit on the version probe is started once more with the handshake only. Never throws. */
+  async #start(run: Running): Promise<void> {
+    try {
+      await startServer(run, this.#supervision(run));
+    } catch (err) {
+      if (run.legacy || !(err as { cause?: { diedOnProbe?: boolean } }).cause?.diedOnProbe) return;
+      run.legacy = true;
+      this.#log(run, '[spica] quit when asked server/discover: starting again with initialize');
+      await startServer(run, this.#supervision(run)).catch(() => undefined);
+    }
   }
 
   async #stop(run: Running): Promise<void> {
@@ -156,7 +179,13 @@ export class UserMcpServers {
     }
   }
 
-  #log(run: Running, line: string): void {
+  /** Its variables' values taken out of a line it wrote or an error about it. */
+  #scrub(run: Running, text: string): string {
+    return scrubSecrets(text, Object.values(run.config.env));
+  }
+
+  #log(run: Running, raw: string): void {
+    const line = this.#scrub(run, raw);
     const keep = this.#o.logLines ?? 20;
     for (const l of line.split(/\r?\n/)) {
       if (!l.trim()) continue;
@@ -197,7 +226,7 @@ export class UserMcpServers {
       cwd: c.cwd || this.#o.defaultCwd || homedir(),
       endTree: this.#o.endTree ?? true,
       // a service someone else wrote may speak the 2026-07-28 version: asked first, the handshake otherwise
-      protocol: 'auto',
+      protocol: run.legacy ? 'legacy' : 'auto',
       stderrLog: (chunk) => this.#log(run, chunk.trimEnd()),
     };
   }
@@ -209,11 +238,15 @@ export class UserMcpServers {
       source: `mcp:${name}`,
       launch: (onExit) => ({ ...this.#launch(run), onExit }) as McpLaunch,
       restart: this.#o.restart ?? { maxRestarts: 3, windowMs: 60_000 },
-      setStatus: (status, message) => this.#emit({ type: 'user-mcp.status', name, status, ...(message ? { message } : {}) }),
+      setStatus: (status, message) => {
+        // it answered: remember which way (a restart need not probe again)
+        if (status === 'running' && run.handle) run.legacy = run.handle.protocolVersion !== MODERN;
+        this.#emit({ type: 'user-mcp.status', name, status, ...(message ? { message: this.#scrub(run, message) } : {}) });
+      },
       log: (line) => this.#log(run, `[spica] ${line}`),
       alive: () => this.#runs.get(name) === run,
       serial: (fn) => this.#serial(fn),
-      gaveUp: (message) => this.#emit({ type: 'user-mcp.error', name, message: `「${name}」${message}` }),
+      gaveUp: (message) => this.#emit({ type: 'user-mcp.error', name, message: `「${name}」${this.#scrub(run, message)}` }),
       crashMessage: (count, windowS) => `${windowS} 秒内崩溃 ${count} 次，已停止重启。`,
       startError: (message, cause) => new Error(`「${name}」启动失败：${message}`, { cause }),
     };

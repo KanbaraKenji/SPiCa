@@ -88,4 +88,25 @@ describe('MCP version probe', () => {
     await c.close();
     expect(sent[0]!.method).toBe('initialize');
   });
+
+  it('a newer server slow to start: initialize goes out after the wait, but its late discover answer still wins', async () => {
+    const { c, sent } = client('slow', { discoverTimeoutMs: 200 });
+    await c.connect();
+    expect(c.protocolVersion).toBe(MODERN_PROTOCOL);
+    expect(await c.callTool('hello', { who: 'x' })).toEqual({ content: 'hello x', isError: false });
+    await c.close();
+    expect(sent.map((s) => s.method)).toEqual(['server/discover', 'initialize', 'tools/call']);
+  });
+
+  it('a server that quits on server/discover: the error says so (its owner starts it again with the handshake)', async () => {
+    const { c } = client('dies');
+    const err = await c.connect().then(() => undefined, (e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as { diedOnProbe?: boolean }).diedOnProbe).toBe(true);
+    await c.close();
+    const again = client('dies', { protocol: 'legacy' }).c;
+    await again.connect();
+    expect(again.protocolVersion).toBe('2025-06-18');
+    await again.close();
+  });
 });

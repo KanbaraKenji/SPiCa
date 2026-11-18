@@ -130,6 +130,8 @@ export const MODERN_PROTOCOL = '2026-07-28';
 const DEFAULT_DISCOVER_MS = 5_000;
 const CLIENT_INFO = { name: 'spica', version: '0.1.0' };
 
+type InitResult = { protocolVersion?: string; serverInfo?: { name?: string; version?: string } } | undefined;
+
 /** An MCP error answer, its JSON-RPC code and data kept. */
 export class McpRpcError extends Error {
   readonly code: number | undefined;
@@ -220,14 +222,18 @@ export class McpStdioClient {
       }
     });
     child.on('error', (err) => this.#fail(new Error(`could not start MCP server "${c.name}": ${err.message}`)));
-    if (c.protocol === 'auto' && (await this.#discover())) return;
-    const init = (await this.request('initialize', {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: this.#capabilities(),
-      clientInfo: CLIENT_INFO,
-    })) as { protocolVersion?: string; serverInfo?: { name?: string; version?: string } };
-    this.serverInfo = init.serverInfo ?? {};
-    this.protocolVersion = typeof init.protocolVersion === 'string' ? init.protocolVersion : PROTOCOL_VERSION;
+    if (c.protocol === 'auto') return this.#probe();
+    this.#settle(await this.#initialize());
+  }
+
+  #initialize(): Promise<InitResult> {
+    return this.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: this.#capabilities(), clientInfo: CLIENT_INFO }) as Promise<InitResult>;
+  }
+
+  /** The handshake answered: its version and server, then notifications/initialized. */
+  #settle(init: InitResult): void {
+    this.serverInfo = init?.serverInfo ?? {};
+    this.protocolVersion = typeof init?.protocolVersion === 'string' ? init.protocolVersion : PROTOCOL_VERSION;
     this.notify('notifications/initialized', {});
   }
 
@@ -245,32 +251,78 @@ export class McpStdioClient {
   }
 
   /**
-   * server/discover (MCP 2026-07-28). True: the server speaks MODERN_PROTOCOL and no handshake follows. False: an
-   * older server (any other error, or no answer in time); initialize follows. A newer server that does not offer
-   * MODERN_PROTOCOL is an error: the spec says not to fall back then.
+   * protocol 'auto' (MCP 2026-07-28, stdio backward compatibility): server/discover first. A server that offers
+   * MODERN_PROTOCOL is spoken to that way, no handshake. Any other error means an older server: initialize. No
+   * answer within discoverTimeoutMs: initialize is sent too, the discover still waited for (a program that is slow
+   * to start, a first npx or uvx run, answers late), and whichever succeeds first decides. A newer server without
+   * MODERN_PROTOCOL is an error: the spec says not to fall back then. A server that quits before answering at all
+   * fails with `diedOnProbe` set, so its owner can start it again with the handshake only.
    */
-  async #discover(): Promise<boolean> {
+  #probe(): Promise<void> {
     const c = this.config;
     const versionsError = (list: string): Error => new Error(`MCP server "${c.name}" supports only ${list}; Spica speaks ${MODERN_PROTOCOL} and ${PROTOCOL_VERSION}`);
-    let r: { supportedVersions?: unknown; _meta?: Record<string, unknown> } | undefined;
-    try {
-      r = (await this.request('server/discover', { _meta: this.#modernMeta() }, { timeoutMs: c.discoverTimeoutMs ?? DEFAULT_DISCOVER_MS })) as typeof r;
-    } catch (err) {
-      if (!this.running) throw err; // it quit: nothing to fall back to
-      if (err instanceof McpRpcError && err.code === -32022) {
-        const supported = (err.data as { supported?: unknown } | undefined)?.supported;
-        throw Object.assign(versionsError(Array.isArray(supported) ? supported.join(', ') : 'other versions'), { cause: err });
-      }
-      return false;
-    }
-    const versions = Array.isArray(r?.supportedVersions) ? r.supportedVersions.filter((v): v is string => typeof v === 'string') : [];
-    // an answer that names no versions is not a newer server: taken for an older one
-    if (versions.length === 0) return false;
-    if (!versions.includes(MODERN_PROTOCOL)) throw versionsError(versions.join(', '));
-    this.protocolVersion = MODERN_PROTOCOL;
-    const info = r?._meta?.['io.modelcontextprotocol/serverInfo'];
-    this.serverInfo = info && typeof info === 'object' ? (info as { name?: string; version?: string }) : {};
-    return true;
+    return new Promise<void>((resolve, reject) => {
+      let done = false;
+      let discover: 'pending' | 'older' = 'pending';
+      let init: 'none' | 'pending' | Error = 'none';
+      let answered = false;
+      const finish = (f: () => void): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        f();
+      };
+      const fail = (err: unknown): void =>
+        finish(() => reject(!answered && !this.running ? Object.assign(err instanceof Error ? err : new Error(String(err)), { diedOnProbe: true }) : err));
+      const startInit = (): void => {
+        if (init !== 'none') return;
+        init = 'pending';
+        this.#initialize().then(
+          (r) => finish(() => {
+            this.#settle(r);
+            resolve();
+          }),
+          (err: Error) => {
+            init = err;
+            // the discover may still answer (a newer server refuses initialize)
+            if (discover !== 'pending' || !this.running) fail(err);
+          },
+        );
+      };
+      const timer = setTimeout(startInit, c.discoverTimeoutMs ?? DEFAULT_DISCOVER_MS);
+      this.request('server/discover', { _meta: this.#modernMeta() }).then(
+        (raw) => {
+          answered = true;
+          const r = raw as { supportedVersions?: unknown; _meta?: Record<string, unknown> } | undefined;
+          const versions = Array.isArray(r?.supportedVersions) ? r.supportedVersions.filter((v): v is string => typeof v === 'string') : [];
+          if (versions.includes(MODERN_PROTOCOL)) {
+            return finish(() => {
+              this.protocolVersion = MODERN_PROTOCOL;
+              const info = r?._meta?.['io.modelcontextprotocol/serverInfo'];
+              this.serverInfo = info && typeof info === 'object' ? (info as { name?: string; version?: string }) : {};
+              resolve();
+            });
+          }
+          if (versions.length > 0) return fail(versionsError(versions.join(', ')));
+          // an answer that names no versions is not a newer server: taken for an older one
+          older();
+        },
+        (err: unknown) => {
+          if (err instanceof McpRpcError) answered = true;
+          if (err instanceof McpRpcError && err.code === -32022) {
+            const supported = (err.data as { supported?: unknown } | undefined)?.supported;
+            return fail(Object.assign(versionsError(Array.isArray(supported) ? supported.join(', ') : 'other versions'), { cause: err }));
+          }
+          if (!this.running) return fail(err);
+          older();
+        },
+      );
+      const older = (): void => {
+        discover = 'older';
+        if (init === 'none') startInit();
+        else if (init instanceof Error) fail(init);
+      };
+    });
   }
 
   async listTools(): Promise<McpToolInfo[]> {

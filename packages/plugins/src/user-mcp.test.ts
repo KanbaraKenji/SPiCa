@@ -18,7 +18,8 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.method === 'initialize') return send({ id: msg.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'notes' } } });
   if (msg.method === 'tools/list') return send({ id: msg.id, result: { tools: [{ name: 'hello', inputSchema: { type: 'object' } }, { name: 'crash', inputSchema: { type: 'object' } }] } });
   if (msg.method === 'tools/call' && msg.params.name === 'hello') return send({ id: msg.id, result: { content: [{ type: 'text', text: JSON.stringify({ args: process.argv.slice(2), token: process.env.NOTES_TOKEN ?? null, cwd: process.cwd() }) }] } });
-  if (msg.method === 'tools/call' && msg.params.name === 'crash') { process.stderr.write('FileNotFoundError: D:\\\\Notes\\\\notes.db\\n'); process.exit(1); }
+  if (msg.method === 'tools/call' && msg.params.name === 'crash') { process.stderr.write('FileNotFoundError: D:\\\\Notes\\\\notes.db (token ' + process.env.NOTES_TOKEN + ')\\n'); process.exit(1); }
+  if (msg.method === 'server/discover' && process.env.QUIT_ON_DISCOVER) process.exit(4);
   send({ id: msg.id, error: { code: -32601, message: 'Method not found: ' + msg.method } });
 });
 `;
@@ -97,7 +98,9 @@ describe('services the person adds', () => {
     await until(() => s.states()[0]!.status === 'failed');
     const st = s.states()[0]!;
     expect(st.lastError).toBe('60 秒内崩溃 2 次，已停止重启。');
-    expect(st.logTail).toEqual(expect.arrayContaining(['FileNotFoundError: D:\\Notes\\notes.db']));
+    // what it wrote, its variable's value taken out
+    expect(st.logTail).toEqual(expect.arrayContaining(['FileNotFoundError: D:\\Notes\\notes.db (token [redacted])']));
+    expect(JSON.stringify([st, events])).not.toContain('nt-secret-1');
     expect(events.some((e) => e.type === 'user-mcp.error' && e.message.includes('「notes」'))).toBe(true);
   });
 
@@ -108,6 +111,14 @@ describe('services the person adds', () => {
     expect(broken).toMatchObject({ name: 'broken', status: 'failed' });
     expect(broken!.lastError).toBeTruthy();
     expect(ok).toMatchObject({ name: 'notes', status: 'running' });
+  });
+
+  it('a server that quits when asked server/discover: started again with the handshake, and added', async () => {
+    const { rt, s } = setup();
+    await s.set([notes({ env: { NOTES_TOKEN: 'nt-secret-1', QUIT_ON_DISCOVER: '1' } })]);
+    expect(s.states()[0]).toMatchObject({ status: 'running', protocolVersion: '2025-06-18' });
+    expect(s.states()[0]!.logTail).toEqual(expect.arrayContaining(['[spica] quit when asked server/discover: starting again with initialize']));
+    expect(JSON.parse((await callTool(rt, 'notes__hello', {})).content).token).toBe('nt-secret-1');
   });
 
   it.runIf(process.platform === 'win32')('a .cmd on PATH (as npx) starts by its bare name, arguments with spaces intact', async () => {

@@ -18,9 +18,14 @@ const META = /([()\][%!^"`<>&|;, *?])/g;
 
 const isFile = (p: string): boolean => statSync(p, { throwIfNoEntry: false })?.isFile() ?? false;
 
-/** The variable named `name` in `env`, whatever its case (Windows names are not case-sensitive). */
-function envValue(env: Record<string, string | undefined>, name: string): string | undefined {
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name);
+/**
+ * The variable named `name` in `env`, whatever its case (Windows names are not case-sensitive). With two spellings
+ * (Path and PATH), the one the started program gets: Node sorts the names and keeps the first that matches.
+ */
+export function envValue(env: Record<string, string | undefined>, name: string): string | undefined {
+  const key = Object.keys(env)
+    .filter((k) => k.toUpperCase() === name)
+    .sort()[0];
   return key ? env[key] : undefined;
 }
 
