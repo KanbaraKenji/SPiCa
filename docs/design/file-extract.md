@@ -48,7 +48,7 @@ new Runtime({ ..., extractors: createExtractors() });
 - 读表格时 `offset` 大于 1，会把第 1 行作为 `(header)` 一起给出，模型不用回头找表头。
 - 编码：CSV 和文本自动认 UTF-8、带 BOM 的 UTF-8、带 BOM 的 UTF-16、GBK（按 GB18030 解，向下兼容 GBK）；都不是时按 UTF-8 解并标明「invalid bytes replaced」。
 - `.xls` / `.doc` 先看文件头不看扩展名：OLE 文件按旧格式读；其实是 zip 的（改名的 .xlsx / .docx）交给新格式；是文本的（导出的 HTML、TSV）按文本或 CSV 读；`.doc` 其实是 RTF 时报「RTF，不在这里读」。Excel 5.0/95（BIFF5）、Word 6.0/95、加密文件都报明原因。
-- 图片（.png .jpg .jpeg .gif .webp .bmp）不归提取器：内核 read_file 直接把图交给模型（`packages/core/src/tools/read-image.ts`），量尺寸、缩小、算 token 用附件那一套（`images.ts`）。8 位 PNG 内核自己缩；超限的 JPEG 由外壳用 Chromium 缩（`nativeImage`），BMP、GIF、WEBP 由外壳交给 Windows 自带的解码器（`createThumbnailFromPath`，按原图大小要、不放大），都经内核的 `Runtime.imageFitter` → 主进程 `images.fit`。当前模型标明不收图时，返回一句说明、不发图。
+- 图片（.png .jpg .jpeg .gif .webp .bmp）不归提取器：内核 read_file 直接把图交给模型（`packages/core/src/tools/read-image.ts`），量尺寸、缩小、算 token 用附件那一套（`images.ts`）。8 位 PNG 和常见的 BMP（1/4/8/24/32 位、不压缩）内核自己解码、缩小，BMP 一律转成 PNG 发（模型都不收 BMP）；超限的 JPEG 由外壳用 Chromium 缩（`nativeImage`，它只认 PNG 和 JPEG）；超限的 GIF、WEBP 和少见的 BMP 由外壳交给 Windows 自带的解码器（`createThumbnailFromPath`：它只按正方形框等比缩，所以框取原图长边、不超过 1568；做的时候主进程会停 0.1–0.6 秒；竖的大 BMP 试过会失败，所以 BMP 不走这条），都经内核的 `Runtime.imageFitter` → 主进程 `images.fit`。在限内的 GIF、WEBP 原样发。当前模型标明不收图时，返回一句说明、不发图。
 - 其余扩展名（.ts、.json 等）不归提取器，内核照旧按 UTF-8 文本读。
 
 模型看到的样子（库存表第 3 行）：
