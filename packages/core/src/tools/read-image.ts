@@ -1,0 +1,93 @@
+// read_file on a picture, and the PDF pages a document reader drew as pictures (scanned pages): the copy that goes to
+// the model, made with the same checks and shrinking as an attached image (images.ts; the host shrinks what the core
+// cannot, Runtime.imageFitter), or a sentence saying why it cannot go.
+import { createHash } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { Stats } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
+import { isoNow } from '../events.ts';
+import { encodePngCompact, imageTokens, prepareImage, type PreparedImage } from '../images.ts';
+import type { FileCardMeta, ImageBlock } from '../types.ts';
+import type { PageImage, ToolContext, ToolOutput } from './types.ts';
+
+/** Files read_file hands to the model as pictures. */
+export const PICTURE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+
+/** The sentence for a model that does not take images. */
+export const NO_IMAGES = 'The current model does not take images, so it cannot be shown; a model that takes images can look at it.';
+
+function mediaDir(ctx: ToolContext): string {
+  return ctx.mediaDir ?? join(tmpdir(), 'spica-media', ctx.sessionId.replace(/[^A-Za-z0-9_-]/g, '_'));
+}
+
+/** The picture at `src` within the limits: by the core's own checks, else the host's smaller copy. */
+async function fit(src: string, ctx: ToolContext): Promise<PreparedImage> {
+  const dir = mediaDir(ctx);
+  const own = prepareImage(src, dir);
+  if (own.ok || !ctx.fitImage) return own;
+  mkdirSync(dir, { recursive: true });
+  const copy = await ctx.fitImage(src, dir).catch(() => undefined);
+  if (!copy) return own;
+  const again = prepareImage(copy, dir);
+  if (again.ok && again.image.path !== copy) rmSync(copy, { force: true });
+  // the host's copy is smaller than the file (or another kind): say so
+  return again.ok ? { ok: true, image: { ...again.image, resized: true } } : own;
+}
+
+function block(p: Extract<PreparedImage, { ok: true }>['image'], name: string): ImageBlock {
+  return { type: 'image', path: p.path, mediaType: p.mediaType, width: p.width, height: p.height, bytes: p.bytes, name };
+}
+
+function kb(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/** read_file on a picture file. */
+export async function readPicture(abs: string, info: Stats, shown: string, ctx: ToolContext): Promise<ToolOutput> {
+  const card: FileCardMeta = { path: abs, name: basename(abs), kind: 'other', sizeBytes: info.size, modifiedAt: isoNow(info.mtime), extractedAt: isoNow(), read: {} };
+  const head = `${shown} (picture, ${info.size} bytes, modified ${isoNow(info.mtime)})`;
+  if (ctx.imagesAllowed === false) {
+    ctx.emit({ type: 'file.card', callId: ctx.callId, file: card });
+    return { content: `${head}\n${NO_IMAGES}` };
+  }
+  const p = await fit(abs, ctx);
+  if (!p.ok) return { content: `${head}\nThe picture cannot be sent: ${p.message}.`, isError: true };
+  ctx.emit({ type: 'file.card', callId: ctx.callId, file: card });
+  const img = p.image;
+  const sent = img.resized ? `a smaller copy, ${img.width}x${img.height} px (${kb(img.bytes)})` : `${img.width}x${img.height} px`;
+  const tokens = imageTokens(ctx.providerKind ?? '', img.width, img.height);
+  return {
+    content: `${head}\nThe picture follows as an image: ${sent}, about ${tokens} tokens.`,
+    images: [block(img, basename(abs))],
+  };
+}
+
+/** PDF pages drawn as pictures, as images for the model (each page encoded and checked like an attached image). */
+export async function pagePictures(pages: readonly PageImage[], fileName: string, ctx: ToolContext): Promise<{ images: ImageBlock[]; note: string }> {
+  const dir = mediaDir(ctx);
+  mkdirSync(dir, { recursive: true });
+  const images: ImageBlock[] = [];
+  const failed: number[] = [];
+  let tokens = 0;
+  for (const pg of pages) {
+    const png = await encodePngCompact({ width: pg.width, height: pg.height, data: pg.rgba });
+    const raw = join(dir, `page-${createHash('sha256').update(png).digest('hex').slice(0, 20)}.png`);
+    writeFileSync(raw, png);
+    const p = prepareImage(raw, dir);
+    if (!p.ok) {
+      failed.push(pg.page);
+      continue;
+    }
+    if (p.image.path !== raw) rmSync(raw, { force: true });
+    images.push(block(p.image, `${fileName} page ${pg.page}`));
+    tokens += imageTokens(ctx.providerKind ?? '', p.image.width, p.image.height);
+  }
+  const shown = pages.filter((p) => !failed.includes(p.page)).map((p) => p.page);
+  const lines: string[] = [];
+  if (shown.length > 0) {
+    lines.push(`[${shown.length} page picture${shown.length === 1 ? '' : 's'} follow${shown.length === 1 ? 's' : ''} as images (page${shown.length === 1 ? '' : 's'} ${shown.join(', ')}), about ${tokens} tokens in all.]`);
+  }
+  if (failed.length > 0) lines.push(`[Pages ${failed.join(', ')} could not be made into pictures within the size limit.]`);
+  return { images, note: lines.join('\n') };
+}

@@ -1,7 +1,9 @@
-// PDF: text layer via pdf.js (the unpdf build: no worker, no canvas, no native code).
+// PDF: text layer via pdf.js (the unpdf build: no worker, no canvas, no native code); pages with little or no text
+// (scanned) drawn as pictures by PDFium when the reader asks (pdf-render.ts).
 import { getDocumentProxy } from 'unpdf';
+import { openDrawer, type PageDrawer } from './pdf-render.ts';
 import type { SourceFile } from './source.ts';
-import { ExtractError, type ExtractRequest, type ExtractResult } from './types.ts';
+import { ExtractError, type ExtractRequest, type ExtractResult, type PageImage } from './types.ts';
 import { Budget, formatRanges, parseRanges, throwIfAborted } from './util.ts';
 
 interface TextItemLike {
@@ -70,15 +72,51 @@ async function outline(pdf: PdfDoc): Promise<string[]> {
   }
 }
 
+/** A page with fewer characters than this (spaces not counted) has "little or no text": probably scanned. */
+export const SPARSE_TEXT_CHARS = 40;
+
+function isSparse(text: string): boolean {
+  return text.replace(/\s/g, '').length < SPARSE_TEXT_CHARS;
+}
+
+/** Draw `pages` with PDFium; the pictures, and the reason when none could be drawn. */
+async function drawPages(bytes: Uint8Array, pages: number[], signal?: AbortSignal): Promise<{ images: PageImage[]; failed?: string }> {
+  if (pages.length === 0) return { images: [] };
+  let drawer: PageDrawer;
+  try {
+    drawer = await openDrawer(new Uint8Array(bytes));
+  } catch (err) {
+    return { images: [], failed: err instanceof Error ? err.message : String(err) };
+  }
+  const images: PageImage[] = [];
+  try {
+    for (const n of pages) {
+      throwIfAborted(signal);
+      try {
+        images.push(drawer.draw(n));
+      } catch {
+        // this page alone: said below as not drawn
+      }
+      // let other conversations' work run between pages
+      await new Promise<void>((r) => setImmediate(r));
+    }
+  } finally {
+    drawer.close();
+  }
+  return { images, ...(images.length === 0 ? { failed: 'PDFium could not draw these pages' } : {}) };
+}
+
 export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars: number, signal?: AbortSignal): Promise<ExtractResult> {
   const pdf = await openPdf(src.bytes);
   try {
     const total = pdf.numPages;
     const wanted = req.pages ? parseRanges(req.pages, total, 'page') : Array.from({ length: total }, (_, i) => i + 1);
     const head = `PDF, ${total} page${total === 1 ? '' : 's'}.`;
-    const budget = new Budget(maxChars - head.length - 400);
+    const budget = new Budget(maxChars - head.length - 600);
+    const drawing = req.pageImages !== undefined;
     const shown: number[] = [];
     const blank: number[] = [];
+    const sparse: number[] = [];
     const body: string[] = [];
     let cutPage: number | undefined;
     let stoppedAt: number | undefined;
@@ -88,10 +126,13 @@ export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars:
       const text = joinTextItems((await page.getTextContent()).items);
       page.cleanup();
       if (!text) blank.push(n);
-      const block = `=== page ${n} ===\n${text || '[no text layer on this page]'}\n`;
+      const little = drawing && isSparse(text);
+      const mark = text ? (little ? `${text}\n[little text on this page]` : text) : '[no text layer on this page]';
+      const block = `=== page ${n} ===\n${mark}\n`;
       if (budget.take(block)) {
         body.push(block);
         shown.push(n);
+        if (little) sparse.push(n);
         continue;
       }
       if (shown.length === 0) {
@@ -106,16 +147,35 @@ export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars:
     }
     const noTextLayer = blank.length === total;
     const rest = stoppedAt === undefined ? [] : wanted.filter((n) => n >= stoppedAt! && n !== cutPage);
-    const truncated = rest.length > 0 || cutPage !== undefined;
+
+    // Scanned pages as pictures, up to the number asked for; the rest are named for the next call.
+    const cap = Math.max(0, req.pageImages ?? 0);
+    const drawn = cap > 0 ? await drawPages(src.bytes, sparse.slice(0, cap), signal) : { images: [] as PageImage[] };
+    const drawnPages = drawn.images.map((p) => p.page);
+    const notDrawn = sparse.filter((n) => !drawnPages.includes(n));
+    const truncated = rest.length > 0 || cutPage !== undefined || (cap > 0 && notDrawn.length > 0 && !drawn.failed);
 
     const lines = [head];
-    if (noTextLayer) {
+    if (noTextLayer && !drawing) {
       lines.push(
         'This PDF has no text layer on any page (it is probably scanned images). No text can be extracted; OCR is not available.',
       );
     } else {
       lines.push(`Showing page${shown.length === 1 ? '' : 's'} ${formatRanges(shown)} of ${total}.`);
-      if (blank.length > 0 && blank.length < total) lines.push(`Pages without a text layer: ${formatRanges(blank)}.`);
+      if (!drawing && blank.length > 0 && blank.length < total) lines.push(`Pages without a text layer: ${formatRanges(blank)}.`);
+      if (sparse.length > 0) {
+        lines.push(`Pages with little or no text (probably scanned): ${formatRanges(sparse)}.`);
+        if (cap === 0) lines.push('The current model does not take images, so these pages cannot be shown as pictures.');
+        else if (drawn.failed) lines.push(`They could not be drawn as pictures: ${drawn.failed}.`);
+        else {
+          if (drawnPages.length > 0) lines.push(`Pages ${formatRanges(drawnPages)} follow as pictures.`);
+          if (notDrawn.length > 0) {
+            lines.push(
+              `Not drawn (at most ${cap} pictures per call): pages ${formatRanges(notDrawn)}. Call read_file again with pages="${formatRanges(notDrawn.slice(0, cap)).replace(/ /g, '')}" to see them.`,
+            );
+          }
+        }
+      }
       lines.push('', ...body);
       if (rest.length > 0) {
         lines.push(`[Stopped because of the size limit. Not shown: pages ${formatRanges(rest)}. Call read_file again with pages="…" to read them.]`);
@@ -133,6 +193,7 @@ export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars:
         ...(truncated ? { truncated } : {}),
         ...(noTextLayer ? { noTextLayer } : {}),
       },
+      ...(drawn.images.length > 0 ? { pageImages: drawn.images } : {}),
     };
   } finally {
     await pdf.loadingTask.destroy();

@@ -1173,6 +1173,20 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     return false;
   }
 
+  /** What a tool that returns pictures (read_file) needs to know about this conversation's model. */
+  #imageContext(): Pick<ToolContext, 'imagesAllowed' | 'providerKind' | 'fitImage'> {
+    const { providerId, model } = this.#record.config;
+    const allowed = this.#rt.imagesAllowed(providerId, model);
+    let kind: string | undefined;
+    try {
+      kind = this.#rt.provider(providerId).kind;
+    } catch {
+      // the provider was removed: estimates use the cautious formula
+    }
+    const fit = this.#rt.imageFitter;
+    return { ...(allowed !== undefined ? { imagesAllowed: allowed } : {}), ...(kind ? { providerKind: kind } : {}), ...(fit ? { fitImage: fit } : {}) };
+  }
+
   /** Execute one tool with hooks, timing, events and the fetch-time stamp. */
   async #execute(
     tool: Tool,
@@ -1197,6 +1211,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       callId: draft.callId,
       mediaDir: this.#rt.mediaDir(this.id),
       ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
+      ...this.#imageContext(),
       emit: (body) => {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };

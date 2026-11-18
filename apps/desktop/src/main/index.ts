@@ -146,7 +146,7 @@ import { followTaskbarTheme, readTaskbarDark, type TaskbarFollower } from './tas
 import { PREVIEW_SCHEME, PreviewFiles, readPreview, readPreviewFile } from './preview';
 import { forgetBooks } from './office-preview';
 import { FLOW_SCHEME, flowFile } from './flow-scheme';
-import { AttachImages } from './images';
+import { AttachImages, fitForModel, type PictureIo } from './images';
 import { bridgeFor, contentType, createPluginPicker, injectIntoPage, pageCsp, parsePluginUrl, PLUGIN_SCHEME, pluginThemeVars, themeCss } from './plugin-views';
 import { pluginCallId, type PluginView, type PluginViewResult } from '../shared/plugin-view';
 import { uiFontFamily } from '../shared/ui-font';
@@ -429,6 +429,8 @@ const backend: AgentBackend =
           },
           // The conversation open in the window: the core writes its settings-change card there too.
           'ui.activeSession': () => activeSessionId,
+          // read_file's large pictures made to fit, as attached ones are (main/images.ts).
+          'images.fit': (src: string, dir: string) => fitForModel(pictureIo, String(src), String(dir)),
           // The built-in browser for agents (backend/browser-tools.ts, main/browser/agent.ts).
           'browser.open': (sessionId: string, args: Record<string, unknown>) => browserAgent.open(sessionId, args),
           'browser.read': (sessionId: string, args: Record<string, unknown>) => browserAgent.read(sessionId, args),
@@ -1173,10 +1175,12 @@ ipcMain.handle(DesktopChannel.UsageSummary, async (_e, query: unknown): Promise<
 });
 
 // Pictures for a message: pasted ones saved as PNG, large ones made to fit (main/images.ts).
-const attachImages = new AttachImages(join(app.getPath('userData'), 'attach-images'), {
+const pictureIo: PictureIo = {
   fromBuffer: (data) => nativeImage.createFromBuffer(data),
   fromPath: (path) => nativeImage.createFromPath(path),
-});
+  thumbnail: (path, size) => nativeImage.createThumbnailFromPath(path, size),
+};
+const attachImages = new AttachImages(join(app.getPath('userData'), 'attach-images'), pictureIo);
 attachImages.sweep();
 ipcMain.handle(DesktopChannel.Images, async (_e, op: unknown, a: unknown, b: unknown) => {
   if (op === 'fromPaste') {

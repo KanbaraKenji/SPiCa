@@ -73,6 +73,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   const unregisterBrowser = bridge
     ? [...browserTools((method, params) => bridge.host(method, params)).map((tool) => rt.tools.register(tool, 'desktop')), rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params)))]
     : [];
+  // read_file's pictures the core cannot make smaller itself (JPEG, WEBP, GIF, BMP): Chromium's decoders in the main process (main/images.ts).
+  if (bridge) rt.imageFitter = async (src, dir) => {
+    const path = await bridge.host('images.fit', [src, dir]);
+    return typeof path === 'string' ? path : undefined;
+  };
 
   let http: McpHttpServer | undefined;
   const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);

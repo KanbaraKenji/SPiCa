@@ -13,8 +13,10 @@
                                                          ▼
                               @spica/extract  extractFile(path, req)
                                  │ 读文件（每次重读，不缓存）
-                                 ├─ PDF  → unpdf（pdf.js）按页取文字层
+                                 ├─ PDF  → unpdf（pdf.js）按页取文字层；字很少的页（扫描页）
+                                 │         → PDFium（WebAssembly）画成图，交给内核发给模型
                                  ├─ Word / Excel / PPT → fflate 解压 + saxes 流式读 XML
+                                 ├─ 旧版 .doc / .xls → cfb 读 OLE 容器，按微软公开的二进制格式取字
                                  └─ CSV / 文本 → 认编码（UTF-8 / GBK / UTF-16）
                                  ▼
                        { text: 排好版的正文, meta: FileCardMeta, truncated }
@@ -35,14 +37,18 @@ new Runtime({ ..., extractors: createExtractors() });
 | 格式 | 扩展名 | 取到什么 | 分块单位（read_file 参数） | 目录（超限时列出） |
 |---|---|---|---|---|
 | PDF | .pdf | 每页文字层，按基线换行 | 页：`pages="3"`、`"2-5"`、`"1,4,7-9"` | 没显示的页号 + PDF 书签（含页码） |
+| Word 97-2003 | .doc | 正文段落、表格（按段落属性里的「表格行结束」分行）、域只取结果；页眉页脚、脚注、批注、标题级别、列表层级不读；同一套块编号 | 块：`offset` / `limit` | 无（标题级别不读） |
 | Word | .docx .docm | 段落、标题（`#` 级别）、列表（`-`）、表格（Markdown 表）；每块编号 `[12]` | 块：`offset` / `limit` | 没显示部分的标题和块号 |
 | Excel | .xlsx .xlsm | 每张表：行号照 Excel、列用字母；共享字符串、日期、时间、百分比、布尔、公式的缓存值；隐藏表标「hidden」 | 表：`sheet`（表名或从 1 起的序号）；行：`offset` / `limit`（行号） | 所有表的名称和范围（如 `A1:F120`） |
+| Excel 97-2003 | .xls | BIFF8 工作簿：共享字符串（跨 CONTINUE 记录）、数字 / RK / MULRK、日期格式、公式缓存值（数字、文字、布尔、错误）、布尔与错误值；排版和 .xlsx 同一套代码（`extractSheets`） | 同 Excel | 同 Excel |
 | PowerPoint | .pptx .pptm | 每页文字、表格行、演讲者备注 | 页：`pages` | 没显示的页号 |
 | CSV / TSV | .csv .tsv | 表格同 Excel（单表）；自动认分隔符（逗号 / 制表 / 分号 / 竖线）、引号与引号内换行 | 行：`offset` / `limit` | 总行数与范围 |
 | 文本 | .txt .md .markdown .log | 带行号，和内核读纯文本的样子一致 | 行：`offset` / `limit` | 总行数 |
 
 - 读表格时 `offset` 大于 1，会把第 1 行作为 `(header)` 一起给出，模型不用回头找表头。
 - 编码：CSV 和文本自动认 UTF-8、带 BOM 的 UTF-8、带 BOM 的 UTF-16、GBK（按 GB18030 解，向下兼容 GBK）；都不是时按 UTF-8 解并标明「invalid bytes replaced」。
+- `.xls` / `.doc` 先看文件头不看扩展名：OLE 文件按旧格式读；其实是 zip 的（改名的 .xlsx / .docx）交给新格式；是文本的（导出的 HTML、TSV）按文本或 CSV 读；`.doc` 其实是 RTF 时报「RTF，不在这里读」。Excel 5.0/95（BIFF5）、Word 6.0/95、加密文件都报明原因。
+- 图片（.png .jpg .jpeg .gif .webp .bmp）不归提取器：内核 read_file 直接把图交给模型（`packages/core/src/tools/read-image.ts`），量尺寸、缩小、算 token 用附件那一套（`images.ts`）。8 位 PNG 内核自己缩；超限的 JPEG 由外壳用 Chromium 缩（`nativeImage`），BMP、GIF、WEBP 由外壳交给 Windows 自带的解码器（`createThumbnailFromPath`，按原图大小要、不放大），都经内核的 `Runtime.imageFitter` → 主进程 `images.fit`。当前模型标明不收图时，返回一句说明、不发图。
 - 其余扩展名（.ts、.json 等）不归提取器，内核照旧按 UTF-8 文本读。
 
 模型看到的样子（库存表第 3 行）：
@@ -92,7 +98,8 @@ row	A	B	C	D	E	F
 
 - 损坏、不是该格式、加密（PDF 有密码）、超大：抛 `ExtractError`，消息写给模型看（例如 `Not a readable Excel workbook (the file may be damaged, password protected, or in another format).`）；内核把它作为错误结果「Tool failed: …」交回模型，不中断运行。
 - 空文件（0 字节）：正常结果「PDF file is empty (0 bytes).」，卡片照发。
-- 扫描版 PDF：正常结果，写明「没有文字层，不做 OCR」，卡片 `noTextLayer: true`；部分页没有文字层时列出这些页。
+- 扫描版 PDF：一页去掉空白后不到 40 个字（`SPARSE_TEXT_CHARS`）就算「字很少」，内核读时（`pageImages`）把这些页用 PDFium 画成图（长边 1568 px，按附件的上限），文字页照旧给文字。一次最多 10 张（`IMAGE_LIMITS.maxPerMessage`，和一条消息能附的图一样多），多出的页列出来并给出下一次的 `pages="…"`；`pages` 参数照常限定读哪几页，画图只在这些页里挑。灰度页存成灰度 PNG（约为 RGBA 的四分之一），一页一页画、页与页之间让出事件循环。结果末尾写「N 张页面图随后发送，约 T token」，上下文卡的「图片」一行也会涨。当前模型不收图时（`pageImages: 0`）不画，写明「当前模型不收图」。不经内核读的（预览栏）不画，仍说「没有文字层」；卡片 `noTextLayer: true`。
+- 每次请求最多带最新的 20 张图（内核 `keepRecentImages`）：连续读三批扫描页时，最早一批会换成一行「已在前面给过」的文字。
 - 页码或表名写错：错误结果里给出正确的范围或表名清单，模型能自己改。
 - pdf.js 会尽量修复截断的 PDF：截掉一部分的文件可能读出前几页，也可能报错，两种都是干净结果。
 
@@ -105,10 +112,14 @@ row	A	B	C	D	E	F
 | unpdf | 2.1.0 | MIT（内含 pdf.js，Apache-2.0） | 运行时 | pdf.js 的无 worker、无 canvas 构建，零依赖；不用 pdfjs-dist 是因为它会顺带装可选的 @napi-rs/canvas 预编译二进制 |
 | fflate | 0.8.3 | MIT | 运行时 | 解压 docx / xlsx / pptx；零依赖 |
 | saxes | 6.0.0 | ISC | 运行时 | 流式读 XML；依赖 xmlchars（MIT） |
+| @embedpdf/pdfium | 2.15.1 | MIT（包装）；PDFium 本身 BSD-3-Clause / Apache-2.0，wasm 里还编进了 zlib、libpng、OpenJPEG、AGG 等宽松许可的库 | 运行时 | 把扫描页画成图。纯 WebAssembly，零依赖；pdfium.wasm 4.6 MB（打包时作为单独文件复制到 out/main/chunks，`apps/desktop/src/backend/entry.ts` 告诉提取器在哪），JS 约 0.3 MB |
+| cfb | 1.2.2 | Apache-2.0 | 运行时 | 读 .xls / .doc 的 OLE 容器；依赖 adler-32、crc-32（都是 Apache-2.0），合计约 0.4 MB（未压缩源码） |
 | docx | 9.15.3 | MIT | 只在测试 | 生成 Word 样例 |
 | write-excel-file | 4.1.1 | MIT | 只在测试 | 生成 Excel 样例；只依赖 fflate |
 | pdf-lib | 1.17.1 | MIT | 只在测试 | 生成 PDF 样例（中文用不嵌入字形的 Identity-H 字体 + ToUnicode 表，不带字体文件） |
 
+把 PDF 页画成图的几种做法（2026-11-18 比过）：pdf.js 自己画要 canvas，Node 里只有 @napi-rs/canvas（MIT，原生二进制，每个平台约 29–39 MB）；mupdf 的 wasm（14 MB）是 AGPL，不能进 Apache 仓库；只取 PDF 里嵌的图片（unpdf 的 extractImages，零新依赖）对多张拼成一页、带遮罩或旋转的扫描件会出错；@hyzyla/pdfium 也是 PDFium wasm，但 14 MB。所以用 @embedpdf/pdfium：真渲染、纯 wasm、体积最小。
+旧版 .xls / .doc 不用 SheetJS（npm 上停在 0.18.5，有未修的告警，7.5 MB）、word-extractor（MIT，但带一份旧 saxes 5 和用不着的 yauzl，且表格单元格会被摊平）：BIFF8 和 Word 97 的取字部分照微软公开的格式（MS-XLS、MS-DOC）自己读，约 600 行，只借 cfb 读外层的 OLE 容器。
 为什么不用 mammoth / exceljs / SheetJS：三种 Office 格式都是「zip + XML」，自己读只要两个小库，Word / Excel / PPT 共用一套读法；mammoth 只管 Word，exceljs 带上百个间接依赖，npm 上的 SheetJS 停在 0.18.5 且有未修的安全告警。PPT 样例手工拼包，因为能用的 PPT 写库带一个有高危告警的依赖。
 
 ## 7. 测试与冒烟
@@ -123,8 +134,8 @@ row	A	B	C	D	E	F
 
 ## 8. 留口
 
-- **OCR**：扫描件现在只报 `noTextLayer`。以后加 OCR 时在 PDF 提取器里对无文字层的页调用一个可插的识别函数（`createExtractors({ ocr })`），pdf.js 渲染页图需要 canvas，届时再选不需要本机编译的方案。
-- **更多格式**：`FORMATS` 表里加一行（扩展名 + 处理函数）即可。可能要加的：旧版 .doc / .xls / .ppt（二进制格式，需要另找纯 JS 库）、.rtf、.html、.odt / .ods、.eml。
+- **OCR**：扫描页现在画成图交给能看图的模型读；不能看图的模型读不了。以后要在本机识别文字，可以接在 `pdf-render.ts` 画出的图后面。
+- **更多格式**：`FORMATS` 表里加一行（扩展名 + 处理函数）即可。可能要加的：旧版 .ppt（同样是 OLE 容器，「PowerPoint Document」流里按幻灯片取 TextCharsAtom / TextBytesAtom，约 120 行，不用新依赖）、.rtf、.html、.odt / .ods、.eml。
 - **Word 页码**：docx 没有固定页，现在按块编号；要「第几页」需要排版引擎，不做。
 - **合并单元格、批注、图片里的文字**：现在不读。
 

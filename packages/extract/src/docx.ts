@@ -178,10 +178,14 @@ export function renderBlock(b: DocBlock, n: number, tableNo: number): string {
 }
 
 export async function extractDocx(src: SourceFile, req: ExtractRequest, maxChars: number): Promise<ExtractResult> {
-  const blocks = parseDocx(src.bytes);
+  return renderDocBlocks(parseDocx(src.bytes), 'Word document', src, req, maxChars);
+}
+
+/** Lay out numbered blocks `offset`..`offset+limit-1` within the budget, with an outline of the headings not shown. */
+export function renderDocBlocks(blocks: DocBlock[], label: string, src: SourceFile, req: ExtractRequest, maxChars: number): ExtractResult {
   const tables = blocks.filter((b) => b.type === 'table').length;
   const paras = blocks.length - tables;
-  const head = `Word document: ${paras} paragraph${paras === 1 ? '' : 's'} and ${tables} table${tables === 1 ? '' : 's'} (${blocks.length} numbered blocks).`;
+  const head = `${label}: ${paras} paragraph${paras === 1 ? '' : 's'} and ${tables} table${tables === 1 ? '' : 's'} (${blocks.length} numbered blocks).`;
   const base = { ...src.metaBase('docx'), blockCount: blocks.length };
   if (blocks.length === 0) {
     return { text: `${head}\nThe document has no text.`, meta: { ...base, read: {} } };

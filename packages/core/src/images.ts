@@ -6,8 +6,11 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { deflateSync, inflateSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { deflate, deflateSync, inflateSync } from 'node:zlib';
 import { IMAGE_LIMITS } from '@spica/protocol';
+
+const deflateAsync = promisify(deflate);
 
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 
@@ -86,7 +89,7 @@ export function imageSize(buf: Buffer, type: ImageMediaType): { width: number; h
 // shrink (area average), encode (RGBA, 8-bit).
 // ---------------------------------------------------------------------------
 
-interface Rgba {
+export interface Rgba {
   width: number;
   height: number;
   data: Uint8Array; // RGBA, 4 bytes per pixel
@@ -236,20 +239,50 @@ function chunk(type: string, data: Buffer): Buffer {
 
 /** Encode RGBA as an 8-bit RGBA PNG (Sub filter on every row). */
 export function encodePng(img: Rgba): Buffer {
-  const stride = img.width * 4;
+  const { ihdr, raw } = pngRows(img, 4);
+  return pngFile(ihdr, deflateSync(raw, { level: 9 }));
+}
+
+/**
+ * Encode RGBA as the smallest of grey, RGB or RGBA (an opaque grey picture, such as a scanned page, takes a quarter of
+ * the bytes), compressed off the main thread.
+ */
+export async function encodePngCompact(img: Rgba): Promise<Buffer> {
+  let grey = true;
+  let opaque = true;
+  const d = img.data;
+  for (let i = 0; i < d.length && (grey || opaque); i += 4) {
+    if (d[i + 3] !== 255) opaque = false;
+    if (d[i] !== d[i + 1] || d[i] !== d[i + 2]) grey = false;
+  }
+  const channels = opaque ? (grey ? 1 : 3) : 4;
+  const { ihdr, raw } = pngRows(img, channels);
+  return pngFile(ihdr, await deflateAsync(raw, { level: 6 }));
+}
+
+/** IHDR and the filtered rows (Sub filter) for 1 (grey), 3 (RGB) or 4 (RGBA) channels taken from RGBA pixels. */
+function pngRows(img: Rgba, channels: 1 | 3 | 4): { ihdr: Buffer; raw: Buffer } {
+  const stride = img.width * channels;
   const raw = Buffer.alloc((stride + 1) * img.height);
+  const row = new Uint8Array(stride);
   for (let y = 0; y < img.height; y++) {
+    const src = img.data.subarray(y * img.width * 4, (y + 1) * img.width * 4);
+    if (channels === 4) row.set(src);
+    else for (let x = 0, j = 0; x < img.width; x++, j += channels) for (let c = 0; c < channels; c++) row[j + c] = src[x * 4 + c]!;
     const o = y * (stride + 1);
     raw[o] = 1; // Sub
-    const row = img.data.subarray(y * stride, (y + 1) * stride);
-    for (let x = 0; x < stride; x++) raw[o + 1 + x] = (row[x]! - (x >= 4 ? row[x - 4]! : 0)) & 0xff;
+    for (let x = 0; x < stride; x++) raw[o + 1 + x] = (row[x]! - (x >= channels ? row[x - channels]! : 0)) & 0xff;
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(img.width, 0);
   ihdr.writeUInt32BE(img.height, 4);
   ihdr[8] = 8;
-  ihdr[9] = 6;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+  ihdr[9] = channels === 1 ? 0 : channels === 3 ? 2 : 6;
+  return { ihdr, raw };
+}
+
+function pngFile(ihdr: Buffer, idat: Buffer): Buffer {
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
 
 // ---------------------------------------------------------------------------
