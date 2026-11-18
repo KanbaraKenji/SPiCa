@@ -73,6 +73,13 @@ describe('run_javascript', () => {
     expect(r.content).toMatch(/SyntaxError: \S/);
   });
 
+  it('the code may declare the names the runner uses (fs, util, repl, chunks)', async () => {
+    const code = ["const fs = require('fs');", "const util = require('util');", 'const repl = 1, chunks = 2, report = 3, PassThrough = 4;', "typeof fs.readFileSync + ' ' + typeof util.inspect"].join('\n');
+    const r = await tool.execute({ code }, ctx());
+    expect(r.isError).toBe(false);
+    expect(r.content).toContain("'function function'");
+  });
+
   it('keeps nothing between calls', async () => {
     await tool.execute({ code: 'globalThis.kept = 1; var y = 2' }, ctx());
     const r = await tool.execute({ code: 'typeof kept + " " + typeof y' }, ctx());

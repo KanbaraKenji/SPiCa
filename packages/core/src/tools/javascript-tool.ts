@@ -38,7 +38,9 @@ const MAX_CAPTURE_BYTES = 20_000_000;
 
 // Runs in the child: read the code from stdin, evaluate it as the REPL would, report on fd 3, then let the process
 // end when what the code started is done (timers, servers keep it alive until the timeout).
+// Its own names stay inside a function: the code runs in the global scope and may declare fs, util and so on itself.
 const RUNNER = String.raw`
+(() => {
 const repl = require('node:repl');
 const util = require('node:util');
 const fs = require('node:fs');
@@ -77,6 +79,7 @@ process.stdin.on('end', () => {
   } else process.on('uncaughtException', (e) => { if (done) { console.error('Uncaught', e); process.exitCode = 1; } else finish(e); });
   r.eval(code, r.context, 'snippet.js', finish);
 });
+})();
 `;
 
 export function createJavaScriptTool(opts: JavaScriptToolOptions = {}): Tool {
