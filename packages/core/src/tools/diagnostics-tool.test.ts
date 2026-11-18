@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryStore } from '../store/memory.ts';
 import { tempDir } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
-import { createDiagnosticsTool, parseEslint, parseMypy, parseNodeCheck, parsePyright, parseRuff, parseTsc } from './diagnostics-tool.ts';
+import { createDiagnosticsTool, eslintLinted, parseEslint, parseMypy, parseNodeCheck, parsePyright, parseRuff, parseTsc, pyrightAnalyzed, tscListed } from './diagnostics-tool.ts';
 import type { ToolContext } from './types.ts';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -61,6 +61,34 @@ describe('what each checker says', () => {
   });
 });
 
+describe('what the checkers looked at', () => {
+  it('tsc --listFiles: the absolute paths among the diagnostics', () => {
+    expect(tscListed("src/a.ts(1,7): error TS2322: x\nC:/p/node_modules/typescript/lib/lib.d.ts\nC:/p/src/a.ts\n")).toEqual(['C:/p/node_modules/typescript/lib/lib.d.ts', 'C:/p/src/a.ts']);
+  });
+  it('eslint: a file that came back only with “File ignored” was not linted', () => {
+    const out = JSON.stringify([
+      { filePath: 'D:/p/a.js', messages: [] },
+      { filePath: 'D:/p/out/b.js', messages: [{ severity: 1, message: 'File ignored because of a matching ignore pattern. Use "--no-ignore" to override.' }] },
+    ]);
+    expect(eslintLinted(out)).toEqual(['D:/p/a.js']);
+    expect(parseEslint(out)).toEqual([]);
+  });
+  it('pyright: how many files it analysed', () => {
+    expect(pyrightAnalyzed(JSON.stringify({ generalDiagnostics: [], summary: { filesAnalyzed: 0 } }))).toBe(0);
+    expect(pyrightAnalyzed('nothing')).toBeUndefined();
+  });
+});
+
+/** A stand-in checker: prints `out` (with $CWD replaced by where it runs, as the real one names files), exits `code`. */
+const standIn = (out: string, code: number) => `const o = ${JSON.stringify(out)}.split('$CWD').join(process.cwd().split(String.fromCharCode(92)).join('/'));\nconsole.log(o);\nprocess.exit(${code});\n`;
+
+async function install(root: string, name: 'typescript' | 'eslint', script: string) {
+  const bin = join(root, 'node_modules', name, 'bin');
+  await mkdir(bin, { recursive: true });
+  await writeFile(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: name === 'eslint' ? '9.9.9' : '5.5.5' }));
+  await writeFile(join(bin, name === 'eslint' ? 'eslint.js' : 'tsc'), script);
+}
+
 describe('get_diagnostics', () => {
   const tool = createDiagnosticsTool();
 
@@ -69,32 +97,94 @@ describe('get_diagnostics', () => {
     expect(tool.irreversible).toBeFalsy();
   });
 
-  it('runs the project’s own tsc and eslint (stand-ins here) and lists what they say, paths from the working folder', async () => {
-    await mkdir(join(dir, 'node_modules', 'typescript', 'bin'), { recursive: true });
-    await mkdir(join(dir, 'node_modules', 'eslint', 'bin'), { recursive: true });
+  it('runs the project’s own tsc and eslint, says which and where, and lists what they say', async () => {
+    await mkdir(join(dir, '.git'));
     await mkdir(join(dir, 'src'));
     await writeFile(join(dir, 'tsconfig.json'), '{}');
     await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [];');
     await writeFile(join(dir, 'src', 'a.ts'), 'const n: number = "x";\n');
     await writeFile(join(dir, 'src', 'b.js'), 'console.log(x);\n');
-    // the stand-ins print what the real ones would, and check what they were asked
-    await writeFile(join(dir, 'node_modules', 'typescript', 'bin', 'tsc'), "if (!process.argv.includes('--noEmit')) process.exit(9);\nconsole.log(\"src/a.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\");\nprocess.exit(2);\n");
-    await writeFile(
-      join(dir, 'node_modules', 'eslint', 'bin', 'eslint.js'),
-      `const path = require('path');\nconsole.log(JSON.stringify([{ filePath: path.join(process.cwd(), 'src', 'b.js'), messages: [{ line: 1, column: 13, severity: 2, message: "'x' is not defined.", ruleId: 'no-undef' }, { line: 1, column: 1, severity: 1, message: 'Unexpected console statement.', ruleId: 'no-console' }] }]));\nprocess.exit(1);\n`,
+    await install(dir, 'typescript', standIn("src/a.ts(1,7): error TS2322: Type 'string' is not assignable to type 'number'.\n$CWD/src/a.ts", 2));
+    await install(
+      dir,
+      'eslint',
+      standIn(JSON.stringify([{ filePath: '$CWD/eslint.config.js', messages: [] }, { filePath: '$CWD/src/b.js', messages: [{ line: 1, column: 13, severity: 2, message: "'x' is not defined.", ruleId: 'no-undef' }, { line: 1, column: 1, severity: 1, message: 'Unexpected console statement.', ruleId: 'no-console' }] }]), 1),
     );
     const r = await tool.execute({}, ctx());
     expect(r.isError).toBeFalsy();
     const lines = r.content.replace(/\\/g, '/').split('\n');
-    expect(lines[0]).toBe('2 error(s), 1 warning(s), checked with tsc (tsconfig.json), eslint');
+    expect(lines[0]).toBe('2 error(s), 1 warning(s)');
+    expect(lines[1]).toBe('Checkers: tsc 5.5.5 from node_modules/typescript with tsconfig.json; eslint 9.9.9 from node_modules/eslint with eslint.config.js');
     expect(lines).toContain("src/a.ts:1:7 error Type 'string' is not assignable to type 'number'. [TS2322] (tsc)");
     expect(lines).toContain("src/b.js:1:13 error 'x' is not defined. [no-undef] (eslint)");
-    const only = await tool.execute({ only_errors: true }, ctx());
-    expect(only.content).not.toContain('no-console');
+    expect(r.content).not.toContain('not checked');
+    expect((await tool.execute({ only_errors: true }, ctx())).content).not.toContain('no-console');
     // one file: only what is in it
     const one = await tool.execute({ path: 'src/a.ts' }, ctx());
     expect(one.content).toContain('TS2322');
     expect(one.content).not.toContain('no-undef');
+  });
+
+  it('working in a sub-folder of a repository: the checkers at the repository’s root are found', async () => {
+    await mkdir(join(dir, '.git'));
+    const app = join(dir, 'packages', 'app');
+    await mkdir(app, { recursive: true });
+    await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [];');
+    await writeFile(join(app, 'b.js'), 'console.log(x);\n');
+    await install(dir, 'eslint', standIn(JSON.stringify([{ filePath: '$CWD/packages/app/b.js', messages: [{ line: 1, column: 13, severity: 2, message: "'x' is not defined.", ruleId: 'no-undef' }] }]), 1));
+    const r = await tool.execute({}, { ...ctx(), cwd: app });
+    const text = r.content.replace(/\\/g, '/');
+    expect(text.split('\n')[1]).toBe('Checkers: eslint 9.9.9 from ../../node_modules/eslint with ../../eslint.config.js');
+    expect(text).toContain("b.js:1:13 error 'x' is not defined. [no-undef] (eslint)");
+  });
+
+  it('never above the repository’s root, and outside a repository never above the working folder', async () => {
+    // checkers in the folder above: another project's
+    await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [];');
+    await install(dir, 'eslint', standIn('[]', 0));
+    const proj = join(dir, 'proj');
+    await mkdir(join(proj, '.git'), { recursive: true });
+    await writeFile(join(proj, 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
+    const inRepo = await tool.execute({}, { ...ctx(), cwd: proj });
+    expect(inRepo.content.split('\n')[0]).toBe('1 error(s), 0 warning(s)');
+    expect(inRepo.content).not.toContain('Checkers:');
+    expect(inRepo.content).toMatch(/total\.js:\d+:\d+ error SyntaxError/);
+    const plain = join(dir, 'plain');
+    await mkdir(plain);
+    await writeFile(join(plain, 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
+    const outside = await tool.execute({}, { ...ctx(), cwd: plain });
+    expect(outside.content).not.toContain('Checkers:');
+    expect(outside.content).toContain('only checked that 1 file(s) parse');
+  });
+
+  it('files the checker’s configuration ignores: said so and only checked to parse, never counted as clean', async () => {
+    await mkdir(join(dir, '.git'));
+    await mkdir(join(dir, 'out'));
+    await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [{ ignores: ["out/"] }];');
+    await writeFile(join(dir, 'a.js'), 'const a = 1;\n');
+    await writeFile(join(dir, 'out', 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
+    // the folder: eslint leaves out/ out of its list; the file itself: it answers “File ignored”
+    await install(dir, 'eslint', standIn(JSON.stringify([{ filePath: '$CWD/a.js', messages: [] }, { filePath: '$CWD/eslint.config.js', messages: [] }]), 0));
+    const r = await tool.execute({}, ctx());
+    expect(r.content.split('\n')[0]).toBe('1 error(s), 0 warning(s)');
+    expect(r.content.replace(/\\/g, '/')).toContain('1 JavaScript file(s) not checked by eslint (ignored by its configuration or outside what it lints); only checked that they parse: out/total.js');
+    expect(r.content).toMatch(/total\.js:2:\d+ error SyntaxError/);
+    await install(dir, 'eslint', standIn(JSON.stringify([{ filePath: '$CWD/out/total.js', messages: [{ severity: 1, message: 'File ignored because of a matching ignore pattern.' }] }]), 0));
+    const one = await tool.execute({ path: 'out/total.js' }, ctx());
+    expect(one.content.split('\n')[0]).toBe('1 error(s), 0 warning(s)');
+    expect(one.content).toContain('not checked by eslint');
+  });
+
+  it('a .ts file no tsconfig includes is said so', async () => {
+    await mkdir(join(dir, '.git'));
+    await writeFile(join(dir, 'tsconfig.json'), '{"include":["src"]}');
+    await mkdir(join(dir, 'src'));
+    await writeFile(join(dir, 'src', 'a.ts'), 'export const a = 1;\n');
+    await writeFile(join(dir, 'loose.ts'), 'export const b = 2;\n');
+    await install(dir, 'typescript', standIn('$CWD/src/a.ts', 0));
+    const r = await tool.execute({}, ctx());
+    expect(r.content.split('\n')[0]).toBe('0 error(s), 0 warning(s)');
+    expect(r.content).toContain('1 .ts file(s) not checked by tsc (not included by tsconfig.json): loose.ts');
   });
 
   it('without a checker: only checks that JavaScript parses, and says so; TypeScript not checked', async () => {
@@ -108,19 +198,6 @@ describe('get_diagnostics', () => {
     expect(r.content).toContain('1 .ts file(s) not checked');
   });
 
-  it('a checker installed above the working folder is not used (it belongs to another project)', async () => {
-    await mkdir(join(dir, 'node_modules', 'eslint', 'bin'), { recursive: true });
-    await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [];');
-    await writeFile(join(dir, 'node_modules', 'eslint', 'bin', 'eslint.js'), 'console.log("[]");');
-    const proj = join(dir, 'proj');
-    await mkdir(proj);
-    await writeFile(join(proj, 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
-    const r = await tool.execute({}, { ...ctx(), cwd: proj });
-    expect(r.content.split('\n')[0]).toBe('1 error(s), 0 warning(s)');
-    expect(r.content).toContain('only checked that 1 file(s) parse');
-    expect(r.content).toMatch(/total\.js:\d+:\d+ error SyntaxError/);
-  });
-
   it('nothing to check, and a path that is not there', async () => {
     await writeFile(join(dir, 'notes.md'), '# x');
     expect((await tool.execute({}, ctx())).content).toBe('No TypeScript, JavaScript or Python files at ..');
@@ -132,7 +209,7 @@ describe('get_diagnostics', () => {
     await writeFile(join(dir, 'broken.py'), 'def f(:\n    pass\n');
     const r = await tool.execute({}, ctx());
     if (r.content.includes('there is no Python on this computer')) return;
-    if (/checked with .*(pyright|mypy|ruff)/.test(r.content)) return; // this computer has a checker on PATH
+    if (r.content.includes('Checkers:')) return; // this computer has a checker on PATH
     expect(r.content).toMatch(/broken\.py:1:\d+ error SyntaxError/);
     expect(r.content).toContain('only checked that 2 file(s) parse');
   });

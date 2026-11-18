@@ -7,11 +7,15 @@
 //   a configuration), with the app's Node;
 // - Python: pyright (its own or the npm one), else mypy, in the project's .venv / venv, else the Python run_command
 //   finds; and ruff when it is there.
-// With none of them it checks only that the files parse (node --check, Python's compile) and says so; it installs
-// nothing. Like run_command: in the working folder, the same environment, a timeout, killed on interrupt. It changes
-// no files, so it is not confirmed.
+// Checkers are looked for from the target up to the root of the repository the working folder is in (a repository's
+// checkers sit at its root while one works in a sub-folder), never above it; outside a repository only up to the
+// working folder. The result names each checker used and where it was found. A file a checker left out (its
+// configuration ignores it: eslint's "File ignored", a file no tsconfig includes, pyright / mypy / ruff excluding it)
+// is said to be so, never counted as clean: such files, and all files when there is no checker, are only checked to
+// parse (node --check, Python's compile), and the result says so. It installs nothing. Like run_command: in the
+// working folder, the same environment, a timeout, killed on interrupt. It changes no files, so it is not confirmed.
 import { spawn } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import type { Tool } from './types.ts';
@@ -49,11 +53,7 @@ const MAX_FILES = 2000;
 /** JavaScript files checked one by one with node --check when there is no checker. */
 const MAX_SYNTAX_FILES = 300;
 
-/**
- * What `test` finds in the first folder from `start` up, not above `stop` (the working folder, when `start` is in it):
- * a checker installed above the folder the user works in belongs to another project, which may not even look at it
- * (its eslint ignoring the folder said nothing and counted as checked).
- */
+/** What `test` finds in the first folder from `start` up, not above `stop` (when given). */
 function findUp(start: string, test: (dir: string) => string | undefined, stop?: string): string | undefined {
   let dir = start;
   for (;;) {
@@ -183,7 +183,7 @@ export function parseEslint(out: string): Diagnostic[] {
     return [];
   }
   return files.flatMap((f) =>
-    f.messages.map((m) => ({ file: f.filePath, line: m.line ?? 1, column: m.column ?? 1, severity: m.severity === 2 ? ('error' as const) : ('warning' as const), message: m.message, ...(m.ruleId ? { code: m.ruleId } : {}), source: 'eslint' })),
+    f.messages.filter((m) => !IGNORED_MESSAGE.test(m.message)).map((m) => ({ file: f.filePath, line: m.line ?? 1, column: m.column ?? 1, severity: m.severity === 2 ? ('error' as const) : ('warning' as const), message: m.message, ...(m.ruleId ? { code: m.ruleId } : {}), source: 'eslint' })),
   );
 }
 
@@ -270,6 +270,61 @@ function parseSyntax(out: string, source: string): Diagnostic[] {
 
 // --------------------------------------------------------------------------------------------------------------------
 
+/** The root of the git repository a folder is in (the folder with .git, a folder or a worktree's file), or undefined. */
+function repoRoot(dir: string): string | undefined {
+  return findUp(dir, (d) => (exists(join(d, '.git')) ? d : undefined));
+}
+
+/** A path as a key that compares the same however it was written (tsc writes / on Windows, cases differ). */
+const key = (p: string) => {
+  const r = resolve(p);
+  return process.platform === 'win32' ? r.toLowerCase() : r;
+};
+
+/** The version in a package folder's package.json ('' when it cannot be read). */
+function pkgVersion(dir: string): string {
+  try {
+    return String((JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { version?: unknown }).version ?? '');
+  } catch {
+    return '';
+  }
+}
+
+/** tsc --listFiles: the files of the program, one absolute path a line among the diagnostics. */
+export function tscListed(out: string): string[] {
+  return out
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && isAbsolute(l) && !/\(\d+,\d+\): /.test(l));
+}
+
+/** eslint --format json: the files it linted (a file its configuration ignores comes back with only that warning). */
+export function eslintLinted(out: string): string[] {
+  const start = out.indexOf('[');
+  if (start < 0) return [];
+  try {
+    const files = JSON.parse(out.slice(start)) as { filePath: string; messages: { message: string }[] }[];
+    return files.filter((f) => !f.messages.some((m) => IGNORED_MESSAGE.test(m.message))).map((f) => f.filePath);
+  } catch {
+    return [];
+  }
+}
+
+/** eslint's warning for a file it was given but its configuration ignores. */
+const IGNORED_MESSAGE = /^File ignored/i;
+
+/** pyright --outputjson: how many files it analysed (undefined when it does not say). */
+export function pyrightAnalyzed(out: string): number | undefined {
+  const start = out.indexOf('{');
+  if (start < 0) return undefined;
+  try {
+    const n = (JSON.parse(out.slice(start)) as { summary?: { filesAnalyzed?: number } }).summary?.filesAnalyzed;
+    return typeof n === 'number' ? n : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
   const defTimeout = opts.defaultTimeoutMs ?? 120_000;
   const maxTimeout = opts.maxTimeoutMs ?? 600_000;
@@ -282,9 +337,9 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
     spec: {
       name: 'get_diagnostics',
       description:
-        'Get the current errors and type errors of a file or a whole project from the checkers the project has installed (in the working folder, or between the file and it): ' +
+        "Get the current errors and type errors of a file or a whole project from the checkers the project has installed (looked for up to the root of the working folder's repository): " +
         'TypeScript / JavaScript with its tsc (nearest tsconfig.json) and eslint, Python with pyright or mypy and ruff (its .venv first). ' +
-        'Without a checker it only checks that the files parse, and says so. ' +
+        'It says which checkers it used and where it found them; files a checker left out (its configuration ignores them) and files without a checker are only checked to parse, and it says so. ' +
         `Default timeout ${defTimeout / 1000} s, max ${maxTimeout / 1000} s.`,
       inputSchema: {
         type: 'object',
@@ -307,8 +362,11 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
       }
       const timeoutMs = Math.min(maxTimeout, Math.max(1000, Number(input.timeout_seconds ?? defTimeout / 1000) * 1000 || defTimeout));
       const folder = isFile ? dirname(target) : target;
-      // checkers are looked for from the target up to the working folder (all the way up for a target outside it)
-      const stop = within(folder, ctx.cwd) ? ctx.cwd : undefined;
+      // Checkers are looked for from the target up to the root of the repository the working folder is in (the
+      // folder with .git), not above it; outside a repository, up to the working folder. A target outside the working
+      // folder: the same from the target.
+      const base = within(folder, ctx.cwd) ? ctx.cwd : folder;
+      const stop = repoRoot(base) ?? base;
       const files = isFile
         ? (() => {
             const ext = extname(target).toLowerCase();
@@ -320,6 +378,12 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
       const diags: Diagnostic[] = [];
       const used: string[] = [];
       const notes: string[] = [];
+      const shown = (p: string) => {
+        const r = relative(ctx.cwd, p);
+        return r === '' ? '.' : r.startsWith('..') && !within(p, stop) ? p : r;
+      };
+      const some = (list: string[]) => `${list.slice(0, 5).map(shown).join(', ')}${list.length > 5 ? ` and ${list.length - 5} more` : ''}`;
+      const ran = (r: Ran) => !r.error && !r.timedOut && !r.aborted;
       const run = async (label: string, file: string, args: string[], cwd: string, envFor: Record<string, string>, stdin?: string) => {
         const r = await runProcess(file, args, cwd, envFor, timeoutMs, ctx.signal, stdin);
         if (r.error) notes.push(`${label} could not start: ${r.error}`);
@@ -327,54 +391,61 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
         else if (r.aborted) notes.push(`${label} was stopped`);
         return r;
       };
-      const inTarget = (d: Diagnostic) => (isFile ? resolve(d.file).toLowerCase() === resolve(target).toLowerCase() : true);
+      const inTarget = (d: Diagnostic) => (isFile ? samePath(d.file, target) : true);
+      const syntaxCheck = async (list: string[]) => {
+        const some2 = list.slice(0, MAX_SYNTAX_FILES);
+        let next = 0;
+        const worker = async () => {
+          while (next < some2.length && !ctx.signal.aborted) {
+            const f = some2[next++]!;
+            const r = await runProcess(node.exe, ['--check', f], folder, nodeEnv, timeoutMs, ctx.signal);
+            const d = r.code === 0 ? undefined : parseNodeCheck(r.out, f);
+            if (d) diags.push(d);
+          }
+        };
+        await Promise.all(Array.from({ length: 6 }, worker));
+        return list.length > some2.length ? ` (the first ${some2.length} of ${list.length})` : '';
+      };
 
       // TypeScript / JavaScript
       if (files.ts.length || files.js.length) {
-        const tsc = findUp(folder, (d) => (exists(join(d, 'node_modules', 'typescript', 'bin', 'tsc')) ? join(d, 'node_modules', 'typescript', 'bin', 'tsc') : undefined), stop);
+        const tsc = findUp(folder, (d) => (exists(join(d, 'node_modules', 'typescript', 'bin', 'tsc')) ? join(d, 'node_modules', 'typescript') : undefined), stop);
         const tsconfig = findUp(folder, (d) => (exists(join(d, 'tsconfig.json')) ? join(d, 'tsconfig.json') : undefined), stop);
-        let typed = false;
+        // what each checker looked at (when it ran), to tell the files it left out
+        let tscSaw: Set<string> | undefined;
+        let eslintSaw: Set<string> | undefined;
         if (tsc && tsconfig && (files.ts.length || isFile)) {
           const cwd = dirname(tsconfig);
-          const r = await run('tsc', node.exe, [tsc, '--noEmit', '--pretty', 'false', '-p', tsconfig], cwd, nodeEnv);
-          if (!r.error && !r.timedOut && !r.aborted) {
+          const r = await run('tsc', node.exe, [join(tsc, 'bin', 'tsc'), '--noEmit', '--pretty', 'false', '--listFiles', '-p', tsconfig], cwd, nodeEnv);
+          if (ran(r)) {
             diags.push(...parseTsc(r.out, cwd).filter(inTarget));
-            used.push(`tsc (${relative(ctx.cwd, tsconfig) || 'tsconfig.json'})`);
-            typed = true;
+            tscSaw = new Set(tscListed(r.out).map(key));
+            used.push(`tsc ${pkgVersion(tsc)} from ${shown(tsc)} with ${shown(tsconfig)}`);
           }
         }
-        const eslint = findUp(folder, (d) => (exists(join(d, 'node_modules', 'eslint', 'bin', 'eslint.js')) ? join(d, 'node_modules', 'eslint', 'bin', 'eslint.js') : undefined), stop);
-        const eslintRoot = eslint ? dirname(dirname(dirname(dirname(eslint)))) : undefined;
-        const eslintConfig = eslintRoot ? findUp(folder, (d) => ESLINT_CONFIGS.map((n) => join(d, n)).find(exists), stop) : undefined;
-        let linted = false;
-        if (eslint && eslintConfig && eslintRoot) {
-          const r = await run('eslint', node.exe, [eslint, '--format', 'json', target], eslintRoot, nodeEnv);
-          if (!r.error && !r.timedOut && !r.aborted) {
+        const eslint = findUp(folder, (d) => (exists(join(d, 'node_modules', 'eslint', 'bin', 'eslint.js')) ? join(d, 'node_modules', 'eslint') : undefined), stop);
+        const eslintConfig = eslint ? findUp(folder, (d) => ESLINT_CONFIGS.map((n) => join(d, n)).find(exists), stop) : undefined;
+        if (eslint && eslintConfig) {
+          const r = await run('eslint', node.exe, [join(eslint, 'bin', 'eslint.js'), '--format', 'json', target], dirname(eslintConfig), nodeEnv);
+          if (ran(r)) {
             diags.push(...parseEslint(r.out).filter(inTarget));
-            used.push('eslint');
-            linted = true;
+            eslintSaw = new Set(eslintLinted(r.out).map(key));
+            used.push(`eslint ${pkgVersion(eslint)} from ${shown(eslint)} with ${shown(eslintConfig)}`);
           }
         }
-        if (!typed && !linted) {
-          const syntax = files.js.slice(0, MAX_SYNTAX_FILES);
-          if (syntax.length) {
-            let next = 0;
-            const worker = async () => {
-              while (next < syntax.length && !ctx.signal.aborted) {
-                const f = syntax[next++]!;
-                const r = await runProcess(node.exe, ['--check', f], folder, nodeEnv, timeoutMs, ctx.signal);
-                const d = r.code === 0 ? undefined : parseNodeCheck(r.out, f);
-                if (d) diags.push(d);
-              }
-            };
-            await Promise.all(Array.from({ length: 6 }, worker));
-            notes.push(
-              `JavaScript: the project has no typescript or eslint installed; only checked that ${syntax.length} file(s) parse` +
-                (files.js.length > syntax.length ? ` (the first ${syntax.length} of ${files.js.length})` : ''),
-            );
+        const tsLeft = files.ts.filter((f) => !tscSaw?.has(key(f)));
+        const jsLeft = files.js.filter((f) => !tscSaw?.has(key(f)) && !eslintSaw?.has(key(f)));
+        if (!tscSaw && !eslintSaw) {
+          if (files.js.length) notes.push(`JavaScript: the project has no typescript or eslint installed; only checked that ${files.js.length} file(s) parse${await syntaxCheck(files.js)}`);
+          if (files.ts.length) notes.push(`TypeScript: the project has no typescript installed (node_modules/typescript) or no tsconfig.json; ${files.ts.length} .ts file(s) not checked: ${some(files.ts)}`);
+        } else {
+          if (jsLeft.length) {
+            const by = [eslintSaw ? 'eslint (ignored by its configuration or outside what it lints)' : '', tscSaw ? `tsc (not included by ${shown(tsconfig!)})` : ''].filter(Boolean).join(' or ');
+            const cut = await syntaxCheck(jsLeft);
+            notes.push(`${jsLeft.length} JavaScript file(s) not checked by ${by}; only checked that they parse${cut}: ${some(jsLeft)}`);
           }
-          if (files.ts.length) notes.push(`TypeScript: the project has no typescript installed (node_modules/typescript) or no tsconfig.json; ${files.ts.length} .ts file(s) not checked`);
-        } else if (!typed && files.ts.length) notes.push('TypeScript: no tsc with a tsconfig.json for these files; type errors not checked');
+          if (tsLeft.length) notes.push(tscSaw ? `${tsLeft.length} .ts file(s) not checked by tsc (not included by ${shown(tsconfig!)}): ${some(tsLeft)}` : `TypeScript: no tsc with a tsconfig.json for these files; ${tsLeft.length} .ts file(s) not checked for type errors`);
+        }
       }
 
       // Python
@@ -391,25 +462,33 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
         const root = findUp(folder, (d) => ['pyproject.toml', 'setup.cfg', 'setup.py', 'pyrightconfig.json', 'mypy.ini'].map((n) => join(d, n)).find(exists), stop);
         const cwd = root ? dirname(root) : folder;
         const pyEnv = venvBin ? { ...env, PATH: `${venvBin}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? env.Path ?? ''}` } : env;
+        // a checker that ran but left the files out (its configuration excludes them) is said so, not counted as clean
+        const excluded: string[] = [];
         let typed = false;
         const pyright = exe('pyright');
         const npmPyright = findUp(folder, (d) => (exists(join(d, 'node_modules', 'pyright', 'index.js')) ? join(d, 'node_modules', 'pyright', 'index.js') : undefined), stop);
         if (pyright || npmPyright) {
           const r = pyright ? await run('pyright', pyright, ['--outputjson', target], cwd, pyEnv) : await run('pyright', node.exe, [npmPyright!, '--outputjson', target], cwd, { ...nodeEnv, ...(venvBin ? { PATH: pyEnv.PATH! } : {}) });
-          if (!r.error && !r.timedOut && !r.aborted) {
-            diags.push(...parsePyright(r.out).filter(inTarget));
-            used.push('pyright');
-            typed = true;
+          if (ran(r)) {
+            if (pyrightAnalyzed(r.out) === 0) excluded.push('pyright');
+            else {
+              diags.push(...parsePyright(r.out).filter(inTarget));
+              used.push(`pyright from ${shown(pyright ?? dirname(npmPyright!))}`);
+              typed = true;
+            }
           }
         }
         if (!typed && python) {
           const mypy = exe('mypy') ? true : (await runProcess(python, ['-c', 'import mypy'], cwd, pyEnv, 20_000, ctx.signal)).code === 0;
           if (mypy) {
             const r = await run('mypy', python, ['-m', 'mypy', '--no-color-output', '--no-error-summary', '--show-column-numbers', '--hide-error-context', target], cwd, pyEnv);
-            if (!r.error && !r.timedOut && !r.aborted) {
-              diags.push(...parseMypy(r.out, cwd).filter(inTarget));
-              used.push('mypy');
-              typed = true;
+            if (ran(r)) {
+              if (/There are no \.py\[i\] files|No \.py\[i\] files|is excluded/i.test(r.out)) excluded.push('mypy');
+              else {
+                diags.push(...parseMypy(r.out, cwd).filter(inTarget));
+                used.push(`mypy with ${shown(python)}`);
+                typed = true;
+              }
             }
           }
         }
@@ -417,36 +496,37 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
         const ruff = exe('ruff');
         if (ruff) {
           const r = await run('ruff', ruff, ['check', '--output-format', 'json', '--no-fix', target], cwd, pyEnv);
-          if (!r.error && !r.timedOut && !r.aborted) {
-            diags.push(...parseRuff(r.out).filter(inTarget));
-            used.push('ruff');
-            linted = true;
+          if (ran(r)) {
+            if (/No Python files found/i.test(r.out)) excluded.push('ruff');
+            else {
+              diags.push(...parseRuff(r.out).filter(inTarget));
+              used.push(`ruff from ${shown(ruff)}`);
+              linted = true;
+            }
           }
         }
+        if (excluded.length) notes.push(`Python: not checked by ${excluded.join(', ')} (excluded by its configuration)`);
         if (!typed && !linted) {
           if (python) {
             const r = await run('python', python, ['-c', PY_SYNTAX], cwd, pyEnv, JSON.stringify(files.py));
             diags.push(...parseSyntax(r.out, 'syntax'));
-            notes.push(`Python: the project has no pyright, mypy or ruff installed; only checked that ${files.py.length} file(s) parse`);
+            notes.push(`Python: ${excluded.length ? 'no checker looked at these files' : 'the project has no pyright, mypy or ruff installed'}; only checked that ${files.py.length} file(s) parse`);
           } else notes.push(`Python: there is no Python on this computer; ${files.py.length} .py file(s) not checked`);
-        } else if (!typed) notes.push('Python: no pyright or mypy installed; type errors not checked');
+        } else if (!typed) notes.push('Python: no pyright or mypy for these files; type errors not checked');
       }
 
       if (!files.js.length && !files.ts.length && !files.py.length) {
         return { content: `No TypeScript, JavaScript or Python files at ${asked}.` };
       }
-      const shown = input.only_errors === true ? diags.filter((d) => d.severity === 'error') : diags;
+      const listed = input.only_errors === true ? diags.filter((d) => d.severity === 'error') : diags;
       const errors = diags.filter((d) => d.severity === 'error').length;
       const warnings = diags.length - errors;
-      const rel = (f: string) => {
-        const r = relative(ctx.cwd, f);
-        return r.startsWith('..') || isAbsolute(r) ? f : r;
-      };
-      const lines = shown.slice(0, maxShown).map((d) => `${rel(d.file)}:${d.line}:${d.column} ${d.severity} ${d.message}${d.code ? ` [${d.code}]` : ''} (${d.source})`);
-      const head = `${errors} error(s), ${warnings} warning(s)${used.length ? `, checked with ${used.join(', ')}` : ''}`;
-      const more = shown.length > maxShown ? `\n…and ${shown.length - maxShown} more` : '';
+      const lines = listed.slice(0, maxShown).map((d) => `${shown(d.file)}:${d.line}:${d.column} ${d.severity} ${d.message}${d.code ? ` [${d.code}]` : ''} (${d.source})`);
+      const head = `${errors} error(s), ${warnings} warning(s)`;
+      const checkers = used.length ? `\nCheckers: ${used.join('; ')}` : '';
+      const more = listed.length > maxShown ? `\n…and ${listed.length - maxShown} more` : '';
       const said = notes.length ? `\n${notes.map((n) => `[${n}]`).join('\n')}` : '';
-      return { content: `${head}${lines.length ? `\n${lines.join('\n')}` : ''}${more}${said}` };
+      return { content: `${head}${checkers}${lines.length ? `\n${lines.join('\n')}` : ''}${more}${said}` };
     },
   };
 }
