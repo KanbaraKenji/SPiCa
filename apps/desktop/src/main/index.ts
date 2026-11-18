@@ -440,6 +440,14 @@ const backend: AgentBackend =
           'browser.click': (sessionId: string, args: Record<string, unknown>) => browserAgent.click(sessionId, args),
           'browser.type': (sessionId: string, args: Record<string, unknown>) => browserAgent.type(sessionId, args),
           'browser.press': (sessionId: string, args: Record<string, unknown>) => browserAgent.press(sessionId, args),
+          'browser.find': (sessionId: string, args: Record<string, unknown>) => browserAgent.find(sessionId, args),
+          'browser.select': (sessionId: string, args: Record<string, unknown>) => browserAgent.select(sessionId, args),
+          'browser.hover': (sessionId: string, args: Record<string, unknown>) => browserAgent.hover(sessionId, args),
+          'browser.drag': (sessionId: string, args: Record<string, unknown>) => browserAgent.drag(sessionId, args),
+          'browser.upload': (sessionId: string, args: Record<string, unknown>) => browserAgent.upload(sessionId, args),
+          'browser.javascript': (sessionId: string, args: Record<string, unknown>) => browserAgent.javascript(sessionId, args),
+          'browser.console': (sessionId: string, args: Record<string, unknown>) => browserAgent.console(sessionId, args),
+          'browser.network': (sessionId: string, args: Record<string, unknown>) => browserAgent.network(sessionId, args),
           'models.setDefault': (ref: ModelRef) => {
             providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
             applyProviders();

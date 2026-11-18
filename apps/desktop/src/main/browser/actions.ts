@@ -35,13 +35,20 @@ export interface ElementFacts {
   y: number;
 }
 
-export type ActionTool = 'browser_click' | 'browser_type' | 'browser_press';
+export type ActionTool = 'browser_click' | 'browser_type' | 'browser_press' | 'browser_select' | 'browser_hover' | 'browser_drag' | 'browser_file_upload' | 'browser_javascript';
+
+/** The tools judged before they run (their element looked at first, except a key and a script). */
+export const ACTION_TOOLS: readonly ActionTool[] = ['browser_click', 'browser_type', 'browser_press', 'browser_select', 'browser_hover', 'browser_drag', 'browser_file_upload', 'browser_javascript'];
 
 export type ActionVerdict = { action: 'allow' } | { action: 'confirm'; reason: string } | { action: 'deny'; reason: string };
 
-/** Runs in the isolated world: the element with that number (browser/snapshot.ts kept the list), scrolled into view. */
-export function inspectScript(ref: number): string {
+/**
+ * Runs in the isolated world: the element with that number (browser/snapshot.ts kept the list), scrolled into view.
+ * `doc`: the document it was numbered in; another one there now (the page went on), it is not found.
+ */
+export function inspectScript(ref: number, doc?: string): string {
   return `(() => {
+    if (${JSON.stringify(doc ?? '')} && window.__spicaDoc !== ${JSON.stringify(doc ?? '')}) return { found: false, page: location.href };
     const el = (window.__spicaRefs || [])[${Math.floor(ref)} - 1];
     if (!el || !el.isConnected) return { found: false, page: location.href };
     el.scrollIntoView({ block: 'center', inline: 'center' });
@@ -122,13 +129,24 @@ export function shortSite(site: string): string {
 }
 
 /** Whether to do it, ask first, or leave it to the person. The question's words are the confirmation card's. */
-export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: unknown; submit?: unknown; text?: unknown } = {}): ActionVerdict {
+export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: unknown; submit?: unknown; text?: unknown; paths?: unknown } = {}): ActionVerdict {
+  // a script in the page: it can do anything the page can (its sign-ins included), so always asked
+  if (tool === 'browser_javascript') return { action: 'confirm', reason: twoLines(t('运行脚本'), host(f?.page ?? '')) };
   if (tool === 'browser_press') {
     // Enter in a form's field sends the form
     if (String(input.key ?? '').toLowerCase() === 'enter' && f?.found && f.form) return { action: 'confirm', reason: twoLines(t('提交表单'), host(f.form.action)) };
     return { action: 'allow' };
   }
   if (!f || !f.found) return { action: 'allow' }; // the tool says it is not there
+  if (tool === 'browser_hover' || tool === 'browser_drag') return { action: 'allow' };
+  if (tool === 'browser_file_upload') {
+    const names = (Array.isArray(input.paths) ? input.paths : []).map((p) => String(p).split(/[\/]/).pop() ?? '').filter(Boolean);
+    return { action: 'confirm', reason: twoLines(t('上传文件'), host(f.page), names.map(quoted).join('')) };
+  }
+  if (tool === 'browser_select') {
+    if (sensitiveField(f)) return { action: 'deny', reason: 'card or code field: the person fills this in themselves in the panel; ask them to do it' };
+    return { action: 'allow' };
+  }
   if (tool === 'browser_type') {
     if (sensitiveField(f)) return { action: 'deny', reason: 'password, card number or one-time code field: the person types this themselves in the panel; ask them to do it' };
     if (input.submit === true) {
@@ -137,7 +155,8 @@ export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: u
     }
     return { action: 'allow' };
   }
-  // a click
+  // a click; a file box is not clicked (it would open the system's file dialog): its files are set
+  if (f.tag === 'input' && f.type === 'file') return { action: 'deny', reason: 'that is a file box: set its files with browser_file_upload (its number and the paths) instead of clicking it' };
   const submit = (f.tag === 'button' && f.type === 'submit' && !!f.form) || (f.tag === 'input' && (f.type === 'submit' || f.type === 'image'));
   if (submit) return { action: 'confirm', reason: twoLines(t('提交表单'), host(f.form?.action ?? f.page), quoted(f.name)) };
   if (f.download) return { action: 'confirm', reason: twoLines(t('下载'), host(f.href ?? f.page), quoted(f.name)) };
