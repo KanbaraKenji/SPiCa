@@ -278,8 +278,9 @@ export class McpStdioClient {
         clearTimeout(timer);
         f();
       };
+      // it started and then quit before answering anything (a program that never started is not that)
       const fail = (err: unknown): void =>
-        finish(() => reject(!answered && !this.running ? Object.assign(err instanceof Error ? err : new Error(String(err)), { diedOnProbe: true }) : err));
+        finish(() => reject(!answered && !this.running && this.#child?.pid !== undefined ? Object.assign(err instanceof Error ? err : new Error(String(err)), { diedOnProbe: true }) : err));
       const startInit = (): void => {
         if (init !== 'none') return;
         init = 'pending';

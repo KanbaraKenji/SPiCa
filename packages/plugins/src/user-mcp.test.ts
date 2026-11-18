@@ -114,6 +114,8 @@ describe('services the person adds', () => {
     expect(broken).toMatchObject({ name: 'broken', status: 'failed' });
     expect(broken!.lastError).toBeTruthy();
     expect(broken!.problem).toEqual({ kind: 'not-found', command: 'spica-no-such-program-xyz' });
+    // a program that never started did not quit on the version probe: tried once
+    expect(broken!.logTail.join(' ')).not.toContain('server/discover');
     expect(ok).toMatchObject({ name: 'notes', status: 'running' });
   });
 
@@ -175,6 +177,9 @@ describe.runIf(process.platform === 'win32')('npx and uvx: nothing downloaded un
     expect(s.states()[0]).toMatchObject({ status: 'needs-download', download: { runner: 'npx', package: '@example/files', python: false, version: '1.4.0', bytes: 52_000 } });
     const { existsSync } = await import('node:fs');
     expect(existsSync(marker)).toBe(false);
+    // waiting is not a crash: never restarted meanwhile
+    await new Promise((r) => setTimeout(r, 800));
+    expect(events.filter((e) => e.type === 'user-mcp.status').map((e) => (e as { status: string }).status)).not.toContain('restarting');
     events.length = 0;
     await s.download('notes');
     expect(events.map((e) => e.type === 'user-mcp.status' && e.status)).toEqual(['downloading', 'running']);

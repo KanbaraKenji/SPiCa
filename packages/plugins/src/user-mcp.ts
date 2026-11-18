@@ -88,6 +88,8 @@ interface Running extends SupervisedRun {
   download?: 'needed' | 'allowed';
   /** Left stopped after crashing again and again (how many times, in how many seconds). */
   crashLoop?: { count: number; seconds: number };
+  /** A start (#start) is under way: its process ending is that start failing, not a crash to restart. */
+  starting?: boolean;
   /** npx: what the registry said about the package (looked up once while it waits). */
   npm?: { version: string; bytes?: number } | null;
 }
@@ -231,6 +233,15 @@ export class UserMcpServers {
   /** Start it; one that quit on the version probe is started once more with the handshake only. Never throws. */
   async #start(run: Running): Promise<void> {
     delete run.crashLoop;
+    run.starting = true;
+    try {
+      await this.#tryStart(run);
+    } finally {
+      run.starting = false;
+    }
+  }
+
+  async #tryStart(run: Running): Promise<void> {
     try {
       await startServer(run, this.#supervision(run));
       if (run.download === 'allowed') delete run.download;
@@ -336,7 +347,8 @@ export class UserMcpServers {
         this.#emit({ type: 'user-mcp.status', name, status: this.#status(run, status), ...(message ? { message: this.#scrub(run, message) } : {}) });
       },
       log: (line) => this.#log(run, `[spica] ${line}`),
-      alive: () => this.#runs.get(name) === run,
+      // not while a start is under way (its failure is said by the start) or while it waits for a download
+      alive: () => this.#runs.get(name) === run && !run.starting && run.download !== 'needed',
       serial: (fn) => this.#serial(fn),
       gaveUp: (message) => this.#emit({ type: 'user-mcp.error', name, message: `「${name}」${this.#scrub(run, message)}` }),
       crashMessage: (count, windowS) => {
