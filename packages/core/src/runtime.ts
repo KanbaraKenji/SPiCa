@@ -1424,7 +1424,7 @@ export class Runtime implements RuntimeInternals {
   async connectMcp(
     config: McpServerConfig,
     opts: { source?: string } = {},
-  ): Promise<{ tools: string[]; source: string; disconnect: () => Promise<void> }> {
+  ): Promise<{ tools: string[]; source: string; protocolVersion?: string; disconnect: () => Promise<void> }> {
     if (this.#mcp.has(config.name)) throw new Error(`MCP server "${config.name}" is already connected`);
     // a plugin allowed to use the user's models: its sampling requests are answered here
     const grant = config.sampling;
@@ -1436,7 +1436,7 @@ export class Runtime implements RuntimeInternals {
       return h.disconnect();
     };
     this.#mcp.set(config.name, { client: h.client, source: h.source, disconnect });
-    return { tools: h.tools, source: h.source, disconnect };
+    return { tools: h.tools, source: h.source, ...(h.client.protocolVersion ? { protocolVersion: h.client.protocolVersion } : {}), disconnect };
   }
 
   /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
