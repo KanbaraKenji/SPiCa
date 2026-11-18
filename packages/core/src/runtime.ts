@@ -16,6 +16,7 @@ import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { CommandJobs, createCommandJobTools } from './tools/background-commands.ts';
 import { createJavaScriptTool } from './tools/javascript-tool.ts';
+import { createDiagnosticsTool } from './tools/diagnostics-tool.ts';
 import { createPythonTool, type PythonToolOptions } from './tools/python-tool.ts';
 import { envBinDir, envPackagesOnDisk, pythonEnvStatus } from './python-env.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
@@ -405,6 +406,11 @@ export class Runtime implements RuntimeInternals {
       ...(this.#jobs ? createCommandJobTools(this.#jobs) : []),
       createJavaScriptTool({
         ...(opts.spillDir ? { spillDir: opts.spillDir } : {}),
+        ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}),
+        ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}),
+        runtimes: () => this.#runtimes,
+      }),
+      createDiagnosticsTool({
         ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}),
         ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}),
         runtimes: () => this.#runtimes,

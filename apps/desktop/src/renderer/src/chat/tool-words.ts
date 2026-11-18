@@ -79,6 +79,10 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return c.summary ? { verb: 'Ran', ...cut(c.summary, 80) } : { verb: 'Ran', object: 'JavaScript' };
     case 'command_output':
       return { verb: 'Checked', object: 'a background command' };
+    case 'get_diagnostics': {
+      const path = arg(c, 'path');
+      return { verb: 'Checked', object: path && path !== '.' ? `${baseName(path)} for errors` : 'the project for errors', ...(path ? { full: path } : {}) };
+    }
     case 'stop_command':
       return { verb: 'Stopped', object: 'a background command' };
     case 'read_file':
@@ -262,6 +266,8 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'ran-js', say: () => 'ran JavaScript' };
     case 'command_output':
       return { key: 'checked-command', say: () => 'checked background commands' };
+    case 'get_diagnostics':
+      return { key: 'checked-errors', say: () => 'checked for errors' };
     case 'stop_command':
       return { key: 'stopped-command', say: (n) => `stopped ${many('a background command', n, 'background commands')}` };
     case 'read_file':

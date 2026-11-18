@@ -14,6 +14,7 @@ const LABELS: Record<string, string> = {
   run_javascript: N_('运行 JavaScript'),
   command_output: N_('查看后台命令'),
   stop_command: N_('停止后台命令'),
+  get_diagnostics: N_('检查代码错误'),
   web_fetch: N_('打开网页'),
   web_search: N_('网页搜索'),
   browser_open: N_('在内置浏览器打开网页'),
