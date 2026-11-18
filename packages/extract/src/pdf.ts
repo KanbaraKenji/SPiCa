@@ -168,7 +168,7 @@ export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars:
         if (cap === 0) lines.push('The current model does not take images, so these pages cannot be shown as pictures.');
         else if (drawn.failed) lines.push(`They could not be drawn as pictures: ${drawn.failed}.`);
         else {
-          if (drawnPages.length > 0) lines.push(`Pages ${formatRanges(drawnPages)} follow as pictures.`);
+          // which drawn pages are sent is said by the reader (the core), after the text
           if (notDrawn.length > 0) {
             lines.push(
               `Not drawn (at most ${cap} pictures per call): pages ${formatRanges(notDrawn)}. Call read_file again with pages="${formatRanges(notDrawn.slice(0, cap)).replace(/ /g, '')}" to see them.`,

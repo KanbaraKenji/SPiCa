@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { decodePng, encodePng, encodePngCompact } from '../images.ts';
+import { decodeBmp, decodePng, encodePng, encodePngCompact } from '../images.ts';
 import { MemoryStore } from '../store/memory.ts';
 import { tempDir } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
@@ -89,6 +89,49 @@ describe('read_file on a picture', () => {
     expect(asked).toEqual([join(dir, 'photo.jpg')]);
     expect(r.images![0]).toMatchObject({ width: 1568, height: 1176 });
     expect(r.content).toContain('a smaller copy, 1568x1176 px');
+  });
+
+  it('decodes a BMP itself and sends it as a PNG, shrunk when over the limits', async () => {
+    // 24-bit, bottom-up, 2000 x 1000: left half red, right half blue
+    const w = 2000;
+    const h = 1000;
+    const stride = Math.ceil((w * 3) / 4) * 4;
+    const bmp = Buffer.alloc(54 + stride * h);
+    bmp.write('BM', 0, 'latin1');
+    bmp.writeUInt32LE(54, 10);
+    bmp.writeUInt32LE(40, 14);
+    bmp.writeInt32LE(w, 18);
+    bmp.writeInt32LE(h, 22);
+    bmp.writeUInt16LE(1, 26);
+    bmp.writeUInt16LE(24, 28);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) bmp[54 + y * stride + x * 3 + (x < w / 2 ? 2 : 0)] = 255;
+    await writeFile(join(dir, 'scan.bmp'), bmp);
+    const r = await readFileTool.execute({ path: 'scan.bmp' }, ctx);
+    expect(r.content).toContain('a smaller copy, 1568x784 px');
+    const png = decodePng(readFileSync(r.images![0]!.path))!;
+    expect([...png.data.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
+    expect([...png.data.subarray((png.width - 1) * 4, png.width * 4)]).toEqual([0, 0, 255, 255]);
+  });
+
+  it('reads an 8-bit palette BMP stored top-down', () => {
+    const w = 3;
+    const h = 2;
+    const stride = 4;
+    const bmp = Buffer.alloc(54 + 2 * 4 + stride * h);
+    bmp.write('BM', 0, 'latin1');
+    bmp.writeUInt32LE(54 + 8, 10);
+    bmp.writeUInt32LE(40, 14);
+    bmp.writeInt32LE(w, 18);
+    bmp.writeInt32LE(-h, 22);
+    bmp.writeUInt16LE(1, 26);
+    bmp.writeUInt16LE(8, 28);
+    bmp.writeUInt32LE(2, 46); // two colours: black, green
+    bmp.set([0, 0, 0, 0, 0, 200, 0, 0], 54);
+    bmp.set([1, 0, 1], 62); // first row: green black green
+    const img = decodeBmp(bmp)!;
+    expect([img.width, img.height]).toEqual([3, 2]);
+    expect([...img.data.subarray(0, 8)]).toEqual([0, 200, 0, 255, 0, 0, 0, 255]);
+    expect(decodeBmp(Buffer.from('BM not really a bitmap at all, only some text here for the test'))).toBeUndefined();
   });
 
   it('says so in a sentence when the model does not take images', async () => {

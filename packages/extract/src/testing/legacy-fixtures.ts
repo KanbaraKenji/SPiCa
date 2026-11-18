@@ -160,7 +160,17 @@ export function makeDoc(paras: DocPara[]): Uint8Array {
   // PapxInFkp from the end of the page backwards: cb, istd, sprms
   let free = 510;
   runs.forEach(([, , inTable, ttp], k) => {
-    const grpprl = Buffer.concat([u16(0), ...(inTable ? [u16(0x2416), Buffer.from([1])] : []), ...(ttp ? [u16(0x2417), Buffer.from([1])] : [])]);
+    // variable-length sprms before the flags, as Word writes them: cell paragraphs change tabs (sprmPChgTabs in its
+    // cb 255 form: one tab deleted, one added), row ends define the table (sprmTDefTable, a 2-byte length)
+    const tabs = Buffer.from([255, 1, 0x40, 0x01, 0x10, 0x00, 1, 0x80, 0x02, 0x00]);
+    const defTable = Buffer.concat([u16(7), Buffer.from([2, 0, 0, 0x10, 0x05, 0x20])]);
+    const grpprl = Buffer.concat([
+      u16(0),
+      ...(inTable && !ttp ? [u16(0xc615), tabs] : []),
+      ...(ttp ? [u16(0xd608), defTable] : []),
+      ...(inTable ? [u16(0x2416), Buffer.from([1])] : []),
+      ...(ttp ? [u16(0x2417), Buffer.from([1])] : []),
+    ]);
     // cb != 0: grpprl length is 2*cb - 1 (pad to that)
     const cb = Math.ceil((grpprl.length + 1) / 2);
     const body = Buffer.concat([Buffer.from([cb]), grpprl, Buffer.alloc(2 * cb - 1 - grpprl.length)]);

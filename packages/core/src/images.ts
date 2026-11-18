@@ -305,15 +305,18 @@ export function prepareImage(src: string, dir: string, limits: { maxLongSide: nu
     return { ok: false, code: 'image.unreadable', message: err instanceof Error ? err.message : String(err) };
   }
   const mediaType = sniffImage(buf);
-  const size = mediaType ? imageSize(buf, mediaType) : undefined;
-  if (!mediaType || !size || !size.width || !size.height) return { ok: false, code: 'image.unreadable', message: 'not a PNG, JPEG, GIF or WEBP image that can be read' };
-  const long = Math.max(size.width, size.height);
   const store = (bytes: Buffer, ext: string) => {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${createHash('sha256').update(bytes).digest('hex').slice(0, 20)}.${ext}`);
     writeFileSync(path, bytes);
     return path;
   };
+  // a BMP (no model takes it): decoded here and sent as a PNG, made smaller when over the limits
+  const bmp = mediaType ? undefined : decodeBmp(buf);
+  if (bmp) return fitDecoded(bmp, limits, store);
+  const size = mediaType ? imageSize(buf, mediaType) : undefined;
+  if (!mediaType || !size || !size.width || !size.height) return { ok: false, code: 'image.unreadable', message: 'not a PNG, JPEG, GIF, WEBP or BMP image that can be read' };
+  const long = Math.max(size.width, size.height);
   if (long <= limits.maxLongSide && buf.length <= limits.maxBytes) {
     mkdirSync(dir, { recursive: true });
     const ext = mediaType.split('/')[1]!.replace('jpeg', 'jpg');
@@ -326,19 +329,76 @@ export function prepareImage(src: string, dir: string, limits: { maxLongSide: nu
     return {
       ok: false,
       code: 'image.too_large',
-      message: `${size.width}x${size.height}, ${buf.length} bytes: over ${limits.maxLongSide} px or ${limits.maxBytes} bytes, and only 8-bit PNG can be made smaller here`,
+      message: `${size.width}x${size.height}, ${buf.length} bytes: over ${limits.maxLongSide} px or ${limits.maxBytes} bytes, and only 8-bit PNG and BMP can be made smaller here`,
     };
   }
-  // shrink to the long edge, then further while the file is still too big
-  let scale = Math.min(1, limits.maxLongSide / long);
+  return fitDecoded(decoded, limits, store);
+}
+
+/** Decoded pixels as a PNG within the limits: shrunk to the long edge, then further while the file is still too big. */
+function fitDecoded(decoded: Rgba, limits: { maxLongSide: number; maxBytes: number }, store: (bytes: Buffer, ext: string) => string): PreparedImage {
+  let scale = Math.min(1, limits.maxLongSide / Math.max(decoded.width, decoded.height));
   for (let attempt = 0; attempt < 6; attempt++) {
-    const w = Math.max(1, Math.round(size.width * scale));
-    const h = Math.max(1, Math.round(size.height * scale));
-    const png = encodePng(shrink(decoded, w, h));
+    const w = Math.max(1, Math.round(decoded.width * scale));
+    const h = Math.max(1, Math.round(decoded.height * scale));
+    const png = encodePng(w === decoded.width && h === decoded.height ? decoded : shrink(decoded, w, h));
     if (png.length <= limits.maxBytes) return { ok: true, image: { mediaType: 'image/png', width: w, height: h, bytes: png.length, path: store(png, 'png'), resized: true } };
     scale *= 0.75;
   }
   return { ok: false, code: 'image.too_large', message: 'still over the size limit after shrinking' };
+}
+
+/**
+ * Decode a BMP (Windows bitmap) to RGBA: uncompressed 1, 4, 8, 24 or 32 bits per pixel (32-bit also with the usual
+ * BGRA bit masks), bottom-up or top-down. Undefined for anything else (16-bit, RLE, OS/2 headers, damaged files).
+ */
+export function decodeBmp(buf: Buffer): Rgba | undefined {
+  try {
+    if (buf.length < 54 || buf.toString('latin1', 0, 2) !== 'BM') return undefined;
+    const dataAt = buf.readUInt32LE(10);
+    const dib = buf.readUInt32LE(14);
+    if (dib < 40) return undefined;
+    const width = buf.readInt32LE(18);
+    const rawHeight = buf.readInt32LE(22);
+    const bpp = buf.readUInt16LE(28);
+    const compression = buf.readUInt32LE(30);
+    const height = Math.abs(rawHeight);
+    if (width <= 0 || height === 0 || width * height > 100_000_000) return undefined;
+    if (!(compression === 0 || (compression === 3 && bpp === 32))) return undefined;
+    if (![1, 4, 8, 24, 32].includes(bpp)) return undefined;
+    const used = buf.readUInt32LE(46);
+    const palette = 14 + dib;
+    const colors = bpp <= 8 ? used || 1 << bpp : 0;
+    const stride = Math.ceil((width * bpp) / 32) * 4;
+    if (dataAt + stride * height > buf.length) return undefined;
+    const data = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const row = dataAt + (rawHeight > 0 ? height - 1 - y : y) * stride;
+      for (let x = 0; x < width; x++) {
+        const o = (y * width + x) * 4;
+        if (bpp >= 24) {
+          const p = row + x * (bpp / 8);
+          data[o] = buf[p + 2]!;
+          data[o + 1] = buf[p + 1]!;
+          data[o + 2] = buf[p]!;
+          data[o + 3] = 255; // the 4th byte of 32-bit BMPs is mostly unused padding
+        } else {
+          const bit = x * bpp;
+          const byte = buf[row + (bit >> 3)]!;
+          const k = (byte >> (8 - bpp - (bit & 7))) & ((1 << bpp) - 1);
+          if (k >= colors) return undefined;
+          const c = palette + k * 4;
+          data[o] = buf[c + 2]!;
+          data[o + 1] = buf[c + 1]!;
+          data[o + 2] = buf[c]!;
+          data[o + 3] = 255;
+        }
+      }
+    }
+    return { width, height, data };
+  } catch {
+    return undefined;
+  }
 }
 
 /** The image as base64 for a request, or undefined when the stored copy is gone. */

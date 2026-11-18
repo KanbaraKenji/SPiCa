@@ -124,8 +124,10 @@ export function headerSize(buf: Buffer): { width: number; height: number } | und
 /**
  * A picture read_file wants to show the model but the core cannot make smaller itself: a copy within IMAGE_LIMITS in
  * `dir` (the conversation's media folder), PNG for lossless sources, else JPEG 85; null when it cannot be read.
- * Chromium reads PNG and JPEG; BMP, GIF and WEBP go through Windows' own decoders (`thumbnail`, the shell's picture
- * of the file at a size no larger than the original).
+ * Chromium reads PNG and JPEG (the core decodes the usual BMPs itself); GIF, WEBP and unusual BMPs go through
+ * Windows' own decoders (`thumbnail`, the shell's picture of the file). The shell fits the picture in a square box and
+ * keeps its proportions (it does not tell width from height on Windows), so the box is the long side, no larger than
+ * the original's. Making it holds the main process for a moment (measured 0.1-0.6 s per picture).
  */
 export async function fitForModel(io: PictureIo, src: string, dir: string): Promise<string | null> {
   if (!isImagePath(src)) return null;
@@ -143,8 +145,8 @@ export async function fitForModel(io: PictureIo, src: string, dir: string): Prom
       return null;
     }
     if (!size?.width || !size.height) return null;
-    const scale = Math.min(1, IMAGE_LIMITS.maxLongSide / Math.max(size.width, size.height));
-    pic = await io.thumbnail(resolve(src), { width: Math.max(1, Math.round(size.width * scale)), height: Math.max(1, Math.round(size.height * scale)) }).catch(() => null);
+    const box = Math.min(IMAGE_LIMITS.maxLongSide, Math.max(size.width, size.height));
+    pic = await io.thumbnail(resolve(src), { width: box, height: box }).catch(() => null);
     if (!pic || pic.isEmpty()) return null;
   }
   const png = ['.png', '.gif', '.bmp'].includes(extname(src).toLowerCase());

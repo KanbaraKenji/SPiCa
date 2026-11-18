@@ -113,8 +113,14 @@ function paragraphs(word: Buffer, table: Buffer, fc: number, lcb: number): Para[
           if (sprm === 0x2416) inTable ||= word[at] === 1; // sprmPFInTable
           const size = [1, 1, 2, 4, 2, 2, -1, 3][spra]!;
           if (size >= 0) at += size;
-          else if (sprm === 0xc615) at += word.readUInt16LE(at) + 1; // sprmPChgTabs: its own length
-          else at += word[at]! + 1;
+          else if (sprm === 0xd608) at += word.readUInt16LE(at) + 1; // sprmTDefTable: a 2-byte length (MS-DOC 2.2.5.1)
+          else if (sprm === 0xc615 && word[at] === 255) {
+            // sprmPChgTabs with cb 255: tabs to delete (position + close range), then tabs to add (position + kind)
+            let p = at + 1;
+            p += 1 + word[p]! * 4;
+            p += 1 + word[p]! * 3;
+            at = p;
+          } else at += word[at]! + 1;
         }
       }
       out.push({ fcStart, fcEnd, ttp, inTable });

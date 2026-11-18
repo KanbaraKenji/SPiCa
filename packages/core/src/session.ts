@@ -30,6 +30,7 @@ import type {
   SessionStatus,
   SteerMode,
   ToolUseBlock,
+  ImageBlock,
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
@@ -527,7 +528,7 @@ export class Session {
         continue;
       }
       let file: FileCardMeta | undefined;
-      let out: { content: string; isError?: boolean };
+      let out: { content: string; isError?: boolean; images?: ImageBlock[] };
       try {
         out = await tool.execute({ path }, {
           sessionId: this.id,
@@ -538,6 +539,8 @@ export class Session {
           extractors: this.#rt.extractors,
           services: this.#rt.services(this),
           callId: newId('att'),
+          mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#imageContext(),
           emit: (body) => {
             if (body.type === 'file.card') file = body.file;
           },
@@ -556,6 +559,14 @@ export class Session {
       // content[0] of the message is the user's text
       attachments.push({ path, name, block: content.length + 1, ...(file ? { file } : {}) });
       content.push({ type: 'text', text: `The user attached the file ${name} (read with read_file; ask for more pages with read_file if it was cut):\n${f.text}` });
+      // what read_file handed over as pictures (scanned PDF pages, a BMP): in the message too, within its image limit
+      const pics = out.images ?? [];
+      const room = Math.max(0, IMAGE_LIMITS.maxPerMessage - images);
+      content.push(...pics.slice(0, room));
+      images += Math.min(pics.length, room);
+      if (pics.length > room) {
+        content.push({ type: 'text', text: `[${pics.length - room} of the pictures from ${name} were left out: more than ${IMAGE_LIMITS.maxPerMessage} images in one message. Read them with read_file.]` });
+      }
     }
     return { content, attachments, notes };
   }

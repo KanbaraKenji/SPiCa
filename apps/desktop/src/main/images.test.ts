@@ -106,7 +106,7 @@ describe('pictures read_file shows the model', () => {
     };
     expect(await fitForModel(io, join(dir, 'scan.bmp'), join(dir, 'media'))).toMatch(/\.png$/);
     expect(await fitForModel(io, join(dir, 'small.gif'), join(dir, 'media'))).toMatch(/\.png$/);
-    expect(asked).toEqual(['scan.bmp 1568x1045', 'small.gif 300x200']);
+    expect(asked).toEqual(['scan.bmp 1568x1568', 'small.gif 300x300']);
     expect(await fitForModel({ fromBuffer: () => empty, fromPath: () => empty }, join(dir, 'scan.bmp'), join(dir, 'media'))).toBeNull();
     expect(headerSize(Buffer.from('not a picture at all, just some text here'))).toBeUndefined();
   });

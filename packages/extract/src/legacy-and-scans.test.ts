@@ -142,7 +142,7 @@ describe('scanned PDF pages as pictures', () => {
   it('draws pages without a text layer when asked, and says so', async () => {
     const r = await extractFile(f('scan.pdf'), { pageImages: 10 });
     expect(r.text).toContain('Pages with little or no text (probably scanned): 1-2.');
-    expect(r.text).toContain('Pages 1-2 follow as pictures.');
+    expect(r.text).not.toContain('follow');
     expect(r.pageImages?.map((p) => p.page)).toEqual([1, 2]);
     const p = r.pageImages![0]!;
     expect(Math.max(p.width, p.height)).toBe(1568);

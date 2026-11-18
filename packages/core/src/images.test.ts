@@ -188,6 +188,37 @@ describe('images in a conversation', () => {
     await rt.close();
   });
 
+  it('an attached scanned PDF: the pages read_file drew go in the message too, within its image limit', async () => {
+    const rgba = new Uint8Array(28 * 28 * 4).fill(200);
+    const asked: unknown[] = [];
+    const rt = makeRuntime(gw, {
+      cwd: dir,
+      mediaDir: join(dir, 'media'),
+      extractors: [
+        {
+          extensions: ['.pdf'],
+          extract: async (path, req) => {
+            asked.push(req.pageImages);
+            return {
+              text: 'PDF, 2 pages.',
+              meta: { path, name: 'scan.pdf', kind: 'pdf', sizeBytes: 4, modifiedAt: '', extractedAt: '', read: { pages: '1-2' } },
+              pageImages: [1, 2].map((page) => ({ page, width: 28, height: 28, rgba })),
+            };
+          },
+        },
+      ],
+    });
+    const s = rt.createSession();
+    const pngs = Array.from({ length: IMAGE_LIMITS.maxPerMessage - 1 }, (_, i) => ({ path: write(`q${i}.png`, png(4 + i, 4)) }));
+    const r = await s.readAttachments([...pngs, { path: write('scan.pdf', Buffer.from('%PDF')) }]);
+    expect(asked).toEqual([IMAGE_LIMITS.maxPerMessage]);
+    const images = r.content.filter((b) => b.type === 'image');
+    expect(images).toHaveLength(IMAGE_LIMITS.maxPerMessage);
+    expect(images.at(-1)).toMatchObject({ name: 'scan.pdf page 1' });
+    expect(JSON.stringify(r.content)).toContain('1 of the pictures from scan.pdf were left out');
+    await rt.close();
+  });
+
   it('the kept copies go when the conversation is deleted (with its project)', async () => {
     const rt = makeRuntime(gw, { cwd: dir, mediaDir: join(dir, 'media'), projectsRoot: join(dir, 'projects') });
     const p = rt.createProject({ name: 'Pics' });
