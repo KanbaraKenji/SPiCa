@@ -38,6 +38,8 @@ const API: Record<keyof AgentApi, true> = {
   resume: true,
   regenerate: true,
   confirm: true,
+  listCommandJobs: true,
+  stopCommandJob: true,
   abort: true,
   exportTraces: true,
   getTopSession: true,

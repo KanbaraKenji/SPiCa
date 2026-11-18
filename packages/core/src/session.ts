@@ -1539,6 +1539,12 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       const cwd = named ? (isAbsolute(input.cwd as string) ? resolvePath(input.cwd as string) : resolvePath(base, input.cwd as string)) : base;
       return commandOutside(input.command, cwd, this.writeRoots(), named)?.folder;
     }
+    // JavaScript, in Auto: the folder it runs in, as for a command (what the code writes is not read off it, as for node -e)
+    if (tool.spec.name === 'run_javascript' && this.#record.config.approvalMode === 'auto' && typeof input.cwd === 'string' && input.cwd.trim() !== '') {
+      const base = this.#record.config.cwd;
+      const cwd = isAbsolute(input.cwd) ? resolvePath(input.cwd) : resolvePath(base, input.cwd);
+      return commandOutside('', cwd, this.writeRoots(), true)?.folder;
+    }
     const p = tool.writePath?.(input);
     if (!p?.trim()) return undefined;
     const target = isAbsolute(p) ? resolvePath(p) : resolvePath(this.#record.config.cwd, p);

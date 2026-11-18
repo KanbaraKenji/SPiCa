@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import type { AgentApi, ApprovalMode, CoreEvent, MemoryCardMeta, MemoryEntry, MemoryEntryInput, MemoryItem, MemoryRefusal, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, SessionInfo, SetCwdResult } from '@spica/protocol';
 import { Store } from './external';
-import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, type Transcript } from './transcript';
+import { applyEvent, cancelCard, EMPTY_TRANSCRIPT, fromHistory, humanError, withJobs, type Transcript } from './transcript';
 import { getLocale, N_, t, tx } from '../../../shared/i18n';
 import { knownError } from '../../../shared/errors';
 
@@ -162,8 +162,13 @@ export class AgentStore {
     if (this.#loading.has(id) || this.state.get().transcripts[id]) return;
     this.#loading.add(id);
     try {
-      const [messages, pending, info] = await Promise.all([this.#api.getMessages(id, { superseded: true }), this.#api.getPending(id), this.#api.getSession(id)]);
-      const t = fromHistory(messages, pending);
+      const [messages, pending, info, jobs] = await Promise.all([
+        this.#api.getMessages(id, { superseded: true }),
+        this.#api.getPending(id),
+        this.#api.getSession(id),
+        this.#api.listCommandJobs ? this.#api.listCommandJobs(id).catch(() => []) : Promise.resolve([]),
+      ]);
+      const t = withJobs(fromHistory(messages, pending), jobs);
       if (info && isLive(info.status)) t.run = { startedAt: Date.parse(info.updatedAt) || Date.now(), status: info.status };
       const first = firstUserText(messages);
       this.state.set((v) => ({
@@ -305,6 +310,12 @@ export class AgentStore {
 
   async stop(id: string): Promise<void> {
     await this.#guard(() => this.#api.abort(id));
+  }
+
+  /** Stop a command running in the background (its state comes back as command.job). */
+  async stopJob(jobId: string): Promise<void> {
+    const stop = this.#api.stopCommandJob;
+    if (stop) await this.#guard(() => stop(jobId));
   }
 
   async answer(id: string, callId: string, answer: string): Promise<void> {
@@ -671,6 +682,7 @@ export class AgentStore {
         if (prev?.fileCards) next.fileCards = { ...prev.fileCards, ...(next.fileCards ?? {}) };
         if (prev?.fileCardLists) next.fileCardLists = { ...prev.fileCardLists, ...(next.fileCardLists ?? {}) };
         if (prev?.sourceCards) next.sourceCards = { ...prev.sourceCards, ...(next.sourceCards ?? {}) };
+        if (prev?.jobs) next.jobs = prev.jobs;
         return { ...v, transcripts: { ...v.transcripts, [id]: next } };
       });
     } catch {

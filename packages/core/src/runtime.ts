@@ -14,6 +14,8 @@ import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
 import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
+import { CommandJobs, createCommandJobTools } from './tools/background-commands.ts';
+import { createJavaScriptTool } from './tools/javascript-tool.ts';
 import { createPythonTool, type PythonToolOptions } from './tools/python-tool.ts';
 import { envBinDir, envPackagesOnDisk, pythonEnvStatus } from './python-env.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
@@ -29,6 +31,7 @@ import type {
   MemoryCardMeta,
   AgentRole,
   ChildNoteMeta,
+  CommandJob,
   CreateProjectRequest,
   CreateSessionRequest,
   CwdChangeMeta,
@@ -98,6 +101,11 @@ export interface RuntimeOptions {
   nodeShimDir?: string;
   /** The libraries run_command's scripts can require (<dir>/<name>; runtimes.ts). Default: none. */
   nodeLibsDir?: string;
+  /**
+   * Where commands run in the background (run_command with run_in_background) keep their records and output
+   * (background-commands.ts). Without it run_command has no run_in_background.
+   */
+  commandJobsDir?: string;
   /** The app's own Python (python-env.ts): with it, the python_env tool is offered. Default: none. */
   python?: PythonToolOptions;
   /**
@@ -234,6 +242,8 @@ export class Runtime implements RuntimeInternals {
   #workflows: { workflows: Map<string, WorkflowDef>; errors: string[] };
   readonly #mcp = new Map<string, { client: McpStdioClient; source: string; disconnect: () => Promise<void> }>();
   readonly #reports = new Map<string, string>();
+  /** Commands running in the background (run_command with run_in_background). */
+  readonly #jobs: CommandJobs | undefined;
   readonly #viewConfirms = new Map<string, (approved: boolean) => void>();
   #catalogUpdate: ModelCatalog | undefined;
   #presets: CatalogPreset[] = [];
@@ -370,9 +380,30 @@ export class Runtime implements RuntimeInternals {
     if (opts.catalogPresets) for (const w of this.setCatalog({ presets: opts.catalogPresets })) console.error(w);
     this.extractors = [...(opts.extractors ?? [])];
     for (const p of opts.providers) this.addProvider(p, opts.limits?.[p.id]);
+    this.#jobs = opts.commandJobsDir
+      ? new CommandJobs(opts.commandJobsDir, {
+          changed: (job) => {
+            const s = this.session(job.sessionId);
+            this.events.emit({ sessionId: job.sessionId, parentChain: s?.parentChain ?? [] }, { type: 'command.job', job });
+          },
+          fileCards: (job, cards) => {
+            const s = this.session(job.sessionId);
+            this.events.emit({ sessionId: job.sessionId, parentChain: s?.parentChain ?? [] }, { type: 'file.card', callId: job.callId, file: cards[0]!, files: cards });
+          },
+          ended: (job, text) => this.session(job.sessionId)?.addNote('note', text, { author: 'runtime', commandJob: job.id }),
+        })
+      : undefined;
     const defaults = [
       ...fileTools,
       createRunCommandTool({
+        ...(opts.spillDir ? { spillDir: opts.spillDir } : {}),
+        ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}),
+        ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}),
+        runtimes: () => this.#runtimes,
+        ...(this.#jobs ? { jobs: this.#jobs } : {}),
+      }),
+      ...(this.#jobs ? createCommandJobTools(this.#jobs) : []),
+      createJavaScriptTool({
         ...(opts.spillDir ? { spillDir: opts.spillDir } : {}),
         ...(opts.nodeShimDir ? { nodeShimDir: opts.nodeShimDir } : {}),
         ...(opts.nodeLibsDir ? { nodeLibsDir: opts.nodeLibsDir } : {}),
@@ -407,7 +438,7 @@ export class Runtime implements RuntimeInternals {
         if (call.name !== 'run_command') return;
         const cmd = String((call.input as { command?: unknown } | null)?.command ?? '').trim();
         if (/^(start-sleep|sleep|timeout(\.exe)?|ping\s+(-n|-c)\s+\d+\s+(127\.0\.0\.1|localhost))\b[^;&|]*$/i.test(cmd)) {
-          return { action: 'deny', reason: 'do not wait with sleep commands; use wait_agents to wait for sub-agents or project managers' };
+          return { action: 'deny', reason: `do not wait with sleep commands; use wait_agents to wait for sub-agents or project managers${this.#jobs ? ', command_output with wait_seconds for a background command' : ''}` };
         }
         return undefined;
       },
@@ -679,6 +710,8 @@ export class Runtime implements RuntimeInternals {
    * boundary if it is running (e.g. inside wait_agents) or right away if idle.
    */
   onRunEnd(session: Session, result: RunResult): void {
+    // a sub-agent's background commands end with its run: nobody would read them
+    if (session.parentId && this.#jobs?.running(session.id).length) void this.#jobs.stopSessions([session.id], 'sub_agent_done');
     if (result.reason !== 'completed') return;
     if (!session.parentId) {
       if (session.info().projectId) this.#managerReport(session, result.text || '(finished without a written report)');
@@ -1164,6 +1197,7 @@ export class Runtime implements RuntimeInternals {
   async #stopAll(ids: Set<string>, reason: string): Promise<void> {
     const live = [...ids].map((id) => this.session(id)).filter((s): s is Session => !!s);
     for (const s of [...live].reverse()) if (s.running) s.abort(reason);
+    await this.#jobs?.stopSessions(ids, 'conversation_deleted');
     for (const s of live) {
       const t0 = Date.now();
       while (s.running && Date.now() - t0 < 10_000) await new Promise((r) => setTimeout(r, 20));
@@ -1179,6 +1213,7 @@ export class Runtime implements RuntimeInternals {
       rmSync(this.mediaDir(id), { recursive: true, force: true }); // its attached images
       this.#sessions.delete(id);
       this.#reports.delete(id);
+      this.#jobs?.drop([id]);
       for (const [pm, asker] of this.#askers) if (asker === id) this.#askers.delete(pm); // its answer goes to the project instead
       this.events.emit({ sessionId: id, parentChain }, { type: 'session.deleted' });
     }
@@ -1439,12 +1474,24 @@ export class Runtime implements RuntimeInternals {
     return { tools: h.tools, source: h.source, disconnect };
   }
 
+  /** A conversation's background commands (run_command with run_in_background), oldest first. */
+  commandJobs(sessionId: string): CommandJob[] {
+    return this.#jobs?.list(sessionId) ?? [];
+  }
+
+  /** Stop a background command (the user's 停止). */
+  async stopCommandJob(jobId: string): Promise<void> {
+    if (!this.#jobs?.get(jobId)) throw new Error(`unknown background command: ${jobId}`);
+    await this.#jobs.stop(jobId, 'user');
+  }
+
   /** Stop all runs (they become `interrupted`, resumable after restart), stop MCP servers, close the store. */
   async close(): Promise<void> {
     this.#shutdown.abort();
     this.mail.stop();
     this.memory.close();
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
+    await this.#jobs?.close();
     await Promise.all([...this.#mcp.values()].map((m) => m.disconnect()));
     this.store.close();
   }
