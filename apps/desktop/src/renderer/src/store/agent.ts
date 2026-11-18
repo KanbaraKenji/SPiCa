@@ -80,14 +80,14 @@ export function friendlyError(err: unknown): string {
   return knownError(msg) ?? (getLocale() === 'en' ? msg : humanError(msg));
 }
 
-/** What a refused 选择工作文件夹 means, in the window's words. */
+/** What a refused 选择文件夹 means, in the window's words. */
 export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
   const base = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
   switch (r.code) {
     case 'cwd.not_changeable':
       return t('工作文件夹已选定，不能更改。');
     case 'cwd.busy':
-      return t('对话进行中，结束后再选择工作文件夹。');
+      return t('对话进行中，结束后再选择文件夹。');
     case 'cwd.bad_folder':
       return t('无法使用该文件夹，请选择其他文件夹。');
     case 'cwd.move_failed': {
@@ -95,7 +95,7 @@ export function cwdErrorText(r: Extract<SetCwdResult, { ok: false }>): string {
       return r.file ? t('移动「{file}」失败，已放回原处，工作文件夹未更改{left}。', { file: base(r.file), left }) : t('移动文件失败，已放回原处，工作文件夹未更改{left}。', { left });
     }
     default:
-      return t('无法选择工作文件夹。');
+      return t('无法选择文件夹。');
   }
 }
 

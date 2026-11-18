@@ -300,12 +300,13 @@ describe('tabs and segments: never a box in a box (out/ref/tabs-1, tabs-4; not t
 });
 
 describe('the model under the message box', () => {
-  it('short of room the provider is cut long before the name; the separator is never cut', () => {
+  it('the name alone, no cap of its own: cut only when the row has no room; the icon only in a very narrow box', () => {
     expect(block('.composer-model-text')).toContain('display: flex');
-    expect(block('.composer-model-provider')).toContain('flex: 0 1000 auto');
-    expect(block('.composer-model-provider')).toContain('text-overflow: ellipsis');
+    expect(css).not.toContain('.composer-model-provider');
     expect(block('.composer-model-name')).toContain('flex: 0 1 auto');
-    expect(block('.composer-model-sep')).toContain('flex: none');
+    expect(block('.composer-model-name')).toContain('text-overflow: ellipsis');
+    expect(block('.composer-below-right > .composer-model')).toContain('max-width: none');
+    expect(css).toContain('@container composer (max-width: 340px)');
     // The narrow box still swaps the words for the icon: that rule comes after these.
     expect(css.indexOf('.composer-model-text {\n  display: flex')).toBeLessThan(css.indexOf('.composer-model-text {\n    display: none'));
   });
