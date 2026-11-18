@@ -3105,8 +3105,9 @@ label.ask-row:active {
   color: var(--spica-muted);
 }
 
-/* A narrow box: the model is its icon; the full name is on hover. */
-@container composer (max-width: 440px) {
+/* A narrow box: the model is its icon; the full name is on hover. Above this the name is cut with an ellipsis only
+   when the row has no room left for it. */
+@container composer (max-width: 340px) {
   .composer-model-text {
     display: none;
   }
