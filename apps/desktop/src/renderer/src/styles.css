@@ -3020,9 +3020,11 @@ label.ask-row:active {
   flex: none;
 }
 
-/* Only the model gives way (ellipsis, then the icon alone). */
+/* Only the model gives way (ellipsis, then the icon alone); no cap of its own, so a long name is cut only when the
+   row has no room left. */
 .composer-below-right > .composer-model {
   flex: 0 1 auto;
+  max-width: none;
 }
 
 .composer-chip {
@@ -3044,7 +3046,7 @@ label.ask-row:active {
   background: var(--spica-hover);
 }
 
-/* 选择工作文件夹 while the conversation runs: greyed, the hover says when. */
+/* 选择文件夹 while the conversation runs: greyed, the hover says when. */
 .composer-chip[aria-disabled='true'] {
   opacity: 0.45;
   cursor: default;
@@ -3061,22 +3063,14 @@ label.ask-row:active {
   text-overflow: ellipsis;
 }
 
-/* Words beside the model's name (its provider, 已移除): the secondary colour. */
+/* Words beside the model's name (已移除): the secondary colour. */
 .composer-aside {
   color: var(--spica-muted);
 }
 
-/* The model under the box: provider · name. Short of room the provider is cut first, then the name. */
+/* The model under the box: its name alone; cut only when the row has no room left. */
 .composer-model-text {
   display: flex;
-}
-
-.composer-model-provider {
-  flex: 0 1000 auto;
-  min-width: 2em;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .composer-model-sep {
@@ -3111,8 +3105,9 @@ label.ask-row:active {
   color: var(--spica-muted);
 }
 
-/* A narrow box: the model is its icon; the full name is on hover. */
-@container composer (max-width: 440px) {
+/* A narrow box: the model is its icon; the full name is on hover. Above this the name is cut with an ellipsis only
+   when the row has no room left for it. */
+@container composer (max-width: 340px) {
   .composer-model-text {
     display: none;
   }

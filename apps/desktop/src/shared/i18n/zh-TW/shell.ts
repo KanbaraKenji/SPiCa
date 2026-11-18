@@ -10,7 +10,6 @@ export const ZH_TW_SHELL: Catalog = {
   '{plugin}：{text}': '{plugin}：{text}',
   默认: '預設',
   强模型: '強模型',
-  选择工作文件夹: '選擇工作資料夾',
   添加附件: '新增附件',
   '（已移除）': '（已移除）',
   预览: '預覽',

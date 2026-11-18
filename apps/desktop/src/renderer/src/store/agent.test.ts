@@ -193,7 +193,7 @@ describe('deleting a conversation and choosing its working folder', () => {
 
   it('says each refusal in standard words; a failed move names the file and what could not be put back', () => {
     const r = (code: 'cwd.not_changeable' | 'cwd.busy' | 'cwd.bad_folder' | 'cwd.move_failed', more = {}) => cwdErrorText({ ok: false, code, message: 'x', ...more });
-    expect(r('cwd.busy')).toBe('对话进行中，结束后再选择工作文件夹。');
+    expect(r('cwd.busy')).toBe('对话进行中，结束后再选择文件夹。');
     expect(r('cwd.bad_folder')).toBe('无法使用该文件夹，请选择其他文件夹。');
     expect(r('cwd.move_failed', { file: 'C:/data/ses_1/报价.xlsx' })).toBe('移动「报价.xlsx」失败，已放回原处，工作文件夹未更改。');
     expect(r('cwd.move_failed', { file: 'C:\\data\\a.txt', notRestored: ['C:\\data\\b.txt'] })).toBe('移动「a.txt」失败，已放回原处，工作文件夹未更改；1 个文件未能放回：b.txt。');

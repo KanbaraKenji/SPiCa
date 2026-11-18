@@ -812,7 +812,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const shownProvider = shown ? models.find((p) => p.id === shown.providerId)?.name : undefined;
   const shownWindow = shown ? models.find((p) => p.id === shown.providerId)?.models.find((m) => m.id === shown.model)?.contextWindow : undefined;
   const ringWindow = session?.contextWindow || shownWindow || 0;
-  // 选择工作文件夹 in a conversation (once): the user's own conversations, not in a project. With something said
+  // 选择文件夹 in a conversation (once): the user's own conversations, not in a project. With something said
   // already, a confirmation first (it cannot change afterwards, and what was made moves there).
   // `stay`: a conversation from 0.1.0-rc.2, still in the folder they all shared: its files stay there.
   const [cwdAsk, setCwdAsk] = useState<{ sessionId: string; dir: string; stay: boolean } | null>(null);
@@ -827,7 +827,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         name: '',
         busy,
         onPick: () =>
-          void bridge.pickFolder(t('选择工作文件夹')).then((dir) => {
+          void bridge.pickFolder(t('选择文件夹')).then((dir) => {
             if (!dir) return;
             if (transcript.items.length) setCwdAsk({ sessionId: s.id, dir, stay: sameFolder(s.cwd, shell.legacyDefaultCwd) });
             else void agent.chooseCwd(s.id, dir);
@@ -851,7 +851,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             path: draft.cwd ?? '',
             name: draft.cwd ? (draft.cwd.split(/[\\/]/).filter(Boolean).pop() ?? draft.cwd) : '',
             onPick: () =>
-              void bridge.pickFolder(t('选择工作文件夹')).then((dir) => {
+              void bridge.pickFolder(t('选择文件夹')).then((dir) => {
                 if (dir) agent.setDraft({ cwd: dir });
               }),
           },

@@ -31,7 +31,7 @@ export interface ComposerTools {
   approval?: { mode: ApprovalMode; onChange(mode: ApprovalMode): void };
   /** The model this conversation uses; options to switch (a menu only when there is a choice). */
   /** Options by connection (`group`); `marks`: 默认 / 强模型. */
-  /** `label`: the model's name; `provider` and `note` are shown beside it in the secondary colour. */
+  /** `label`: the model's name; `note` is shown beside it in the secondary colour, `provider` only on hover. */
   /** `images`: whether that model takes pictures (null: not known). `hasPictures`: the conversation already has some. */
   model?: { label: string; provider?: string; note?: string; hasPictures?: boolean; options: { label: string; group?: string; groupKey?: string; marks?: string; current: boolean; images?: boolean | null; onPick(): void }[] };
   /** Tokens the context takes now and the model's window (only when the window is known). */
@@ -145,7 +145,7 @@ const approvalHint = (): string => [t('Manual：{text}', { text: t(APPROVAL_DETA
 
 type ModelTool = NonNullable<ComposerTools['model']>;
 
-/** The model under the box: its name in the text colour, the provider beside it in the secondary one.
+/** The model under the box: its name alone (the provider is on hover and in the menu's groups).
  *  On a narrow box only the model icon (the full name on hover). A button only when there is a choice. */
 function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; pictures: boolean; buttonRef: RefObject<HTMLButtonElement | null>; onOpen(el: HTMLElement, items: MenuItem[]): void }) {
   const full = [model.provider, model.label].filter(Boolean).join(' · ') + (model.note ?? '');
@@ -155,9 +155,6 @@ function ModelChip({ model, pictures, buttonRef, onOpen }: { model: ModelTool; p
         <Icon name="model" size={15} />
       </span>
       <span className="composer-chip-text composer-model-text">
-        {/* Short of room, the provider gives way first: the model's name stays whole as long as it can. */}
-        {model.provider ? <span className="composer-aside composer-model-provider">{model.provider}</span> : null}
-        {model.provider ? <span className="composer-aside composer-model-sep"> · </span> : null}
         <span className="composer-model-name">{model.label}</span>
         {model.note ? <span className="composer-aside composer-model-sep">{model.note}</span> : null}
       </span>
@@ -335,7 +332,7 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
     const f = kit.folder;
     below.push(
       // Picked but still open to change (before the first message): its name to click.
-      // None picked: 选择工作文件夹 (greyed while the conversation runs).
+      // None picked: 选择文件夹 (greyed while the conversation runs).
       f.path ? (
         <button key="folder" type="button" className="composer-chip" title={t('工作文件夹：{path}', { path: f.path })} onClick={f.onPick}>
           <Icon name="folder" size={14} />
@@ -347,11 +344,11 @@ export function Composer({ running, onSend, onStop, sessionKey, tools }: Compose
           type="button"
           className="composer-chip"
           aria-disabled={f.busy || undefined}
-          title={f.busy ? t('对话进行中，结束后可选择') : t('选择工作文件夹')}
+          title={f.busy ? t('对话进行中，结束后可选择') : t('选择文件夹')}
           onClick={() => !f.busy && f.onPick()}
         >
           <Icon name="folder" size={14} />
-          <span className="composer-chip-text">{t('选择工作文件夹')}</span>
+          <span className="composer-chip-text">{t('选择文件夹')}</span>
         </button>
       ),
     );

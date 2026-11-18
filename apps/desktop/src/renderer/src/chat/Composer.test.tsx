@@ -182,7 +182,7 @@ describe('token counts under the box', () => {
     expect(contextText(3_200, 1_048_576)).toBe('3.2k / 1M 0%');
   });
 
-  it('shows the provider beside the model name, both in the hover text', () => {
+  it('shows the model name alone; the provider only in the hover text', () => {
     render(
       <Composer
         running={false}
@@ -193,11 +193,9 @@ describe('token counts under the box', () => {
       />,
     );
     const chip = screen.getByRole('button', { name: 'DeepSeek · deepseek-flash' });
-    expect(chip.textContent).toBe('DeepSeek · deepseek-flash');
-    // Provider, separator and name are separate pieces, so the provider can be cut first and the name kept.
-    expect(chip.querySelector('.composer-model-provider')?.textContent).toBe('DeepSeek');
-    expect(chip.querySelector('.composer-model-sep')?.textContent).toBe(' · ');
-    expect(chip.querySelector('.composer-model-name')?.textContent).toBe('deepseek-flash');
+    expect(chip.textContent).toBe('deepseek-flash');
+    expect(chip.title).toBe('DeepSeek · deepseek-flash（切换模型，下一步生效）');
+    expect(chip.querySelector('.composer-model-provider')).toBeNull();
   });
 });
 
@@ -314,26 +312,26 @@ describe('the working folder', () => {
   it('none picked: only the folder button; picked: its name', () => {
     const onPick = vi.fn();
     const { rerender } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f1" tools={{ folder: { path: '', name: '', onPick } }} />);
-    fireEvent.click(screen.getByRole('button', { name: '选择工作文件夹' }));
+    fireEvent.click(screen.getByRole('button', { name: '选择文件夹' }));
     expect(onPick).toHaveBeenCalled();
     rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f1" tools={{ folder: { path: 'D:/资料/报价', name: '报价', onPick } }} />);
     expect(screen.getByText('报价')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '选择文件夹' })).toBeNull();
   });
 
-  it('a conversation that has not chosen one: 选择工作文件夹 in words, greyed while it runs; once chosen, nothing under the box', () => {
+  it('a conversation that has not chosen one: 选择文件夹 in words, greyed while it runs; once chosen, nothing under the box', () => {
     const onPick = vi.fn();
     const { rerender } = render(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: '', name: '', onPick } }} />);
-    const pick = screen.getByRole('button', { name: '选择工作文件夹' });
-    expect(pick.textContent).toBe('选择工作文件夹');
+    const pick = screen.getByRole('button', { name: '选择文件夹' });
+    expect(pick.textContent).toBe('选择文件夹');
     rerender(<Composer running onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{ folder: { path: '', name: '', onPick, busy: true } }} />);
-    const busy = screen.getByRole('button', { name: '选择工作文件夹' });
+    const busy = screen.getByRole('button', { name: '选择文件夹' });
     expect(busy.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(busy);
     expect(onPick).not.toHaveBeenCalled();
     rerender(<Composer running={false} onSend={vi.fn()} onStop={vi.fn()} sessionKey="f2" tools={{}} />);
     expect(screen.queryByText('报价')).toBeNull();
     expect(screen.queryByTitle(/工作文件夹/)).toBeNull();
-    expect(screen.queryByRole('button', { name: '选择工作文件夹' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '选择文件夹' })).toBeNull();
   });
 });
