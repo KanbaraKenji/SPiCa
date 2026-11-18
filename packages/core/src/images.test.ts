@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IMAGE_LIMITS } from '@spica/protocol';
 import { createAgentApi } from './api.ts';
-import { decodePng, encodePng, imageSize, imageTokens, prepareImage, sniffImage } from './images.ts';
+import { decodePng, encodePng, imageSize, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { anthropicProvider, captureEvents, makeRuntime, startGateway, tempDir } from './testing/helpers.ts';
 
@@ -216,6 +216,40 @@ describe('images in a conversation', () => {
     expect(images).toHaveLength(IMAGE_LIMITS.maxPerMessage);
     expect(images.at(-1)).toMatchObject({ name: 'scan.pdf page 1' });
     expect(JSON.stringify(r.content)).toContain('1 of the pictures from scan.pdf were left out');
+    await rt.close();
+  });
+
+  it('calls side by side returning more pictures than a request carries: the rest are not sent, and their result says so', async () => {
+    const rt = makeRuntime(gw, {
+      cwd: dir,
+      mediaDir: join(dir, 'media'),
+      extractors: [
+        {
+          extensions: ['.pdf'],
+          extract: async (path) => ({
+            text: 'PDF, 10 pages.',
+            meta: { path, name: 'x.pdf', kind: 'pdf', sizeBytes: 4, modifiedAt: '', extractedAt: '', read: { pages: '1-10' } },
+            // a different picture per file and page (stored copies are named by their content)
+            pageImages: Array.from({ length: 10 }, (_, k) => ({ page: k + 1, width: 28, height: 28, rgba: new Uint8Array(28 * 28 * 4).fill(path.length * 10 + k) })),
+          }),
+        },
+      ],
+    });
+    for (const n of ['a', 'bb', 'ccc']) write(`${n}.pdf`, Buffer.from('%PDF'));
+    gw.enqueue(
+      { toolCalls: ['a', 'bb', 'ccc'].map((n, i) => ({ id: `r${i}`, name: 'read_file', args: { path: `${n}.pdf` } })) },
+      { text: 'done' },
+    );
+    const s = rt.createSession();
+    await s.send('read the three scans').done;
+    const body = JSON.stringify(gw.requests[1]!.body);
+    expect(body.match(/"type":"image_url"/g)).toHaveLength(REQUEST_IMAGE_LIMITS.maxImages);
+    expect(body).not.toContain('shown earlier');
+    const msgs = gw.requests[1]!.body.messages as { role: string; content: unknown; tool_call_id?: string }[];
+    const third = String(msgs.find((m) => m.role === 'tool' && m.tool_call_id === 'r2')!.content);
+    expect(third).toContain('[Not sent: ccc.pdf page 1, ccc.pdf page 2');
+    expect(third).toContain('you have not seen these. Read them again in a later step');
+    expect(String(msgs.find((m) => m.tool_call_id === 'r1')!.content)).not.toContain('Not sent');
     await rt.close();
   });
 
