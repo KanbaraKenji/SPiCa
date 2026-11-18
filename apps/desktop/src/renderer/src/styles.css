@@ -9291,3 +9291,8 @@ input[type='radio']:disabled {
   font-size: var(--fs-footnote);
   line-height: var(--lh-footnote);
 }
+
+/* 插件 › MCP 服务: 添加 MCP 服务 at the end of the tab row. */
+.plugins-bar .plugins-bar-end {
+  margin-left: auto;
+}

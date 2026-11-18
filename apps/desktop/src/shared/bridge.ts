@@ -6,6 +6,7 @@ import type { AutostartSupport, SettingsPatch, ShellSettings } from './settings'
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderSpendView, ProviderView, TestResult } from './providers';
 import type { ListModelsView, ModelCatalogView, WindowMatch } from './catalog';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from './plugins';
+import type { McpCommand, McpResult } from './mcp-servers';
 import type { UpdateState } from './updates';
 import type { MonitorEntry } from './monitor';
 import type { PluginPickRequest, PluginView, PluginViewResult } from './plugin-view';
@@ -254,6 +255,11 @@ export interface DesktopBridge extends SpicaBridge {
     onChanged(listener: () => void): () => void;
     /** How far an install the plugin page started is (its steps, the download's bytes). */
     onProgress(listener: (p: PluginsProgress) => void): () => void;
+  };
+  /** The MCP services the person adds (设置 › 插件 › MCP 服务). */
+  mcp: {
+    run(cmd: McpCommand): Promise<McpResult>;
+    onChanged(listener: () => void): () => void;
   };
   workflows: {
     run(op: 'state' | 'open' | 'reload'): Promise<WorkflowsState>;

@@ -30,6 +30,17 @@ export function demoMcpApi(start: 'some' | 'none' = 'some'): McpApi {
             logTail: ['Traceback (most recent call last):', '  File "server.py", line 12, in <module>', '    db = open_database(args.db)', 'FileNotFoundError: D:\\Notes\\notes.db'],
           },
           {
+            name: 'docs',
+            command: 'npx',
+            args: ['-y', '@example/docs-server'],
+            env: [],
+            enabled: true,
+            approval: 'ask',
+            status: 'needs-download',
+            tools: [],
+            download: { packages: [{ name: '@example/docs-server' }], packageHost: 'registry.npmjs.org' },
+          },
+          {
             name: 'weather',
             command: 'node',
             args: ['D:\\Tools\\weather\\server.js'],
@@ -68,6 +79,10 @@ export function demoMcpApi(start: 'some' | 'none' = 'some'): McpApi {
     },
     async setEnabled(name, on) {
       servers = servers.map((s) => (s.name === name ? { ...s, enabled: on, status: on ? 'running' : 'off' } : s));
+      changed();
+    },
+    async download(name) {
+      servers = servers.map((s) => (s.name === name ? { ...s, status: 'downloading' } : s));
       changed();
     },
     async setApproval(name, approval) {

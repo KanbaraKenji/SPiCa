@@ -33,6 +33,8 @@ export interface ProcessBackendOptions {
   /** The core came back after a crash: the window reloads sessions. */
   onRestarted(): void;
   onPluginsChanged(): void;
+  /** The MCP services the person added changed state (started, crashed, waiting for a download). */
+  onMcpChanged?(): void;
   /** How far an install the plugin page started is. */
   onPluginsProgress?(p: PluginsProgress): void;
   /** Methods the core may call on this process (model settings for its MCP tools). */
@@ -112,6 +114,8 @@ export class ProcessBackend implements AgentBackend {
           this.#o.onPluginsChanged();
         } else if (m?.type === 'plugins.progress' && m.progress) {
           this.#o.onPluginsProgress?.(m.progress);
+        } else if (m?.type === 'mcp.changed') {
+          this.#o.onMcpChanged?.();
         }
       });
     });

@@ -25,12 +25,13 @@ import { ConfirmDialog } from '../ui/Dialog';
 import { ContextMenu } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { letterBadge } from '../ui/badge';
+import { InstallList } from '../chat/Blocks';
 import { FormRow } from './FormRow';
 import { ProblemBeside, ProblemBox } from './Problem';
 import { Group, Row } from './Group';
 import { SaveRow } from './save-layout';
 import { Switch } from './Switch';
-import { N_, t } from '../../../shared/i18n';
+import { N_, t, tc } from '../../../shared/i18n';
 
 export interface McpApi {
   list(): Promise<McpList>;
@@ -39,6 +40,8 @@ export interface McpApi {
   remove(name: string): Promise<void>;
   setEnabled(name: string, on: boolean): Promise<void>;
   setApproval(name: string, approval: McpApproval): Promise<void>;
+  /** The person agreed to what a 待下载 service needs downloaded. */
+  download(name: string): Promise<void>;
   onChanged(listener: () => void): () => void;
   pickFolder?: () => Promise<string | null>;
 }
@@ -114,6 +117,9 @@ function ApprovalField({ value, onChange, disabled }: { value: McpApproval; onCh
 /** A service's page. */
 function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; busy: boolean; api: McpApi; onBack(): void; onEdit(): void; onRemove(): void }) {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
+  // 待下载: 下载 asks first, with what would come from where (the list the app's Python download shows)
+  const [asking, setAsking] = useState(false);
+  const pkg = s.download?.packages[0]?.name ?? '';
   const status = t(MCP_STATUS[s.status]);
   return (
     <section className={s.enabled ? 'plugin-detail mcp-detail' : 'plugin-detail mcp-detail is-off'} aria-label={s.name}>
@@ -127,6 +133,12 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
           </span>
         </div>
         <div className="plugin-head-actions">
+          {s.status === 'needs-download' && s.download ? (
+            <button type="button" className="btn btn-small btn-primary" disabled={busy} onClick={() => setAsking(true)}>
+              {t('下载')}
+            </button>
+          ) : null}
+          {s.status === 'downloading' ? <span className="spinner" aria-hidden /> : null}
           <Switch on={s.enabled} label={s.enabled ? t('停用「{name}」', { name: s.name }) : t('启用「{name}」', { name: s.name })} disabled={busy} onChange={(on) => void api.setEnabled(s.name, on)} />
           <button
             type="button"
@@ -144,6 +156,18 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
           </button>
         </div>
       </header>
+      {asking && s.download ? (
+        <ConfirmDialog
+          title={t('下载「{name}」？', { name: pkg })}
+          detail={<InstallList preview={s.download} />}
+          confirmLabel={t('下载')}
+          onConfirm={() => {
+            setAsking(false);
+            void api.download(s.name);
+          }}
+          onCancel={() => setAsking(false)}
+        />
+      ) : null}
       {menu ? (
         <ContextMenu
           x={0}
@@ -173,7 +197,7 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
           </div>
         ) : null}
         <dl className="detail-facts plugin-facts mcp-facts">
-          <dt>{t('命令')}</dt>
+          <dt>{tc('field', '命令')}</dt>
           <dd className="mcp-mono">{commandLine(s.command, s.args)}</dd>
           {s.cwd ? (
             <>
@@ -377,7 +401,7 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
         }}
       >
         <TextField label={t('名称')} value={draft.name} onChange={(name) => set({ name })} error={shownErrors.name} placeholder="files" />
-        <TextField label={t('命令')} value={draft.command} onChange={(command) => set({ command })} error={shownErrors.command} placeholder="npx" mono />
+        <TextField label={tc('field', '命令')} value={draft.command} onChange={(command) => set({ command })} error={shownErrors.command} placeholder="npx" mono />
         <FormRow stack title={t('参数')}>
           <textarea className="input mcp-args mcp-mono" wrap="off" rows={Math.min(8, Math.max(3, args.length + 1))} value={draft.args} placeholder={'-y\n@example/files\nD:\\Shared Files'} aria-label={t('参数')} spellCheck={false} onChange={(e) => set({ args: e.target.value })} />
         </FormRow>
@@ -451,8 +475,6 @@ type View = { at: 'list' } | { at: 'detail'; name: string } | { at: 'edit'; name
 
 export interface McpServersProps {
   api: McpApi;
-  /** The list is a settings section of its own (named 「MCP 服务」 above it): no title of its own. */
-  ownPage?: boolean;
   /** Which of list / page / form shows, when the caller keeps it. */
   view?: View;
   onView?: (v: View) => void;
@@ -461,7 +483,7 @@ export interface McpServersProps {
 export type McpView = View;
 
 /** The list, a service's page, or the form. */
-export function McpServers({ api, view: viewProp, onView, ownPage }: McpServersProps) {
+export function McpServers({ api, view: viewProp, onView }: McpServersProps) {
   const [list, setList] = useState<McpList | null>(null);
   const [ownView, setOwnView] = useState<View>({ at: 'list' });
   const [removing, setRemoving] = useState<McpServerView | null>(null);
@@ -483,6 +505,8 @@ export function McpServers({ api, view: viewProp, onView, ownPage }: McpServersP
   const servers = list?.servers ?? [];
   const current = view.at !== 'list' && view.name ? servers.find((s) => s.name === view.name) : undefined;
 
+  // a page or the form waits for the list (not the list shown for a moment first)
+  if (view.at !== 'list' && !list) return null;
   if (view.at === 'edit' && list) {
     return <Editor key={view.name ?? ''} was={current ?? null} saved={servers} taken={list.taken} api={api} onBack={() => go(current ? { at: 'detail', name: current.name } : { at: 'list' })} onSaved={(name) => go({ at: 'detail', name })} />;
   }
@@ -505,30 +529,14 @@ export function McpServers({ api, view: viewProp, onView, ownPage }: McpServersP
       ))}
     </ul>
   );
-  const add = (
-    <button type="button" className="btn btn-small" onClick={() => go({ at: 'edit', name: null })}>
-      <Icon name="plus" size={14} />
-      {t('添加')}
-    </button>
-  );
   return (
     <>
       {view.at === 'detail' && current ? (
         <Detail s={current} busy={false} api={api} onBack={() => go({ at: 'list' })} onEdit={() => go({ at: 'edit', name: current.name })} onRemove={() => setRemoving(current)} />
       ) : (
+        // the tab above names it; 添加 MCP 服务 is on the tab's row
         <section className="plugins-part mcp-part" aria-label={t('MCP 服务')}>
-          <div className="plugins-part-head">
-            {ownPage ? (
-              <span />
-            ) : (
-              <h3 className="plugins-part-title">
-                {t('MCP 服务')}
-                {servers.length ? <span className="tab-count">{servers.length}</span> : null}
-              </h3>
-            )}
-            <div className="plugins-part-actions">{add}</div>
-          </div>
-          {servers.length ? rows : list ? <p className="settings-hint plugins-none">{t('未添加 MCP 服务')}</p> : null}
+          {servers.length ? rows : list ? <p className="settings-hint plugins-empty">{t('未添加 MCP 服务')}</p> : null}
         </section>
       )}
       {removing ? (

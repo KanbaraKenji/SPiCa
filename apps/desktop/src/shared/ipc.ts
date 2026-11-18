@@ -28,6 +28,10 @@ export const DesktopChannel = {
   PluginsChanged: 'spica:plugins:changed',
   /** main -> renderer: how far an install the plugin page started is */
   PluginsProgress: 'spica:plugins:progress',
+  /** invoke: McpCommand -> McpResult (设置 › 插件 › MCP 服务) */
+  Mcp: 'spica:mcp',
+  /** main -> renderer: an MCP service the person added changed state */
+  McpChanged: 'spica:mcp:changed',
   ProvidersChanged: 'spica:providers:changed',
   ActiveSession: 'spica:ui:active-session',
   /** renderer -> main: what covers the window ('splash' | 'scrim' | null); the caption symbols follow it. */

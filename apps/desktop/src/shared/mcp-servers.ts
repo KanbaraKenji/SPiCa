@@ -1,12 +1,16 @@
 // The MCP services the person adds in 设置 (not the ones plugins bring): what the settings page sees and sends.
 // Secrets (the values of environment variables) only travel renderer -> main when typed; main sends back a mask.
+import type { InstallPreview } from '@spica/protocol';
 import { N_, t } from './i18n';
 
 /** When one of its tools runs: asked each time (the default for a service the person added) or straight away. */
 export type McpApproval = 'ask' | 'auto';
 
-/** How it is running: as a plugin's process (Plugins.tsx SERVER_STATUS), and 'off' when its switch is off. */
-export type McpStatus = 'running' | 'starting' | 'restarting' | 'stopped' | 'failed' | 'off';
+/**
+ * How it is running: as a plugin's process (Plugins.tsx SERVER_STATUS); 'off' when its switch is off; for npx and
+ * uvx, 'needs-download' (the package is not here: waits for the person) and 'downloading'.
+ */
+export type McpStatus = 'running' | 'starting' | 'restarting' | 'stopped' | 'failed' | 'off' | 'needs-download' | 'downloading';
 
 /** An environment variable of a saved service: its name and its value masked. */
 export interface McpEnvView {
@@ -31,6 +35,29 @@ export interface McpServerView {
   lastError?: string;
   /** The last lines it wrote to its error output. */
   logTail?: string[];
+  /** 'needs-download': what would be downloaded, for the same list the app's Python download shows. */
+  download?: InstallPreview;
+}
+
+/** What the page asks of the main process (DesktopChannel.Mcp). */
+export type McpCommand =
+  | { op: 'list' }
+  | { op: 'save'; was: string | null; draft: McpServerDraft }
+  | { op: 'remove'; name: string }
+  | { op: 'setEnabled'; name: string; on: boolean }
+  | { op: 'setApproval'; name: string; approval: McpApproval }
+  | { op: 'download'; name: string };
+
+export interface McpListView {
+  servers: McpServerView[];
+  /** Names a new service cannot take (plugins' servers). */
+  taken: string[];
+}
+
+/** The answer: the list as it is now, and for save what is wrong by field (empty: saved). */
+export interface McpResult {
+  list: McpListView;
+  errors?: McpFieldErrors & { ''?: string };
 }
 
 /** A row of 环境变量 in the form: a saved one (value masked, empty keeps it) or a new one. */
@@ -144,4 +171,18 @@ export const MCP_STATUS: Record<McpStatus, string> = {
   stopped: N_('已停止'),
   failed: N_('错误'),
   off: N_('已停用'),
+  'needs-download': N_('待下载'),
+  downloading: N_('正在下载'),
 };
+
+/** Where npx and uvx download from, as the download list shows it. */
+export const DOWNLOAD_HOSTS: Record<'npx' | 'uvx', string> = { npx: 'registry.npmjs.org', uvx: 'pypi.org' };
+
+/** The download list for a service that waits for one (a package, perhaps uv's own Python; sizes not known before). */
+export function downloadPreview(need: { runner: 'npx' | 'uvx'; package: string; python: boolean }): InstallPreview {
+  return {
+    ...(need.python ? { python: { version: '', host: 'github.com' } } : {}),
+    packages: [{ name: need.package || need.runner }],
+    packageHost: DOWNLOAD_HOSTS[need.runner],
+  };
+}
