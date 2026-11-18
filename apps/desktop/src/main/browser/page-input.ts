@@ -29,15 +29,23 @@ export function agentPage(wc: PageContents, onHuman: (wcId: number) => void): Ag
     ready = null;
   });
   const attach = () => {
-    ready ??= (async () => {
+    if (ready) return ready;
+    const now = (async () => {
       if (!wc.debugger.isAttached()) wc.debugger.attach('1.3');
       await wc.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true });
-      for (const l of attachedHooks) await l().catch(() => undefined);
     })().catch((e: unknown) => {
       ready = null;
       throw e;
     });
-    return ready;
+    ready = now;
+    // what is turned on at each attach runs once it is attached (its own commands wait for that, so not inside it)
+    void now.then(
+      () => {
+        for (const l of attachedHooks) void l().catch(() => undefined);
+      },
+      () => undefined,
+    );
+    return now;
   };
   const attachedHooks = new Set<() => Promise<void>>();
   wc.on('before-mouse-event', (_e, mouse) => {

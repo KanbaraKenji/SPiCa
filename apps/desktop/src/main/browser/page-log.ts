@@ -62,7 +62,7 @@ export class PageLog {
   constructor(page: AgentPage) {
     this.#page = page;
     const turnOn = async (sessionId?: string) => {
-      for (const m of ['Runtime.enable', 'Log.enable', 'Network.enable']) await page.cdp(m, undefined, sessionId).catch(() => undefined);
+      for (const m of ['Page.enable', 'Runtime.enable', 'Log.enable', 'Network.enable']) await page.cdp(m, undefined, sessionId).catch(() => undefined);
     };
     page.onAttached?.(() => turnOn());
     pageFrames(page).onFrameSession((sid) => void turnOn(sid));
@@ -71,6 +71,7 @@ export class PageLog {
 
   /** Starts collecting now (attaches the protocol if it is not yet). */
   async start(): Promise<void> {
+    await this.#page.cdp('Page.enable').catch(() => undefined);
     await this.#page.cdp('Runtime.enable').catch(() => undefined);
     await this.#page.cdp('Log.enable').catch(() => undefined);
     await this.#page.cdp('Network.enable').catch(() => undefined);

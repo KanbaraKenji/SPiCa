@@ -59,6 +59,8 @@ export class PageFrames {
           this.#sessions.set(info.targetId, sid);
           // its own frames in yet other processes, and our hooks for the console and network there
           void page.cdp('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true }, sid).catch(() => undefined);
+          // typing reaches a field there while the window has no focus (as for the page itself, page-input.ts)
+          void page.cdp('Emulation.setFocusEmulationEnabled', { enabled: true }, sid).catch(() => undefined);
           for (const l of this.#attachedListeners) l(sid);
         }
       } else if (method === 'Target.detachedFromTarget') {
@@ -67,9 +69,9 @@ export class PageFrames {
         for (const k of [...this.#worlds.keys()]) if (k.startsWith(`${sid}|`)) this.#worlds.delete(k);
       }
     });
-    // attached again (after a detach): the sessions start over
+    // attached (again, after a detach): our worlds are gone, frames in other processes are attached anew (their new
+    // sessions replace the old ones as they are reported)
     page.onAttached?.(async () => {
-      this.#sessions.clear();
       this.#worlds.clear();
       this.#ready = null;
     });
@@ -92,7 +94,15 @@ export class PageFrames {
     return this.#ready;
   }
 
-  /** The page's frames (not the page itself), in document order, at most FRAME_LIMIT. */
+  /** Starts following the frames in other processes (they are reported as they attach). */
+  start(): Promise<void> {
+    return this.#init();
+  }
+
+  /**
+   * The page's frames (not the page itself), at most FRAME_LIMIT: the page's own tree (frames in the same process),
+   * then each frame in another process (its session's tree, its root naming its parent), hung under its parent.
+   */
   async list(): Promise<FrameInfo[]> {
     await this.#init();
     const out: FrameInfo[] = [];
@@ -100,23 +110,38 @@ export class PageFrames {
     const root = tree?.frameTree;
     if (!root?.frame?.id) return out;
     this.#mainFrameId = root.frame.id;
-    const walk = async (node: TreeNode, sessionId: string | undefined, depth: number): Promise<void> => {
+    /** Every frame known so far: the session it is in (undefined: the page's) and its depth. */
+    const where = new Map<string, { sessionId?: string; depth: number }>([[root.frame.id, { depth: 0 }]]);
+    const walk = (node: TreeNode, sessionId: string | undefined, depth: number) => {
       for (const child of node.childFrames ?? []) {
-        if (out.length >= FRAME_LIMIT) return;
-        const own = this.#sessions.get(child.frame.id);
-        const info: FrameInfo = { frameId: child.frame.id, ...(own ? { sessionId: own } : sessionId ? { sessionId } : {}), parentFrameId: node.frame.id, ...(sessionId ? { parentSessionId: sessionId } : {}), url: child.frame.url + (child.frame.urlFragment ?? ''), depth };
-        out.push(info);
-        if (depth >= DEPTH_LIMIT) continue;
-        if (own) {
-          // a frame in another process: its own tree, from its own session
-          const sub = (await this.#page.cdp('Page.getFrameTree', undefined, own).catch(() => undefined)) as { frameTree?: TreeNode } | undefined;
-          if (sub?.frameTree) await walk(sub.frameTree, own, depth + 1);
-        } else {
-          await walk(child, sessionId, depth + 1);
-        }
+        if (out.length >= FRAME_LIMIT || this.#sessions.has(child.frame.id)) continue;
+        out.push({ frameId: child.frame.id, ...(sessionId ? { sessionId } : {}), parentFrameId: node.frame.id, ...(sessionId ? { parentSessionId: sessionId } : {}), url: child.frame.url + (child.frame.urlFragment ?? ''), depth });
+        where.set(child.frame.id, { ...(sessionId ? { sessionId } : {}), depth });
+        if (depth < DEPTH_LIMIT) walk(child, sessionId, depth + 1);
       }
     };
-    await walk(root, undefined, 1);
+    walk(root, undefined, 1);
+    // frames in other processes: each session's own tree; its root's parent is a frame found before (or in a later round)
+    const subtrees: { sessionId: string; node: TreeNode & { frame: { parentId?: string } } }[] = [];
+    for (const sid of new Set(this.#sessions.values())) {
+      const sub = (await this.#page.cdp('Page.getFrameTree', undefined, sid).catch(() => undefined)) as { frameTree?: TreeNode & { frame: { parentId?: string } } } | undefined;
+      if (sub?.frameTree?.frame?.id) subtrees.push({ sessionId: sid, node: sub.frameTree });
+    }
+    for (let progress = true; progress && subtrees.length; ) {
+      progress = false;
+      for (let i = 0; i < subtrees.length; i++) {
+        const { sessionId, node } = subtrees[i]!;
+        const parent = node.frame.parentId ? where.get(node.frame.parentId) : undefined;
+        if (!parent) continue;
+        subtrees.splice(i--, 1);
+        progress = true;
+        const depth = parent.depth + 1;
+        if (out.length >= FRAME_LIMIT || depth > DEPTH_LIMIT) continue;
+        out.push({ frameId: node.frame.id, sessionId, parentFrameId: node.frame.parentId!, ...(parent.sessionId ? { parentSessionId: parent.sessionId } : {}), url: node.frame.url + (node.frame.urlFragment ?? ''), depth });
+        where.set(node.frame.id, { sessionId, depth });
+        if (depth < DEPTH_LIMIT) walk(node, sessionId, depth + 1);
+      }
+    }
     return out;
   }
 

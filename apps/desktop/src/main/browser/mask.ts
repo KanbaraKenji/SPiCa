@@ -43,7 +43,11 @@ export function maskUrl(url: string): string {
   if (u.hash.includes('=')) {
     const h = new URLSearchParams(u.hash.slice(1));
     let hashChanged = false;
-    for (const [k, v] of [...h.entries()]) if (secretName(k) && v) (h.set(k, HIDDEN), (hashChanged = true));
+    for (const [k, v] of [...h.entries()]) {
+      if (!secretName(k) || !v) continue;
+      h.set(k, HIDDEN);
+      hashChanged = true;
+    }
     if (hashChanged) u.hash = [...h.entries()].map(([k, v]) => `${encodeURIComponent(k)}=${v === HIDDEN ? HIDDEN : encodeURIComponent(v)}`).join('&');
   }
   return u.href.replace(/%5Bhidden%5D/g, HIDDEN);

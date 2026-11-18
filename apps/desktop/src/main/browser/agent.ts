@@ -255,7 +255,7 @@ export class BrowserAgent {
 
   /** From this call on, what the page writes to its console and the requests it makes are kept (browser_console, browser_network). */
   async #collect(page: AgentPage): Promise<void> {
-    pageFrames(page);
+    await pageFrames(page).start();
     await pageLog(page).start();
   }
 
@@ -521,6 +521,10 @@ export class BrowserAgent {
 
   async #mouse(page: AgentPage, x: number, y: number): Promise<boolean> {
     const { chooser } = await this.#noFileDialog(page, async () => {
+      // the pointer moves there first, as a person's does: a press with no move before it is lost when it lands in a
+      // frame of another site the pointer has not been over yet (tried)
+      await page.cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' });
+      await (this.#o.wait ?? sleep)(50);
       for (const type of ['mousePressed', 'mouseReleased']) await page.cdp('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
     });
     return chooser;

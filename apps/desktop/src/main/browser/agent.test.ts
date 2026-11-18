@@ -156,7 +156,9 @@ describe('acting on a page', () => {
     p.state.facts = button();
     const r = await s.agent.click('s1', { ref: 3 });
     expect(r.text.split('\n')[0]).toBe('Clicked [3] "Next".');
+    // the pointer moved there first (a press without it is lost in a frame of another site)
     expect(p.sent.map(([m, a]) => [m, a?.type, a?.x, a?.y])).toEqual([
+      ['Input.dispatchMouseEvent', 'mouseMoved', 120, 40],
       ['Input.dispatchMouseEvent', 'mousePressed', 120, 40],
       ['Input.dispatchMouseEvent', 'mouseReleased', 120, 40],
     ]);
@@ -176,7 +178,7 @@ describe('acting on a page', () => {
     p.state.facts = button({ type: 'submit', name: 'Place order', form: { action: 'https://shop.example/order', method: 'post' } });
     await s.agent.inspect('s1', { tool: 'browser_click', ref: 3, callId: 'c2' });
     await s.agent.click('s1', { ref: 3, callId: 'c2' });
-    expect(p.sent).toHaveLength(2);
+    expect(p.sent).toHaveLength(3);
   });
 
   it('an unconfirmed click arms the form stop; a confirmed one does not', async () => {
@@ -260,9 +262,11 @@ describe('one conversation acts in line', () => {
     };
     await Promise.all([s.agent.type('s1', { ref: 1, text: '张三' }), s.agent.type('s1', { ref: 2, text: 'zhangsan@example.com' })]);
     expect(p.sent.map(([m, a]) => (m === 'Input.insertText' ? `type ${String(a?.text)}` : String(a?.type)))).toEqual([
+      'mouseMoved',
       'mousePressed',
       'mouseReleased',
       'type 张三',
+      'mouseMoved',
       'mousePressed',
       'mouseReleased',
       'type zhangsan@example.com',
