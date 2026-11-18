@@ -769,7 +769,7 @@ describe('background commands', () => {
     expect(t.jobs?.cmd1?.end).toBe('user');
   });
   it('the files a job changed become its call’s cards after a restart', () => {
-    const file = { path: 'D:\w\a.txt', name: 'a.txt', kind: 'text', sizeBytes: 1, modifiedAt: '', extractedAt: '', read: {}, origin: 'created' } as const;
+    const file = { path: 'D:/w/a.txt', name: 'a.txt', kind: 'text', sizeBytes: 1, modifiedAt: '', extractedAt: '', read: {}, origin: 'created' } as const;
     const t = withJobs({ items: [] }, [{ ...job, end: 'exited', exitCode: 0, files: [file] }]);
     expect(t.fileCards?.['call-1']?.name).toBe('a.txt');
     expect(t.fileCardLists?.['call-1']).toHaveLength(1);
