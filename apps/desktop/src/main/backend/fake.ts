@@ -1595,7 +1595,7 @@ export class FakeBackend implements AgentBackend {
         blocks.push({ type: 'text', text: after });
       } else if (/问|选|会议室|场地/.test(text)) {
         const callId = this.#id('call');
-        // For the card's shots. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
+        // The question card's kinds. 会议室: several things to fill in as a bulleted list, and a suggested option. 场地: the same
         // as plain lines numbered by the model itself (full-width 1）, no list: shown as written), long options, the
         // suggested one long.
         // 多选: several may be chosen (the answer: the chosen ones, one a line). 开放问题: no options, only the box.

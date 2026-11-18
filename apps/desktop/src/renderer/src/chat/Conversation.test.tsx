@@ -186,7 +186,7 @@ describe('a question waiting for its answer', () => {
     expect(document.querySelector('.transcript-column .ask-card.is-done .card-answer')?.textContent).toBe('新模板');
     // the waiting ones are not in the conversation; the oldest stands in the input area, above the box
     expect(document.querySelector('.transcript-column .ask-card.is-open')).toBeNull();
-    const docked = document.querySelector('.transcript-foot .ask-dock .ask-card.is-open.is-docked')!;
+    const docked = document.querySelector('.transcript-foot .ask-dock .ask-card.is-open')!;
     expect(docked.querySelector('.ask-head .md')?.textContent).toBe('纪要按哪种口径写？');
     // its height bound by what the conversation's box leaves (measured; 0 in a page with no layout)
     expect((docked.parentElement as HTMLElement).style.getPropertyValue('--ask-room')).toMatch(/^\d+px$/);

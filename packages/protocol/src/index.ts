@@ -198,11 +198,6 @@ export type RegenerateCode =
   | 'regenerate.role'
   | 'regenerate.no_turn';
 
-/** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
-/**
- * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
- * other agents since the user last wrote (RuntimeOptions.defaults.agentMessages). The window finds it by this.
- */
 /**
  * The option an ask_user call suggests: its `recommended`, trimmed, when it is one of the options (compared trimmed);
  * the option as written. Anything else (missing, not text, not among the options): none. The core and the window
@@ -219,6 +214,11 @@ export function askAnswerLines(chosen: readonly string[]): string {
   return chosen.map((c) => c.trim()).filter(Boolean).join('\n');
 }
 
+/** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
+/**
+ * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
+ * other agents since the user last wrote (RuntimeOptions.defaults.agentMessages). The window finds it by this.
+ */
 export const AGENT_MESSAGES_LIMIT_MARK = 'Not sent: message limit reached.';
 
 /** Starts the note added for the model after the result of the same call repeated (not shown to the user). */

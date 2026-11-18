@@ -2294,9 +2294,9 @@ pre .hl-punctuation {
   background: var(--spica-surface);
 }
 
-/* A question waiting for its answer: what is asked, the options one a row, a row to type in with 确定 at its end.
-   Its edge in the accent (mixed with the boxes' edge): the one card in the conversation waiting on the user, told
-   from the tool cards and the answer's text by it and by 确定. Answered it is a row as a confirmation is (above). */
+/* A question card. Waiting for its answer it stands above the message box (.ask-dock, below): what is asked, the
+   options one a row, a row to type in, 确定 on a row of its own. Answered it is a row in the conversation as a
+   confirmation is (above). */
 .card.ask-card {
   align-self: flex-start;
   width: 100%;
@@ -2305,7 +2305,6 @@ pre .hl-punctuation {
 
 .ask-card.is-open {
   padding: 12px 12px 10px;
-  border-color: color-mix(in srgb, var(--spica-accent) 55%, var(--spica-border-strong));
 }
 
 /* The question: its first line in the title's weight; the things to fill in under it (a list, or lines as the model
@@ -2437,7 +2436,9 @@ label.ask-row:active {
   translate: var(--centre-shift, 0px) 0;
 }
 
-.card.ask-card.is-docked {
+/* Its place says it waits on the user: the boxes' edge (.ask-card, above), not the accent, so it does not stack a
+   second blue frame on the message box's (blue while it has the focus). */
+.card.ask-card.is-open {
   max-width: none;
   max-height: min(var(--ask-room, 45vh), 460px);
   display: flex;
@@ -2445,13 +2446,7 @@ label.ask-row:active {
   box-shadow: var(--spica-input-shadow);
 }
 
-/* Docked, its place says it waits on the user: the boxes' edge, not the accent, so it does not stack a second blue
-   frame on the message box's (blue while it has the focus). */
-.ask-card.is-open.is-docked {
-  border-color: var(--spica-border-strong);
-}
-
-.ask-card.is-docked .ask-scroll {
+.ask-scroll {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -2459,7 +2454,7 @@ label.ask-row:active {
   flex-direction: column;
 }
 
-.ask-card.is-docked .ask-question {
+.ask-card.is-open .ask-question {
   flex: none;
   display: flex;
   flex-direction: column;
@@ -2467,22 +2462,22 @@ label.ask-row:active {
 
 /* With lines under its first line it may give way, down to the first line and one more (4: the gap between them);
    the first line stays, the lines under it scroll in their own part. */
-.ask-card.is-docked .ask-question:has(.ask-rest) {
+.ask-card.is-open .ask-question:has(.ask-rest) {
   flex: 0 1 auto;
   min-height: calc(2 * var(--lh-body) + 4px);
 }
 
-.ask-card.is-docked .ask-head {
+.ask-head {
   flex: none;
 }
 
-.ask-card.is-docked .ask-rest {
+.ask-rest {
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
 }
 
-.ask-card.is-docked .ask-options {
+.ask-options {
   flex: none;
 }
 

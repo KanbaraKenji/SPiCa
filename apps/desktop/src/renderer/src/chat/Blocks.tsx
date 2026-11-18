@@ -924,7 +924,8 @@ export function askQuestionParts(question: string): { head: string; rest: string
 }
 
 /**
- * A question card. Waiting: the question (its first line in the title's weight, the rest under it), the options
+ * A question card. Waiting (it stands above the message box, Conversation; its question and options scroll there
+ * when they are long): the question (its first line in the title's weight, the rest under it), the options
  * one a row (a round mark for one, a square for several, the number, the words, 建议 after the suggested one), last
  * a row of its own to type in, and 确定: nothing is sent until it is pressed, one option chosen or several. Answered,
  * one row: the question's first line, the answer at its right end; dropped unanswered (the run was stopped), 已中断
@@ -933,13 +934,10 @@ export function askQuestionParts(question: string): { head: string; rest: string
 export function AskCard({
   block,
   onAnswer,
-  docked = false,
   place,
 }: {
   block: Extract<Block, { type: 'ask' }>;
   onAnswer(answer: string): void;
-  /** standing above the message box, as wide as it (waiting); its question and options scroll when they are long */
-  docked?: boolean;
   /** which of the questions waiting this is, of how many (shown only when more than one wait) */
   place?: readonly [number, number];
 }) {
@@ -991,7 +989,7 @@ export function AskCard({
   }
   const mark = multi ? 'checkbox' : 'radio';
   return (
-    <section className={docked ? 'card ask-card is-open is-docked' : 'card ask-card is-open'} aria-label={t('提问')}>
+    <section className="card ask-card is-open" aria-label={t('提问')}>
       <div className="ask-scroll">
         <div className="ask-question">
           {head || place ? (

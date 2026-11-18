@@ -622,7 +622,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
           <RunNotices notices={notices} />
           {openAsk ? (
             <div className="ask-dock" ref={dock}>
-              <AskCard key={openAsk.callId} block={openAsk} docked {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
+              <AskCard key={openAsk.callId} block={openAsk} {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
             </div>
           ) : null}
           <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
