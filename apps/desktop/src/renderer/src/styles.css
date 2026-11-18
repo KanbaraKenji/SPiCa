@@ -7086,6 +7086,15 @@ section.plugins-part > .plugins-part-title {
 .preview-head-gap {
   flex: 1;
   min-width: 4px;
+  /* a run page's zoom lens sits at its end (.zoom-mark) */
+  position: relative;
+  align-self: stretch;
+}
+
+/* A run page's row keeps the lens's room always (the path cut that much earlier), so nothing moves or is covered
+   when it comes. */
+.preview-head-gap.has-zoom {
+  min-width: var(--zoom-mark-room);
 }
 
 .preview-body {
@@ -9030,10 +9039,13 @@ input[type='radio']:disabled {
   min-width: 0;
   display: flex;
   margin: 0 4px;
+  position: relative;
 }
 
+/* Room kept at the end for the zoom lens (always, so the text does not move when it comes). */
 .browser-address {
   flex: 1;
+  padding-right: var(--zoom-mark-room);
 }
 
 .browser-pages {
@@ -9121,6 +9133,67 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
   font-variant-numeric: tabular-nums;
 }
+/* A page's own zoom when it is not 100% (shell/ZoomMark.tsx), as Chrome shows it: a lens (an .icon-btn, its grey)
+   in the room kept at the end of the address box (24 there, 2 in, so its corners follow the box's 8), or at the
+   end of a run HTML file's row gap; nothing moves when it comes or goes. Under it, just after a change or when it is pressed, a layer in the menus' ground and shadow:
+   − the zoom + (the number, pressed, back to 100%; one width, so − and + stay put). The three are one shape, the
+   controls' (--control-h high, --radius-s corners), with --zoom-layer-pad round each, the same on all four sides
+   and between them; the layer's corners are theirs plus that room, so its edge runs parallel to theirs. */
+:root {
+  --zoom-mark-room: 28px;
+  --zoom-layer-pad: 4px;
+}
+.icon-btn.zoom-mark {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+}
+/* In a run file's row there is no box round it: one of the row's buttons, their size, 2 from the next as they are. */
+.preview-head-gap .icon-btn.zoom-mark {
+  right: 0;
+  width: var(--control-h);
+  height: var(--control-h);
+  margin-top: calc(var(--control-h) / -2);
+}
+.zoom-layer {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--zoom-layer-pad);
+  padding: var(--zoom-layer-pad);
+  border-radius: calc(var(--radius-s) + var(--zoom-layer-pad));
+}
+.zoom-layer .icon-btn,
+.zoom-layer-value {
+  height: var(--control-h);
+  border-radius: var(--radius-s);
+  color: var(--spica-ink);
+}
+.zoom-layer-value {
+  /* whole pixels (a ch-based width blurs the edges), room for 200% */
+  width: 56px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+/* On the menu's own ground, its rows' hover (the page hover is too faint there). */
+.zoom-layer .icon-btn:hover:not(:disabled),
+.zoom-layer-value:hover {
+  background: var(--spica-menu-hover);
+  color: var(--spica-ink);
+}
+.zoom-layer .icon-btn:active:not(:disabled),
+.zoom-layer-value:active {
+  background: var(--spica-active);
+}
+/* The focus ring inside each, the hover ground's size, so the room round it stays even. */
+.zoom-layer .icon-btn:focus-visible,
+.zoom-layer-value:focus-visible {
+  outline-offset: -2px;
+}
+
 /* Sound and video in the preview (FilePreview): Chromium's own player, video as wide as the panel. */
 .preview-media {
   display: flex;

@@ -7,7 +7,9 @@
 // An element whose note only repeats its own text (a name that may be cut short)
 // carries `data-tip-clipped`: the bubble shows only while that text is cut off
 // with an ellipsis. Its value is the selector of the child holding the text
-// ('' = the element itself).
+// ('' = the element itself). An element marked `data-tip-below` has its bubble
+// under it (above it would cover what it was opened from); its value is the
+// selector of the box round it to go under ('' = the element itself).
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const DELAY_MS = 250;
@@ -19,12 +21,14 @@ interface Tip {
   rect: DOMRect;
   /** A menu item's note: the menu's box, so the bubble goes beside the menu instead of over the item above. */
   menu?: DOMRect;
+  /** Under this box first (`data-tip-below`: the element's, or one round it); above it only when there is no room under it. */
+  below?: DOMRect;
 }
 
 /**
  * Where the bubble goes. A menu item's: outside the menu, level with the item, on the right; on the left when
  * the right has no room; above only when neither has. Anything else: above the element, centred, kept inside
- * the window; below it when there is no room above.
+ * the window; below it when there is no room above (`below`: the other way round).
  */
 export function placeTip(t: Tip, w: number, h: number, win: { width: number; height: number }): { left: number; top: number } {
   const r = t.rect;
@@ -34,6 +38,7 @@ export function placeTip(t: Tip, w: number, h: number, win: { width: number; hei
     if (t.menu.left - GAP - w >= EDGE) return { left: t.menu.left - GAP - w, top };
   }
   const left = Math.min(Math.max(EDGE, r.left + r.width / 2 - w / 2), win.width - w - EDGE);
+  if (t.below) return { left, top: t.below.bottom + GAP + h <= win.height - EDGE ? t.below.bottom + GAP : t.below.top - GAP - h };
   return { left, top: r.top - GAP - h >= EDGE ? r.top - GAP - h : r.bottom + GAP };
 }
 
@@ -90,7 +95,14 @@ export function HoverTips() {
       timer = setTimeout(() => {
         if (current !== el || !el.isConnected) return;
         const menu = el.getAttribute('role') === 'menuitem' ? el.closest('[role="menu"]') : null;
-        setTip({ text: tipOf(el), rect: el.getBoundingClientRect(), ...(menu ? { menu: menu.getBoundingClientRect() } : {}) });
+        const underSel = el.getAttribute('data-tip-below');
+        const below = underSel === null ? null : ((underSel && el.closest(underSel)) || el);
+        setTip({
+          text: tipOf(el),
+          rect: el.getBoundingClientRect(),
+          ...(menu ? { menu: menu.getBoundingClientRect() } : {}),
+          ...(below ? { below: below.getBoundingClientRect() } : {}),
+        });
       }, wait);
     };
     const over = (e: PointerEvent) => start(target(e.target), DELAY_MS);

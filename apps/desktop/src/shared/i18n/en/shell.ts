@@ -282,4 +282,7 @@ export const EN_SHELL: Catalog = {
   交还: 'Hand back',
   // shell/FilePreview.tsx (a local page's stopped requests)
   '已拦截：{hosts}': 'Blocked: {hosts}',
+  '{zoom}，回到 100%': '{zoom}, back to 100%',
+  '回到 100%': 'Back to 100%',
+  '缩放 {zoom}': 'Zoom {zoom}',
 };

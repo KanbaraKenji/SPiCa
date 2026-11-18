@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react';
 import { Icon } from '../ui/Icon';
 import { t } from '../../../shared/i18n';
 import { addressOf, type PaneTab } from './pane-tabs';
+import { ZoomMark, type PageZoomBridge } from './ZoomMark';
 
 type WebTab = Extract<PaneTab, { kind: 'web' }>;
 
@@ -41,6 +42,8 @@ export interface BrowserPaneProps {
    * address row and a frame round the page. 接手 / 停止 while acting, 交还 when taken. Absent: nothing.
    */
   agent?: { mode: 'acting' | 'taken'; onTakeOver(): void; onStop(): void; onGiveBack(): void } | null;
+  /** Pages' own zoom (Ctrl + wheel in a page): a lens at the end of the address when not 100%, a layer with − the zoom + just after a change (shell/ZoomMark.tsx). */
+  zoom?: PageZoomBridge;
 }
 
 interface PageState {
@@ -100,8 +103,10 @@ function Page({ tab, shown, onChange, onState, register, onPage }: { tab: WebTab
   return <webview ref={ref as unknown as Ref<HTMLWebViewElement>} src={first} {...POPUPS} className={shown ? 'browser-page' : 'browser-page is-hidden'} data-tab={tab.id} />;
 }
 
-export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage, agent }: BrowserPaneProps) {
+export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onPage, agent, zoom }: BrowserPaneProps) {
   const pages = useRef(new Map<string, WebviewElement>());
+  // Each page's WebContents id once it is there, for the zoom lens of the one shown.
+  const [wcIds, setWcIds] = useState<Record<string, number>>({});
   const [states, setStates] = useState<Record<string, PageState>>({});
   const tab = tabs.find((x) => x.id === active);
   const [typed, setTyped] = useState<{ id: string; text: string } | null>(null);
@@ -135,6 +140,7 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
           </button>
           <form
             className="browser-address-form"
+            data-zoom-frame=""
             onSubmit={(e) => {
               e.preventDefault();
               go();
@@ -156,6 +162,7 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
                 }
               }}
             />
+            {zoom ? <ZoomMark zoom={zoom} wcId={wcIds[tab.id] ?? null} /> : null}
           </form>
           <button type="button" className="icon-btn" disabled={!tab.url} onClick={() => tab.url && onOpenExternal(tab.url)} aria-label={t('用系统浏览器打开')} title={t('用系统浏览器打开')}>
             <Icon name="external" size={15} />
@@ -189,7 +196,15 @@ export function BrowserPane({ tabs, active, strip, onChange, onOpenExternal, onP
             tab={x}
             shown={x.id === active}
             onChange={onChange}
-            onPage={onPage}
+            onPage={(tabId, wcId) => {
+              setWcIds((m) => {
+                const next = { ...m };
+                if (wcId === null) delete next[tabId];
+                else next[tabId] = wcId;
+                return next;
+              });
+              onPage?.(tabId, wcId);
+            }}
             onState={(s) => setStates((m) => ({ ...m, [x.id]: s }))}
             register={(el) => {
               if (el) pages.current.set(x.id, el);
