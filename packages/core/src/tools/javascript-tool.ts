@@ -82,6 +82,28 @@ process.stdin.on('end', () => {
 })();
 `;
 
+/**
+ * The absolute paths written out in a piece of JavaScript (its string literals: 'D:\\x', "/home/a/b", `C:/y`; a
+ * template with ${…} only up to its first ${), for approval mode Auto: code that names a place outside the
+ * conversation's folders is confirmed, as a command that writes there is (command-scope.ts). Paths the code builds
+ * (path.join(os.homedir(), …)) are not seen, as for a command's variables. A POSIX path needs a folder and a slash after it (/a/, /a/b), so
+ * that '/' and a regular expression's '/x' are not taken for one.
+ */
+export function absolutePathsIn(code: string): string[] {
+  const out: string[] = [];
+  const literal = /(['"`])((?:\\[\s\S]|(?!\1)[^\\\n])*)\1/g;
+  for (const m of code.matchAll(literal)) {
+    let text = m[2] ?? '';
+    if (m[1] === '`') text = text.split('${')[0] ?? '';
+    // the string as JavaScript reads it: \\ is one backslash, \/ is /
+    const path = text.replace(/\\(.)/g, (_, c: string) => (c === 'n' || c === 't' || c === 'r' ? ' ' : c)).trim();
+    const win = /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]/.test(path);
+    const posix = /^\/[^/\s]+\/([^/\s]|$)/.test(path);
+    if (win || posix) out.push(path);
+  }
+  return out;
+}
+
 export function createJavaScriptTool(opts: JavaScriptToolOptions = {}): Tool {
   const spillDir = opts.spillDir ?? join(tmpdir(), 'spica', 'command-output');
   const maxChars = opts.maxOutputChars ?? 30_000;

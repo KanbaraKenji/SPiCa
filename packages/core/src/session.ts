@@ -34,10 +34,11 @@ import type {
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
 import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
-import { closeSync, openSync, readSync } from 'node:fs';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import { inScope, pathsInText, realPath } from './write-scope.ts';
 import { commandOutside, tooWideToAllow } from './command-scope.ts';
+import { absolutePathsIn } from './tools/javascript-tool.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
@@ -1539,11 +1540,22 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       const cwd = named ? (isAbsolute(input.cwd as string) ? resolvePath(input.cwd as string) : resolvePath(base, input.cwd as string)) : base;
       return commandOutside(input.command, cwd, this.writeRoots(), named)?.folder;
     }
-    // JavaScript, in Auto: the folder it runs in, as for a command (what the code writes is not read off it, as for node -e)
-    if (tool.spec.name === 'run_javascript' && this.#record.config.approvalMode === 'auto' && typeof input.cwd === 'string' && input.cwd.trim() !== '') {
-      const base = this.#record.config.cwd;
-      const cwd = isAbsolute(input.cwd) ? resolvePath(input.cwd) : resolvePath(base, input.cwd);
-      return commandOutside('', cwd, this.writeRoots(), true)?.folder;
+    // JavaScript, in Auto: the folder it runs in, then any absolute path written in the code outside the folders
+    if (tool.spec.name === 'run_javascript' && this.#record.config.approvalMode === 'auto') {
+      const roots = this.writeRoots();
+      if (typeof input.cwd === 'string' && input.cwd.trim() !== '') {
+        const base = this.#record.config.cwd;
+        const cwd = isAbsolute(input.cwd) ? resolvePath(input.cwd) : resolvePath(base, input.cwd);
+        const out = commandOutside('', cwd, roots, true)?.folder;
+        if (out) return out;
+      }
+      for (const p of typeof input.code === 'string' ? absolutePathsIn(input.code) : []) {
+        const target = resolvePath(p);
+        if (inScope(target, roots)) continue;
+        // a folder it names, or the folder of a file it names (as the card shows it and 始终允许 keeps it)
+        return isDirectory(target) ? realPath(target) : dirname(realPath(target));
+      }
+      return undefined;
     }
     const p = tool.writePath?.(input);
     if (!p?.trim()) return undefined;
@@ -1800,4 +1812,13 @@ function keepRecentImages(messages: Message[]): Message[] {
     out[i] = { ...m, content };
   }
   return out;
+}
+
+/** Whether a path is a folder that exists. */
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }
