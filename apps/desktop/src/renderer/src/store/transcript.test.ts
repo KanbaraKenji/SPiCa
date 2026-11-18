@@ -760,7 +760,7 @@ describe('a failed download for the app’s Python', () => {
 });
 
 describe('background commands', () => {
-  const job = { id: 'cmd1', sessionId: 's', callId: 'call-1', command: 'npm run dev', cwd: 'D:\w', startedAt: '2026-11-18T08:00:00Z', outputPath: 'D:\w\cmd1.log' };
+  const job = { id: 'cmd1', sessionId: 's', callId: 'call-1', command: 'npm run dev', cwd: 'D:/w', startedAt: '2026-11-18T08:00:00Z', outputPath: 'D:/w/cmd1.log' };
   it('command.job keeps each job by id, the latest state winning', () => {
     let t: Transcript = { items: [] };
     t = applyEvent(t, { seq: 1, sessionId: 's', parentChain: [], at: '', type: 'command.job', job } as CoreEvent);
