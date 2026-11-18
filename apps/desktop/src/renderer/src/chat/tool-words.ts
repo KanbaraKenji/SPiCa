@@ -14,6 +14,8 @@ export interface ToolCall {
   summary?: string | undefined;
   /** A plugin tool's own name for people; for message_agent, the name of the conversation it wrote to. */
   title?: string | undefined;
+  /** From an MCP service the person added: its name as they wrote it (not capitalised). */
+  server?: string | undefined;
 }
 
 /** How a call is said: the verb (shown quieter), the object, and the full text of the object when it was cut. */
@@ -55,6 +57,7 @@ export function categoryOf(c: ToolCall): ToolCategory {
 function pluginName(c: ToolCall): string {
   if (c.title) return c.title;
   const [plugin, tool] = c.name.split('__');
+  if (tool && c.server) return `${c.server} · ${tool}`;
   return tool ? `${plugin!.charAt(0).toUpperCase()}${plugin!.slice(1)} · ${tool}` : c.name;
 }
 
@@ -324,7 +327,7 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
   if (kind === 'project') return { key: 'project', say: () => 'checked projects' };
   if (kind === 'plugin') {
     const plugin = c.title ? c.title : c.name.split('__')[0]!;
-    const shown = c.title ? plugin : `${plugin.charAt(0).toUpperCase()}${plugin.slice(1)}`;
+    const shown = c.title ? plugin : c.server ? c.server : `${plugin.charAt(0).toUpperCase()}${plugin.slice(1)}`;
     return { key: `plugin ${shown}`, say: () => `used ${named(shown)}` };
   }
   return { key: 'other', say: (n) => `used ${many('a tool', n, 'tools')}` };

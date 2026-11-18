@@ -1,7 +1,7 @@
 // The page's MCP commands (DesktopChannel.Mcp): the list is saved here, where values can be sealed, then handed to
 // the backend in the clear (userMcpSet); what the page sees is the saved list (values masked) with how each service
 // is doing in the backend (status, its tools, why it stopped, its last lines, what it would download).
-import { downloadPreview, type McpCommand, type McpListView, type McpResult, type McpServerView } from '../../shared/mcp-servers';
+import { downloadPreview, type McpProblemView, type McpCommand, type McpListView, type McpResult, type McpServerView } from '../../shared/mcp-servers';
 import { McpServerStore, type McpServerConfig, type SavedMcpServer } from './store';
 
 /** How a service is doing, as the backend says (UserMcpState of @spica/plugins). */
@@ -12,6 +12,7 @@ export interface McpState {
   lastError?: string;
   logTail: string[];
   download?: { runner: 'npx' | 'uvx'; package: string; python: boolean };
+  problem?: McpProblemView;
 }
 
 /** The backend's side (desktop-host userMcp* methods); the demo has its own. */
@@ -39,6 +40,7 @@ export function mcpListView(saved: readonly SavedMcpServer[], states: readonly M
         status,
         tools: s.enabled ? (st?.tools ?? []).map((n) => (n.startsWith(`${s.name}__`) ? n.slice(s.name.length + 2) : n)) : [],
         ...(s.enabled && st?.lastError ? { lastError: st.lastError } : {}),
+        ...(status === 'failed' && st?.problem ? { problem: st.problem } : {}),
         ...(s.enabled && st?.logTail.length ? { logTail: [...st.logTail] } : {}),
         ...(status === 'needs-download' && st?.download ? { download: downloadPreview(st.download) } : {}),
       };

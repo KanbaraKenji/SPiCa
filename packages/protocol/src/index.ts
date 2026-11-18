@@ -643,7 +643,7 @@ export type CoreEventBody =
   /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
   | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
   /** category, summary, title: what the step is, for the window's summaries (see ToolCallInfo). */
-  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string }
+  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string; server?: string }
   /**
    * A file was read (read_file) or made by a call; render a file card. Sent before the tool's `tool.end`.
    * `files`: every card of the call, in order, when it has several (`file` is the first).
@@ -770,6 +770,8 @@ export interface ToolCallInfo {
   summary?: string;
   /** The tool's name for people, when it has one (a plugin tool's MCP title). */
   title?: string;
+  /** An MCP service the person added (设置 › 插件 › MCP 服务): its name as written, shown as is. */
+  server?: string;
 }
 
 /** The web pages one web_fetch or web_search call used (event source.card): a source card or footnotes. */

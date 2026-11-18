@@ -12,6 +12,7 @@ import {
   draftOf,
   emptyMcpDraft,
   MCP_STATUS,
+  mcpProblemText,
   mcpDraftErrors,
   parseMcpPaste,
   type McpApproval,
@@ -69,7 +70,7 @@ function Badge({ name }: { name: string }) {
 /** The state at a row's end: nothing while it runs; 错误 with its mark; the others in quiet words. */
 function RowState({ s }: { s: McpServerView }) {
   if (s.status === 'running') return null;
-  if (s.status === 'failed') return <SpicaStatusIcon name="error" size={14} title={s.lastError ?? t(MCP_STATUS.failed)} />;
+  if (s.status === 'failed') return <SpicaStatusIcon name="error" size={14} title={s.problem ? mcpProblemText(s.problem) : t(MCP_STATUS.failed)} />;
   return <span className="provider-default plugin-row-state">{t(MCP_STATUS[s.status])}</span>;
 }
 
@@ -181,10 +182,10 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
         />
       ) : null}
       <div className="plugin-detail-body">
-        {s.status === 'failed' && s.lastError ? (
+        {s.status === 'failed' ? (
           <p className="plugin-problem status-with-icon">
             <SpicaStatusIcon name="error" size={14} />
-            {s.lastError}
+            {s.problem ? mcpProblemText(s.problem) : t('启动失败')}
           </p>
         ) : null}
         {s.status === 'failed' && s.logTail?.length ? (

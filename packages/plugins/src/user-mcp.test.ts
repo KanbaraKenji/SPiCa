@@ -58,6 +58,8 @@ describe('services the person adds', () => {
     await s.set([notes()]);
     expect(s.states()).toEqual([{ name: 'notes', status: 'running', tools: ['notes__hello', 'notes__crash'], logTail: [], protocolVersion: '2025-06-18' }]);
     expect(toolNames(rt)).toEqual(expect.arrayContaining(['notes__hello']));
+    // the window names its tools as the person wrote the service's name
+    expect(rt.tools.get('notes__hello')?.server).toBe('notes');
     const r = JSON.parse((await callTool(rt, 'notes__hello', {})).content);
     expect(r).toMatchObject({ args: ['D:\\Shared Files'], token: 'nt-secret-1' });
     expect(events.map((e) => e.type === 'user-mcp.status' && e.status)).toEqual(['starting', 'running']);
@@ -98,6 +100,7 @@ describe('services the person adds', () => {
     await until(() => s.states()[0]!.status === 'failed');
     const st = s.states()[0]!;
     expect(st.lastError).toBe('60 秒内崩溃 2 次，已停止重启。');
+    expect(st.problem).toEqual({ kind: 'crash-loop', count: 2, seconds: 60 });
     // what it wrote, its variable's value taken out
     expect(st.logTail).toEqual(expect.arrayContaining(['FileNotFoundError: D:\\Notes\\notes.db (token [redacted])']));
     expect(JSON.stringify([st, events])).not.toContain('nt-secret-1');
@@ -110,6 +113,7 @@ describe('services the person adds', () => {
     const [broken, ok] = s.states();
     expect(broken).toMatchObject({ name: 'broken', status: 'failed' });
     expect(broken!.lastError).toBeTruthy();
+    expect(broken!.problem).toEqual({ kind: 'not-found', command: 'spica-no-such-program-xyz' });
     expect(ok).toMatchObject({ name: 'notes', status: 'running' });
   });
 

@@ -26,4 +26,12 @@ export const ZH_TW_MCP: Catalog = {
   待下载: '待下載',
   正在下载: '正在下載',
   选择工作文件夹: '選擇工作資料夾',
+  '找不到命令「{command}」（需要 {program}）': '找不到命令「{command}」（需要 {program}）',
+  '找不到命令「{command}」': '找不到命令「{command}」',
+  进程已退出: '程序已結束',
+  '进程已退出（代码 {code}）': '程序已結束（代碼 {code}）',
+  '连接超时（{seconds} 秒内无响应）': '連線逾時（{seconds} 秒內無回應）',
+  '{seconds} 秒内崩溃 {count} 次，已停止重启': '{seconds} 秒內當機 {count} 次，已停止重新啟動',
+  '版本不兼容（服务仅支持 {versions}）': '版本不相容（服務僅支援 {versions}）',
+  启动失败: '啟動失敗',
 };

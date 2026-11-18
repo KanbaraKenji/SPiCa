@@ -26,7 +26,8 @@ export function demoMcpApi(start: 'some' | 'none' = 'some'): McpApi {
             approval: 'ask',
             status: 'failed',
             tools: [],
-            lastError: '进程已退出（代码 1）',
+            lastError: 'MCP server "notes" exited (code 1)',
+            problem: { kind: 'exited', code: 1 },
             logTail: ['Traceback (most recent call last):', '  File "server.py", line 12, in <module>', '    db = open_database(args.db)', 'FileNotFoundError: D:\\Notes\\notes.db'],
           },
           {

@@ -26,4 +26,12 @@ export const EN_MCP: Catalog = {
   待下载: 'Download needed',
   正在下载: 'Downloading',
   选择工作文件夹: 'Choose working folder',
+  '找不到命令「{command}」（需要 {program}）': 'Command “{command}” not found ({program} needed)',
+  '找不到命令「{command}」': 'Command “{command}” not found',
+  进程已退出: 'Process exited',
+  '进程已退出（代码 {code}）': 'Process exited (code {code})',
+  '连接超时（{seconds} 秒内无响应）': 'Timed out (no answer within {seconds} s)',
+  '{seconds} 秒内崩溃 {count} 次，已停止重启': 'Crashed {count} times in {seconds} s; not restarted again',
+  '版本不兼容（服务仅支持 {versions}）': 'Incompatible version (the server supports only {versions})',
+  启动失败: 'Failed to start',
 };

@@ -37,6 +37,41 @@ export interface McpServerView {
   logTail?: string[];
   /** 'needs-download': what would be downloaded, for the same list the app's Python download shows. */
   download?: InstallPreview;
+  /** 'failed': why (McpProblem of @spica/plugins), worded by mcpProblemText. */
+  problem?: McpProblemView;
+}
+
+/** Why a service is not running, as the backend reads it. */
+export type McpProblemView =
+  | { kind: 'not-found'; command: string }
+  | { kind: 'exited'; code: number | null }
+  | { kind: 'timeout'; seconds: number }
+  | { kind: 'crash-loop'; count: number; seconds: number }
+  | { kind: 'version'; versions: string[] }
+  | { kind: 'other' };
+
+/** Programs a missing command usually belongs to (said after it). */
+const NEEDS: Record<string, string> = { npx: 'Node.js', node: 'Node.js', npm: 'Node.js', uvx: 'uv', uv: 'uv', python: 'Python', python3: 'Python', py: 'Python', docker: 'Docker' };
+
+/** The reason in the interface language (the service's own words stay in its log). */
+export function mcpProblemText(p: McpProblemView): string {
+  switch (p.kind) {
+    case 'not-found': {
+      const base = p.command.replace(/^.*[\\/]/, '').replace(/\.(exe|cmd|bat)$/i, '');
+      const program = NEEDS[base.toLowerCase()];
+      return program ? t('找不到命令「{command}」（需要 {program}）', { command: base, program }) : t('找不到命令「{command}」', { command: base });
+    }
+    case 'exited':
+      return p.code === null ? t('进程已退出') : t('进程已退出（代码 {code}）', { code: p.code });
+    case 'timeout':
+      return t('连接超时（{seconds} 秒内无响应）', { seconds: p.seconds });
+    case 'crash-loop':
+      return t('{seconds} 秒内崩溃 {count} 次，已停止重启', { seconds: p.seconds, count: p.count });
+    case 'version':
+      return t('版本不兼容（服务仅支持 {versions}）', { versions: p.versions.join(t('、')) });
+    default:
+      return t('启动失败');
+  }
 }
 
 /** What the page asks of the main process (DesktopChannel.Mcp). */

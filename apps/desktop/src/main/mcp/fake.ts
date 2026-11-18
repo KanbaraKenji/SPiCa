@@ -18,6 +18,7 @@ const STATES: Record<string, Omit<McpState, 'name'>> = {
     status: 'failed',
     tools: [],
     lastError: 'MCP server "notes" exited (code 1)',
+    problem: { kind: 'exited', code: 1 },
     logTail: ['Traceback (most recent call last):', '  File "server.py", line 12, in <module>', '    db = open_database(args.db)', 'FileNotFoundError: D:\\Notes\\notes.db'],
   },
   docs: { status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs-server', python: false } },

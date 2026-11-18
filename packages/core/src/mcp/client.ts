@@ -767,8 +767,9 @@ export async function connectMcp(
   try {
     await client.connect();
     const infos = await client.listTools();
-    const tools = mcpTools(client, infos, tracer);
     const source = opts.source ?? `mcp:${config.name}`;
+    // a service the person added (source mcp:<name>, not a plugin's): the window names it as they wrote it
+    const tools = mcpTools(client, infos, tracer).map((t) => (source === `mcp:${config.name}` ? { ...t, server: config.name } : t));
     // Keep each tool's own remover: the source may also own other tools
     // (a plugin's skills, other servers) that must survive this server.
     const removers = tools.map((t) => registry.register(t, source));

@@ -9,6 +9,7 @@ import { findCommand } from '@spica/core';
 import { hasBundledPython, missedDownload, packageOf, runnerLaunch, runnerOf, type BundledUv, type DownloadNeed } from './runner.ts';
 import type { McpLaunch, PluginHost } from './host.ts';
 import { scrubSecrets } from './user-config.ts';
+import { mcpProblem, type McpProblem } from './mcp-problem.ts';
 import { newRun, startServer, stopServer, type ServerStatus, type SupervisedRun, type Supervision } from './supervisor.ts';
 
 export type UserMcpApproval = 'ask' | 'auto';
@@ -41,6 +42,8 @@ export interface UserMcpState {
   protocolVersion?: string;
   /** 'needs-download': what would be downloaded. */
   download?: DownloadNeed;
+  /** 'failed': why, as a kind the page words in the interface language. */
+  problem?: McpProblem;
 }
 
 export type UserMcpEvent = { type: 'user-mcp.status'; name: string; status: UserMcpStatus; message?: string } | { type: 'user-mcp.error'; name: string; message: string };
@@ -78,6 +81,8 @@ interface Running extends SupervisedRun {
   legacy?: boolean;
   /** npx or uvx: the package is not here ('needed', waiting for the person) or may be downloaded ('allowed'). */
   download?: 'needed' | 'allowed';
+  /** Left stopped after crashing again and again (how many times, in how many seconds). */
+  crashLoop?: { count: number; seconds: number };
 }
 
 /** The version without a handshake (MCP 2026-07-28), as the core reports it. */
@@ -144,6 +149,7 @@ export class UserMcpServers {
         ...(need ? { download: need } : {}),
         tools: run.handle?.tools ?? [],
         ...(run.lastError ? { lastError: this.#scrub(run, run.lastError) } : {}),
+        ...(run.status === 'failed' && run.download !== 'needed' ? { problem: run.crashLoop ? { kind: 'crash-loop' as const, ...run.crashLoop } : mcpProblem(run.lastError ?? '', run.log, run.config.command) } : {}),
         logTail: [...run.log],
         ...(run.handle?.protocolVersion ? { protocolVersion: run.handle.protocolVersion } : {}),
       };
@@ -203,6 +209,7 @@ export class UserMcpServers {
 
   /** Start it; one that quit on the version probe is started once more with the handshake only. Never throws. */
   async #start(run: Running): Promise<void> {
+    delete run.crashLoop;
     try {
       await startServer(run, this.#supervision(run));
       if (run.download === 'allowed') delete run.download;
@@ -310,7 +317,10 @@ export class UserMcpServers {
       alive: () => this.#runs.get(name) === run,
       serial: (fn) => this.#serial(fn),
       gaveUp: (message) => this.#emit({ type: 'user-mcp.error', name, message: `「${name}」${this.#scrub(run, message)}` }),
-      crashMessage: (count, windowS) => `${windowS} 秒内崩溃 ${count} 次，已停止重启。`,
+      crashMessage: (count, windowS) => {
+        run.crashLoop = { count, seconds: windowS };
+        return `${windowS} 秒内崩溃 ${count} 次，已停止重启。`;
+      },
       startError: (message, cause) => new Error(`「${name}」启动失败：${message}`, { cause }),
     };
   }

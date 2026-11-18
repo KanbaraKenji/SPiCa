@@ -1408,7 +1408,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     const tool = this.#rt.tools.get(name);
     const said = tool?.summaryParam ? (input as Record<string, unknown> | null)?.[tool.summaryParam] : undefined;
     const summary = typeof said === 'string' ? said.trim().slice(0, 200) : '';
-    return { category: this.#rt.tools.categoryOf(name), ...(summary ? { summary } : {}), ...(tool?.title ? { title: tool.title } : {}) };
+    return { category: this.#rt.tools.categoryOf(name), ...(summary ? { summary } : {}), ...(tool?.title ? { title: tool.title } : {}), ...(tool?.server ? { server: tool.server } : {}) };
   }
 
   /** Whether an earlier assistant message (not `exceptId`) called this tool. */

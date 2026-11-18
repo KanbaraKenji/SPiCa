@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { commandLine, draftArgs, emptyMcpDraft, mcpDraftErrors, parseMcpPaste, quoteArg } from './mcp-servers';
+import { commandLine, draftArgs, emptyMcpDraft, mcpDraftErrors, mcpProblemText, parseMcpPaste, quoteArg } from './mcp-servers';
+import { setLocale } from './i18n';
 
 describe('commandLine', () => {
   it('quotes what has a space or a quote, and nothing else', () => {
@@ -45,5 +46,22 @@ describe('parseMcpPaste', () => {
   it('is null for anything else', () => {
     expect(parseMcpPaste('npx -y something')).toBeNull();
     expect(parseMcpPaste('{"a": 1}')).toBeNull();
+  });
+});
+
+describe("why a service stopped, in the interface's words", () => {
+  it('says what is missing and what it belongs to; the rest plainly', () => {
+    expect(mcpProblemText({ kind: 'not-found', command: 'C:\\Program Files\\nodejs\\npx.cmd' })).toBe('找不到命令「npx」（需要 Node.js）');
+    expect(mcpProblemText({ kind: 'not-found', command: 'my-server' })).toBe('找不到命令「my-server」');
+    expect(mcpProblemText({ kind: 'exited', code: 1 })).toBe('进程已退出（代码 1）');
+    expect(mcpProblemText({ kind: 'timeout', seconds: 60 })).toBe('连接超时（60 秒内无响应）');
+    expect(mcpProblemText({ kind: 'crash-loop', count: 4, seconds: 60 })).toBe('60 秒内崩溃 4 次，已停止重启');
+    expect(mcpProblemText({ kind: 'version', versions: ['2027-01-01'] })).toBe('版本不兼容（服务仅支持 2027-01-01）');
+    setLocale('en');
+    try {
+      expect(mcpProblemText({ kind: 'not-found', command: 'node' })).toBe('Command “node” not found (Node.js needed)');
+    } finally {
+      setLocale('zh-CN');
+    }
   });
 });
