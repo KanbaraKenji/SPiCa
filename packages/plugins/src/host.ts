@@ -21,6 +21,8 @@ export interface McpLaunch {
   concurrency?: number;
   /** Stopping the server also ends the processes it started (Windows). */
   endTree?: boolean;
+  /** How long the first answer may take (a program that downloads itself first). Default: timeoutMs. */
+  startTimeoutMs?: number;
   /** 'auto': ask with server/discover (MCP 2026-07-28) first, the initialize handshake otherwise. Default: the handshake only. */
   protocol?: 'legacy' | 'auto';
   /** Server stderr, for the plugin log  */

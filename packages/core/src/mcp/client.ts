@@ -47,6 +47,11 @@ export interface McpServerConfig {
   /** How long 'auto' waits for the answer to server/discover before it takes the server for an older one. Default 5 s. */
   discoverTimeoutMs?: number;
   /**
+   * How long the first answer (initialize or server/discover) may take, instead of timeoutMs: a program that
+   * downloads itself first (npx, uvx the first time) answers only once that is done.
+   */
+  startTimeoutMs?: number;
+  /**
    * How long a request may go without an answer. Default 60 s. A tool call
    * carries a progress token, and each progress notification for it starts
    * the wait again, so a long tool that keeps reporting progress can finish.
@@ -227,7 +232,8 @@ export class McpStdioClient {
   }
 
   #initialize(): Promise<InitResult> {
-    return this.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: this.#capabilities(), clientInfo: CLIENT_INFO }) as Promise<InitResult>;
+    const wait = this.config.startTimeoutMs;
+    return this.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: this.#capabilities(), clientInfo: CLIENT_INFO }, wait ? { timeoutMs: wait } : {}) as Promise<InitResult>;
   }
 
   /** The handshake answered: its version and server, then notifications/initialized. */
@@ -290,7 +296,7 @@ export class McpStdioClient {
         );
       };
       const timer = setTimeout(startInit, c.discoverTimeoutMs ?? DEFAULT_DISCOVER_MS);
-      this.request('server/discover', { _meta: this.#modernMeta() }).then(
+      this.request('server/discover', { _meta: this.#modernMeta() }, c.startTimeoutMs ? { timeoutMs: c.startTimeoutMs } : {}).then(
         (raw) => {
           answered = true;
           const r = raw as { supportedVersions?: unknown; _meta?: Record<string, unknown> } | undefined;

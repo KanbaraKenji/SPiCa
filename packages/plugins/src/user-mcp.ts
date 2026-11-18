@@ -3,7 +3,10 @@
 // under the source `mcp:<name>`. Approval 'ask' (the default): every one of its tools asks before it runs, in any
 // approval mode (a hook's confirm, the card the app already has); 'auto': as other tools (a tool the server marks
 // destructive still asks by default). The host keeps the list, secrets sealed, and hands it over in the clear.
+// npx and uvx services start offline first and download only once the person agreed (runner.ts).
 import { homedir } from 'node:os';
+import { findCommand } from '@spica/core';
+import { hasBundledPython, missedDownload, packageOf, runnerLaunch, runnerOf, type BundledUv, type DownloadNeed } from './runner.ts';
 import type { McpLaunch, PluginHost } from './host.ts';
 import { scrubSecrets } from './user-config.ts';
 import { newRun, startServer, stopServer, type ServerStatus, type SupervisedRun, type Supervision } from './supervisor.ts';
@@ -22,10 +25,13 @@ export interface UserMcpConfig {
   approval: UserMcpApproval;
 }
 
+/** How a service is doing: a server's status, 'off' (switched off), and while npx or uvx would download first, 'needs-download' (waiting for the person) and 'downloading'. */
+export type UserMcpStatus = ServerStatus | 'off' | 'needs-download' | 'downloading';
+
 /** How it is doing, for the settings page. */
 export interface UserMcpState {
   name: string;
-  status: ServerStatus | 'off';
+  status: UserMcpStatus;
   /** Its tools as the model sees them (`<name>__<tool>`). */
   tools: string[];
   lastError?: string;
@@ -33,9 +39,11 @@ export interface UserMcpState {
   logTail: string[];
   /** The MCP version it speaks, once running. */
   protocolVersion?: string;
+  /** 'needs-download': what would be downloaded. */
+  download?: DownloadNeed;
 }
 
-export type UserMcpEvent = { type: 'user-mcp.status'; name: string; status: ServerStatus | 'off'; message?: string } | { type: 'user-mcp.error'; name: string; message: string };
+export type UserMcpEvent = { type: 'user-mcp.status'; name: string; status: UserMcpStatus; message?: string } | { type: 'user-mcp.error'; name: string; message: string };
 
 export interface UserMcpOptions {
   host: Pick<PluginHost, 'connectMcp' | 'registerHooks' | 'addRedactions'>;
@@ -47,6 +55,10 @@ export interface UserMcpOptions {
   restart?: { maxRestarts: number; windowMs: number };
   /** Where a service without 工作文件夹 runs. Default: the user's home folder. */
   defaultCwd?: string;
+  /** The app's own uv: uvx runs as it when the computer has no uvx. */
+  uv?: BundledUv;
+  /** How long a service may take to download itself and answer, once allowed. Default 30 min. */
+  downloadTimeoutMs?: number;
   /** Lines kept of its error output. Default 20. */
   logLines?: number;
   onEvent?(e: UserMcpEvent): void;
@@ -64,6 +76,8 @@ interface Running extends SupervisedRun {
    * (the spec lets a client remember that across restarts), so a restart does not wait for the probe again.
    */
   legacy?: boolean;
+  /** npx or uvx: the package is not here ('needed', waiting for the person) or may be downloaded ('allowed'). */
+  download?: 'needed' | 'allowed';
 }
 
 /** The version without a handshake (MCP 2026-07-28), as the core reports it. */
@@ -123,15 +137,49 @@ export class UserMcpServers {
     return this.#configs.map((c) => {
       const run = c.enabled ? this.#runs.get(c.name) : undefined;
       if (!run) return { name: c.name, status: 'off', tools: [], logTail: [] };
+      const need = run.download === 'needed' ? this.#need(run) : undefined;
       return {
         name: c.name,
-        status: run.status,
+        status: this.#status(run, run.status),
+        ...(need ? { download: need } : {}),
         tools: run.handle?.tools ?? [],
         ...(run.lastError ? { lastError: this.#scrub(run, run.lastError) } : {}),
         logTail: [...run.log],
         ...(run.handle?.protocolVersion ? { protocolVersion: run.handle.protocolVersion } : {}),
       };
     });
+  }
+
+  /**
+   * The person agreed to the download a 'needs-download' service is waiting for: it starts with downloads allowed
+   * ('downloading' until it answers). Resolves when that start is over.
+   */
+  download(name: string): Promise<void> {
+    return this.#serial(async () => {
+      const run = this.#runs.get(name);
+      if (!run || run.download !== 'needed') return;
+      run.download = 'allowed';
+      run.restarts = [];
+      await this.#start(run);
+    });
+  }
+
+  /** The status shown: a start held by a missing package or a download under way says so. */
+  #status(run: Running, status: ServerStatus): UserMcpStatus {
+    if (run.download === 'needed' && status === 'failed') return 'needs-download';
+    if (run.download === 'allowed' && (status === 'starting' || status === 'restarting')) return 'downloading';
+    return status;
+  }
+
+  #need(run: Running): DownloadNeed | undefined {
+    const runner = runnerOf(run.config.command);
+    if (!runner) return undefined;
+    const bundled = runner === 'uvx' && !this.#uvOnPath(run) && this.#o.uv;
+    return { runner, package: packageOf(runner, run.config.args), python: bundled ? !hasBundledPython(bundled) : false };
+  }
+
+  #uvOnPath(run: Running): boolean {
+    return findCommand('uvx', { ...process.env, ...run.config.env }, run.config.cwd) !== undefined;
   }
 
   /** Start every running service again (the network settings changed: they read them at start). */
@@ -157,7 +205,16 @@ export class UserMcpServers {
   async #start(run: Running): Promise<void> {
     try {
       await startServer(run, this.#supervision(run));
+      if (run.download === 'allowed') delete run.download;
     } catch (err) {
+      const runner = runnerOf(run.config.command);
+      if (runner && run.download !== 'allowed' && missedDownload(runner, `${run.lastError ?? ''}\n${run.log.join('\n')}`)) {
+        // the package is not here: nothing is fetched until the person agrees
+        run.download = 'needed';
+        this.#emit({ type: 'user-mcp.status', name: run.config.name, status: 'needs-download' });
+        return;
+      }
+      if (run.download === 'allowed') delete run.download;
       if (run.legacy || !(err as { cause?: { diedOnProbe?: boolean } }).cause?.diedOnProbe) return;
       run.legacy = true;
       this.#log(run, '[spica] quit when asked server/discover: starting again with initialize');
@@ -216,11 +273,17 @@ export class UserMcpServers {
 
   #launch(run: Running): Omit<McpLaunch, 'onExit'> {
     const c = run.config;
+    const runner = runnerOf(c.command);
+    const download = run.download === 'allowed';
+    const how = runner
+      ? runnerLaunch(runner, c.command, c.args, c.env, { download, ...(this.#o.uv ? { uv: this.#o.uv } : {}), uvOnPath: runner === 'uvx' && this.#uvOnPath(run) })
+      : { command: c.command, args: [...c.args], env: { ...c.env } };
     return {
       name: c.name,
-      command: c.command,
-      args: [...c.args],
-      env: { ...c.env },
+      command: how.command,
+      args: how.args,
+      env: how.env,
+      ...(download ? { startTimeoutMs: this.#o.downloadTimeoutMs ?? 30 * 60_000 } : {}),
       ...(this.#o.inheritEnv ? { inheritEnv: this.#o.inheritEnv } : {}),
       // none given: the user's home folder (not the app's own folder)
       cwd: c.cwd || this.#o.defaultCwd || homedir(),
@@ -241,7 +304,7 @@ export class UserMcpServers {
       setStatus: (status, message) => {
         // it answered: remember which way (a restart need not probe again)
         if (status === 'running' && run.handle) run.legacy = run.handle.protocolVersion !== MODERN;
-        this.#emit({ type: 'user-mcp.status', name, status, ...(message ? { message: this.#scrub(run, message) } : {}) });
+        this.#emit({ type: 'user-mcp.status', name, status: this.#status(run, status), ...(message ? { message: this.#scrub(run, message) } : {}) });
       },
       log: (line) => this.#log(run, `[spica] ${line}`),
       alive: () => this.#runs.get(name) === run,

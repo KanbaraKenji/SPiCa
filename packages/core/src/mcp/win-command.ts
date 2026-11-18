@@ -39,7 +39,8 @@ export function findCommand(command: string, env: Record<string, string | undefi
     .map((e) => e.trim())
     .filter(Boolean);
   const withExt = (base: string): string | undefined => {
-    if (extname(base) && isFile(base)) return base;
+    // off Windows a program has no extension; on Windows a bare `npx` next to npx.cmd is a shell script, not runnable
+    if ((extname(base) || process.platform !== 'win32') && isFile(base)) return base;
     for (const e of exts) if (isFile(base + e)) return base + e;
     return undefined;
   };
