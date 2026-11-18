@@ -7,7 +7,7 @@ import type { Stats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { isoNow } from '../events.ts';
-import { encodePngCompact, imageTokens, prepareImage, type PreparedImage } from '../images.ts';
+import { encodePngCompact, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, type PreparedImage } from '../images.ts';
 import type { FileCardMeta, ImageBlock } from '../types.ts';
 import type { PageImage, ToolContext, ToolOutput } from './types.ts';
 
@@ -63,30 +63,52 @@ export async function readPicture(abs: string, info: Stats, shown: string, ctx: 
   };
 }
 
+/**
+ * Most bytes one read's page pictures may take: what a request carries (REQUEST_IMAGE_LIMITS, as base64) less a
+ * quarter for the conversation's other pictures; pages past it wait for the next read, so none is left out unseen.
+ */
+export const PAGE_PICTURE_BYTES = Math.floor((REQUEST_IMAGE_LIMITS.maxBase64Bytes * 0.75 * 3) / 4);
+
 /** PDF pages drawn as pictures, as images for the model (each page encoded and checked like an attached image). */
-export async function pagePictures(pages: readonly PageImage[], fileName: string, ctx: ToolContext): Promise<{ images: ImageBlock[]; note: string }> {
+export async function pagePictures(pages: readonly PageImage[], fileName: string, ctx: ToolContext, maxBytes = PAGE_PICTURE_BYTES): Promise<{ images: ImageBlock[]; note: string }> {
   const dir = mediaDir(ctx);
   mkdirSync(dir, { recursive: true });
   const images: ImageBlock[] = [];
+  const shown: number[] = [];
   const failed: number[] = [];
+  const later: number[] = [];
   let tokens = 0;
+  let bytes = 0;
   for (const pg of pages) {
+    if (later.length > 0) {
+      later.push(pg.page);
+      continue;
+    }
     const png = await encodePngCompact({ width: pg.width, height: pg.height, data: pg.rgba });
     const raw = join(dir, `page-${createHash('sha256').update(png).digest('hex').slice(0, 20)}.png`);
     writeFileSync(raw, png);
     const p = prepareImage(raw, dir);
     if (!p.ok) {
+      rmSync(raw, { force: true });
       failed.push(pg.page);
       continue;
     }
     if (p.image.path !== raw) rmSync(raw, { force: true });
+    if (images.length > 0 && bytes + p.image.bytes > maxBytes) {
+      later.push(pg.page);
+      continue;
+    }
+    bytes += p.image.bytes;
     images.push(block(p.image, `${fileName} page ${pg.page}`));
+    shown.push(pg.page);
     tokens += imageTokens(ctx.providerKind ?? '', p.image.width, p.image.height);
   }
-  const shown = pages.filter((p) => !failed.includes(p.page)).map((p) => p.page);
   const lines: string[] = [];
   if (shown.length > 0) {
     lines.push(`[${shown.length} page picture${shown.length === 1 ? '' : 's'} follow${shown.length === 1 ? 's' : ''} as images (page${shown.length === 1 ? '' : 's'} ${shown.join(', ')}), about ${tokens} tokens in all.]`);
+  }
+  if (later.length > 0) {
+    lines.push(`[Pages ${later.join(', ')} were drawn but not sent, to keep the request within its size limit. Call read_file again with pages="${later.join(',')}" to see them.]`);
   }
   if (failed.length > 0) lines.push(`[Pages ${failed.join(', ')} could not be made into pictures within the size limit.]`);
   return { images, note: lines.join('\n') };

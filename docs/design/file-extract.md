@@ -98,7 +98,7 @@ row	A	B	C	D	E	F
 
 - 损坏、不是该格式、加密（PDF 有密码）、超大：抛 `ExtractError`，消息写给模型看（例如 `Not a readable Excel workbook (the file may be damaged, password protected, or in another format).`）；内核把它作为错误结果「Tool failed: …」交回模型，不中断运行。
 - 空文件（0 字节）：正常结果「PDF file is empty (0 bytes).」，卡片照发。
-- 扫描版 PDF：一页去掉空白后不到 40 个字（`SPARSE_TEXT_CHARS`）就算「字很少」，内核读时（`pageImages`）把这些页用 PDFium 画成图（长边 1568 px，按附件的上限），文字页照旧给文字。一次最多 10 张（`IMAGE_LIMITS.maxPerMessage`，和一条消息能附的图一样多），多出的页列出来并给出下一次的 `pages="…"`；`pages` 参数照常限定读哪几页，画图只在这些页里挑。灰度页存成灰度 PNG（约为 RGBA 的四分之一），一页一页画、页与页之间让出事件循环。结果末尾写「N 张页面图随后发送，约 T token」，上下文卡的「图片」一行也会涨。当前模型不收图时（`pageImages: 0`）不画，写明「当前模型不收图」。不经内核读的（预览栏）不画，仍说「没有文字层」；卡片 `noTextLayer: true`。
+- 扫描版 PDF：一页去掉空白后不到 40 个字（`SPARSE_TEXT_CHARS`）就算「字很少」，内核读时（`pageImages`）把这些页用 PDFium 画成图（长边 1568 px，按附件的上限），文字页照旧给文字。一次最多 10 张（`IMAGE_LIMITS.maxPerMessage`，和一条消息能附的图一样多），多出的页列出来并给出下一次的 `pages="…"`；`pages` 参数照常限定读哪几页，画图只在这些页里挑。灰度页存成灰度 PNG（约为 RGBA 的四分之一；量过一页带噪点的扫描页约 1.1–1.4 MB，压缩在线程池里做，约 0.1–0.2 秒），一页一页画（约 60 毫秒一页）、页与页之间让出事件循环。一次的页面图合计超过约 8.4 MB（`PAGE_PICTURE_BYTES`：一次请求能带 15 MB base64，留四分之一给对话里别的图）时，后面的页这次不发，写明下次的 `pages="…"`，免得同一批里前几页被请求上限挤掉而模型没看到。结果末尾写「N 张页面图随后发送，约 T token」，上下文卡的「图片」一行也会涨。当前模型不收图时（`pageImages: 0`）不画，写明「当前模型不收图」。不经内核读的（预览栏）不画，仍说「没有文字层」；卡片 `noTextLayer: true`。
 - 每次请求最多带最新的 20 张图（内核 `keepRecentImages`）：连续读三批扫描页时，最早一批会换成一行「已在前面给过」的文字。
 - 页码或表名写错：错误结果里给出正确的范围或表名清单，模型能自己改。
 - pdf.js 会尽量修复截断的 PDF：截掉一部分的文件可能读出前几页，也可能报错，两种都是干净结果。

@@ -8,6 +8,7 @@ import { tempDir } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
 import type { CoreEventBody } from '../types.ts';
 import { readFileTool } from './fs-tools.ts';
+import { PAGE_PICTURE_BYTES, pagePictures } from './read-image.ts';
 import type { ToolContext } from './types.ts';
 
 let dir: string;
@@ -126,6 +127,22 @@ describe('read_file on scanned PDF pages', () => {
     ctx.imagesAllowed = false;
     await readFileTool.execute({ path: 'scan.pdf' }, ctx);
     expect(seen.at(-1)).toBe(0);
+  });
+});
+
+describe('pagePictures', () => {
+  it('holds back the pages past the size a request can carry, and names them for the next read', async () => {
+    const noisy = () => {
+      const rgba = new Uint8Array(200 * 200 * 4);
+      for (let i = 0; i < rgba.length; i++) rgba[i] = i % 4 === 3 ? 255 : Math.floor(Math.random() * 256);
+      return rgba;
+    };
+    const pages = [1, 2, 3].map((page) => ({ page, width: 200, height: 200, rgba: noisy() }));
+    // room for one noisy 200 x 200 RGB page (about 120 KB), not two
+    const r = await pagePictures(pages, 'scan.pdf', ctx, 150_000);
+    expect(r.images.map((i) => i.name)).toEqual(['scan.pdf page 1']);
+    expect(r.note).toContain('[Pages 2, 3 were drawn but not sent, to keep the request within its size limit. Call read_file again with pages="2,3" to see them.]');
+    expect(PAGE_PICTURE_BYTES).toBe(8_437_500);
   });
 });
 
