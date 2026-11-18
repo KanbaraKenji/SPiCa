@@ -37,10 +37,10 @@ describe('relativeTime: when a message was written, from now', () => {
   const ago = (ms: number) => new Date(now - ms).toISOString();
   const at = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).toISOString();
 
-  it('just now under a minute (and a moment ahead of the clock)', () => {
-    expect(relativeTime(ago(0), now)).toBe('just now');
-    expect(relativeTime(ago(59_999), now)).toBe('just now');
-    expect(relativeTime(ago(-30_000), now)).toBe('just now');
+  it('Just now under a minute (and a moment ahead of the clock)', () => {
+    expect(relativeTime(ago(0), now)).toBe('Just now');
+    expect(relativeTime(ago(59_999), now)).toBe('Just now');
+    expect(relativeTime(ago(-30_000), now)).toBe('Just now');
   });
 
   it('minutes and hours, one without an s', () => {
@@ -53,8 +53,8 @@ describe('relativeTime: when a message was written, from now', () => {
     expect(relativeTime(ago(23 * 3_600_000 + 59 * 60_000), now)).toBe('23 hours ago');
   });
 
-  it('a day or more by the calendar: yesterday, N days ago, then the date (with the year when not this one)', () => {
-    expect(relativeTime(at(2026, 11, 11, 8), now)).toBe('yesterday');
+  it('a day or more by the calendar: Yesterday, N days ago, then the date (with the year when not this one)', () => {
+    expect(relativeTime(at(2026, 11, 11, 8), now)).toBe('Yesterday');
     expect(relativeTime(at(2026, 11, 10, 20), now)).toBe('2 days ago');
     expect(relativeTime(at(2026, 11, 6), now)).toBe('6 days ago');
     expect(relativeTime(at(2026, 11, 5), now)).toBe('Nov 5');

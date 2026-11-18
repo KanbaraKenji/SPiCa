@@ -83,8 +83,8 @@ export function formatDuration(ms: number): string {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /**
- * When a message was written, from now (他: 「just now(刚刚)、9 minutes ago、5 hours ago」): just now under a
- * minute (and for a moment ahead of the clock), N minute(s) ago, N hour(s) ago under a day, yesterday and N days
+ * When a message was written, from now, starting with a capital: Just now under a
+ * minute (and for a moment ahead of the clock), N minute(s) ago, N hour(s) ago under a day, Yesterday and N days
  * ago by the calendar, after a week the date (Nov 5; with the year when it is not this year). '' when not a date.
  */
 export function relativeTime(at: string, now: number): string {
@@ -92,12 +92,12 @@ export function relativeTime(at: string, now: number): string {
   if (Number.isNaN(d.getTime())) return '';
   const diff = now - d.getTime();
   const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'} ago`;
-  if (diff < 60_000) return 'just now';
+  if (diff < 60_000) return 'Just now';
   if (diff < 3_600_000) return plural(Math.floor(diff / 60_000), 'minute');
   if (diff < 86_400_000) return plural(Math.floor(diff / 3_600_000), 'hour');
   const today = new Date(now);
   const days = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime() - new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) / 86_400_000);
-  if (days <= 1) return 'yesterday';
+  if (days <= 1) return 'Yesterday';
   if (days < 7) return `${days} days ago`;
   const date = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
   return d.getFullYear() === today.getFullYear() ? date : `${date}, ${d.getFullYear()}`;
