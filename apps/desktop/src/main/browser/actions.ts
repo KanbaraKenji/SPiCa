@@ -140,7 +140,7 @@ export function judge(tool: ActionTool, f: ElementFacts | null, input: { key?: u
   if (!f || !f.found) return { action: 'allow' }; // the tool says it is not there
   if (tool === 'browser_hover' || tool === 'browser_drag') return { action: 'allow' };
   if (tool === 'browser_file_upload') {
-    const names = (Array.isArray(input.paths) ? input.paths : []).map((p) => String(p).split(/[\/]/).pop() ?? '').filter(Boolean);
+    const names = (Array.isArray(input.paths) ? input.paths : []).map((p) => String(p).split(/[\\/]/).pop() ?? '').filter(Boolean);
     return { action: 'confirm', reason: twoLines(t('上传文件'), host(f.page), names.map(quoted).join('')) };
   }
   if (tool === 'browser_select') {

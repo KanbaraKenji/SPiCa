@@ -83,6 +83,6 @@ export function maskBody(body: string, contentType = ''): string {
   }
   return body
     .replace(/("([^"\\]{1,60})"\s*:\s*)"(?:[^"\\]|\\.)*"/g, (all, head: string, name: string) => (secretName(name) ? `${head}"${HIDDEN}"` : all))
-    .replace(/\b([A-Za-z_][\w-]{0,60})=([^\s&;"']+)/g, (all, name: string) => (secretName(name) ? `${name}=${HIDDEN}` : all))
+    .replace(/\b([A-Za-z_][\w-]{0,60})=([^\s&;"'<>]+)/g, (all, name: string) => (secretName(name) ? `${name}=${HIDDEN}` : all))
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/g, `$1 ${HIDDEN}`);
 }
