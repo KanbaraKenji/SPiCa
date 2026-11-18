@@ -49,17 +49,33 @@ const MAX_FILES = 2000;
 /** JavaScript files checked one by one with node --check when there is no checker. */
 const MAX_SYNTAX_FILES = 300;
 
-/** The first folder from `start` up that holds `name` (a file or folder), or undefined. */
-function findUp(start: string, test: (dir: string) => string | undefined): string | undefined {
+/**
+ * What `test` finds in the first folder from `start` up, not above `stop` (the working folder, when `start` is in it):
+ * a checker installed above the folder the user works in belongs to another project, which may not even look at it
+ * (its eslint ignoring the folder said nothing and counted as checked).
+ */
+function findUp(start: string, test: (dir: string) => string | undefined, stop?: string): string | undefined {
   let dir = start;
   for (;;) {
     const hit = test(dir);
     if (hit) return hit;
+    if (stop && samePath(dir, stop)) return undefined;
     const up = dirname(dir);
     if (up === dir) return undefined;
     dir = up;
   }
 }
+
+const samePath = (a: string, b: string) => {
+  const norm = (p: string) => resolve(p).replace(/[\\/]+$/, '');
+  return process.platform === 'win32' ? norm(a).toLowerCase() === norm(b).toLowerCase() : norm(a) === norm(b);
+};
+
+/** Whether `p` is `root` or inside it. */
+const within = (p: string, root: string) => {
+  const r = relative(root, p);
+  return r === '' || (!r.startsWith('..') && !isAbsolute(r));
+};
 
 const exists = (p: string) => existsSync(p);
 
@@ -266,7 +282,7 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
     spec: {
       name: 'get_diagnostics',
       description:
-        'Get the current errors and type errors of a file or a whole project from the checkers the project has installed: ' +
+        'Get the current errors and type errors of a file or a whole project from the checkers the project has installed (in the working folder, or between the file and it): ' +
         'TypeScript / JavaScript with its tsc (nearest tsconfig.json) and eslint, Python with pyright or mypy and ruff (its .venv first). ' +
         'Without a checker it only checks that the files parse, and says so. ' +
         `Default timeout ${defTimeout / 1000} s, max ${maxTimeout / 1000} s.`,
@@ -291,6 +307,8 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
       }
       const timeoutMs = Math.min(maxTimeout, Math.max(1000, Number(input.timeout_seconds ?? defTimeout / 1000) * 1000 || defTimeout));
       const folder = isFile ? dirname(target) : target;
+      // checkers are looked for from the target up to the working folder (all the way up for a target outside it)
+      const stop = within(folder, ctx.cwd) ? ctx.cwd : undefined;
       const files = isFile
         ? (() => {
             const ext = extname(target).toLowerCase();
@@ -313,8 +331,8 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
 
       // TypeScript / JavaScript
       if (files.ts.length || files.js.length) {
-        const tsc = findUp(folder, (d) => (exists(join(d, 'node_modules', 'typescript', 'bin', 'tsc')) ? join(d, 'node_modules', 'typescript', 'bin', 'tsc') : undefined));
-        const tsconfig = findUp(folder, (d) => (exists(join(d, 'tsconfig.json')) ? join(d, 'tsconfig.json') : undefined));
+        const tsc = findUp(folder, (d) => (exists(join(d, 'node_modules', 'typescript', 'bin', 'tsc')) ? join(d, 'node_modules', 'typescript', 'bin', 'tsc') : undefined), stop);
+        const tsconfig = findUp(folder, (d) => (exists(join(d, 'tsconfig.json')) ? join(d, 'tsconfig.json') : undefined), stop);
         let typed = false;
         if (tsc && tsconfig && (files.ts.length || isFile)) {
           const cwd = dirname(tsconfig);
@@ -325,9 +343,9 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
             typed = true;
           }
         }
-        const eslint = findUp(folder, (d) => (exists(join(d, 'node_modules', 'eslint', 'bin', 'eslint.js')) ? join(d, 'node_modules', 'eslint', 'bin', 'eslint.js') : undefined));
+        const eslint = findUp(folder, (d) => (exists(join(d, 'node_modules', 'eslint', 'bin', 'eslint.js')) ? join(d, 'node_modules', 'eslint', 'bin', 'eslint.js') : undefined), stop);
         const eslintRoot = eslint ? dirname(dirname(dirname(dirname(eslint)))) : undefined;
-        const eslintConfig = eslintRoot ? findUp(folder, (d) => ESLINT_CONFIGS.map((n) => join(d, n)).find(exists)) : undefined;
+        const eslintConfig = eslintRoot ? findUp(folder, (d) => ESLINT_CONFIGS.map((n) => join(d, n)).find(exists), stop) : undefined;
         let linted = false;
         if (eslint && eslintConfig && eslintRoot) {
           const r = await run('eslint', node.exe, [eslint, '--format', 'json', target], eslintRoot, nodeEnv);
@@ -367,15 +385,15 @@ export function createDiagnosticsTool(opts: DiagnosticsToolOptions = {}): Tool {
             if (exists(join(bin, process.platform === 'win32' ? 'python.exe' : 'python'))) return bin;
           }
           return undefined;
-        });
+        }, stop);
         const exe = (name: string) => (venvBin ? [join(venvBin, process.platform === 'win32' ? `${name}.exe` : name)].find(exists) : undefined) ?? findOnPath(name, env);
         const python = venvBin ? join(venvBin, process.platform === 'win32' ? 'python.exe' : 'python') : (findOnPath('python', env) ?? findOnPath('python3', env));
-        const root = findUp(folder, (d) => ['pyproject.toml', 'setup.cfg', 'setup.py', 'pyrightconfig.json', 'mypy.ini'].map((n) => join(d, n)).find(exists));
+        const root = findUp(folder, (d) => ['pyproject.toml', 'setup.cfg', 'setup.py', 'pyrightconfig.json', 'mypy.ini'].map((n) => join(d, n)).find(exists), stop);
         const cwd = root ? dirname(root) : folder;
         const pyEnv = venvBin ? { ...env, PATH: `${venvBin}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? env.Path ?? ''}` } : env;
         let typed = false;
         const pyright = exe('pyright');
-        const npmPyright = findUp(folder, (d) => (exists(join(d, 'node_modules', 'pyright', 'index.js')) ? join(d, 'node_modules', 'pyright', 'index.js') : undefined));
+        const npmPyright = findUp(folder, (d) => (exists(join(d, 'node_modules', 'pyright', 'index.js')) ? join(d, 'node_modules', 'pyright', 'index.js') : undefined), stop);
         if (pyright || npmPyright) {
           const r = pyright ? await run('pyright', pyright, ['--outputjson', target], cwd, pyEnv) : await run('pyright', node.exe, [npmPyright!, '--outputjson', target], cwd, { ...nodeEnv, ...(venvBin ? { PATH: pyEnv.PATH! } : {}) });
           if (!r.error && !r.timedOut && !r.aborted) {

@@ -108,6 +108,19 @@ describe('get_diagnostics', () => {
     expect(r.content).toContain('1 .ts file(s) not checked');
   });
 
+  it('a checker installed above the working folder is not used (it belongs to another project)', async () => {
+    await mkdir(join(dir, 'node_modules', 'eslint', 'bin'), { recursive: true });
+    await writeFile(join(dir, 'eslint.config.js'), 'module.exports = [];');
+    await writeFile(join(dir, 'node_modules', 'eslint', 'bin', 'eslint.js'), 'console.log("[]");');
+    const proj = join(dir, 'proj');
+    await mkdir(proj);
+    await writeFile(join(proj, 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
+    const r = await tool.execute({}, { ...ctx(), cwd: proj });
+    expect(r.content).not.toContain('eslint');
+    expect(r.content).toMatch(/^1 error\(s\)/);
+    expect(r.content).toMatch(/total\.js:\d+:\d+ error SyntaxError/);
+  });
+
   it('nothing to check, and a path that is not there', async () => {
     await writeFile(join(dir, 'notes.md'), '# x');
     expect((await tool.execute({}, ctx())).content).toBe('No TypeScript, JavaScript or Python files at ..');
