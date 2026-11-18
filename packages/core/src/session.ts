@@ -382,7 +382,9 @@ export class Session {
           createdAt: isoNow(),
         };
         this.#stepAsks.set(draft.callId, item);
-        const ask = this.#rt.askOutsideSession({ callId: draft.callId, name, input: args, reason, host: this, untilAnswered: true, ...(cause ? { cause } : {}), ...(irreversible ? { irreversible } : {}), ...(change ? { change } : {}) });
+        // the window and the conversation list say it waits for the user, as for a call of its own
+        this.#setStatus('awaiting_confirm');
+        const ask =this.#rt.askOutsideSession({ callId: draft.callId, name, input: args, reason, host: this, untilAnswered: true, ...(cause ? { cause } : {}), ...(irreversible ? { irreversible } : {}), ...(change ? { change } : {}) });
         const stop = () => this.#rt.resolveViewConfirm(draft.callId, false);
         signal.addEventListener('abort', stop, { once: true });
         const ok = await ask.answer.finally(() => {
@@ -390,6 +392,7 @@ export class Session {
           this.#stepAsks.delete(draft.callId);
         });
         if (signal.aborted) return { content: 'Aborted: the user interrupted this call.', isError: true, status: 'declined' };
+        this.#setStatus('tool');
         if (!ok) return { content: 'The user declined this step; it was not done.', isError: true, status: 'declined' };
         confirmedBy = 'user';
       } else if (autoApproved) {

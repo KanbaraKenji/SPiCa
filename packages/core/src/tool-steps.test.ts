@@ -61,10 +61,14 @@ describe('steps of a call', () => {
     // the window rebuilt from history shows it too
     expect(s.pending()).toEqual([expect.objectContaining({ kind: 'confirm', callId: 'b1.1', toolName: 'page_act' })]);
     expect(ran).toEqual([]);
+    // the conversation says it waits for the user, then goes on
+    expect(s.info().status).toBe('awaiting_confirm');
     expect(rt.resolveViewConfirm('b1.1', true)).toBe(true);
     expect((await h.done).reason).toBe('completed');
     expect(ran).toEqual(['page_act', 'page_read']);
     expect(rt.store.listToolCalls(s.id).find((c) => c.id === 'b1')?.result).toContain('page_act:ok page_read:ok');
+    const statuses = events.filter((e) => e.type === 'status').map((e) => (e.type === 'status' ? e.status : ''));
+    expect(statuses.slice(statuses.indexOf('awaiting_confirm'), statuses.indexOf('awaiting_confirm') + 2)).toEqual(['awaiting_confirm', 'tool']);
     expect(s.pending()).toEqual([]);
   });
 
