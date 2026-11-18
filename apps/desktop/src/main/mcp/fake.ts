@@ -21,7 +21,7 @@ const STATES: Record<string, Omit<McpState, 'name'>> = {
     problem: { kind: 'exited', code: 1 },
     logTail: ['Traceback (most recent call last):', '  File "server.py", line 12, in <module>', '    db = open_database(args.db)', 'FileNotFoundError: D:\\Notes\\notes.db'],
   },
-  docs: { status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs-server', python: false } },
+  docs: { status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs-server', python: false, version: '2.1.0', bytes: 1_843_200 } },
   weather: { status: 'running', tools: ['weather__get_forecast', 'weather__get_alerts'], logTail: [] },
 };
 

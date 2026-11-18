@@ -22,6 +22,9 @@ export interface DownloadNeed {
   package: string;
   /** uv also needs a Python of its own (none in the app's Python folder yet). */
   python: boolean;
+  /** npx: the version the registry says it would fetch, and that package's unpacked size (when it could say). */
+  version?: string;
+  bytes?: number;
 }
 
 /** npx or uvx (also npx.cmd, uvx.exe or a full path to one). */
@@ -106,4 +109,28 @@ export function missedDownload(runner: Runner, text: string): boolean {
   return runner === 'npx'
     ? /canceled due to missing packages|npm (?:error|ERR!) canceled/i.test(text)
     : /offline|network connectivity is disabled|not found in the cache|no (?:python )?interpreter found|python downloads are (?:not allowed|disabled)/i.test(text);
+}
+
+/** An npm package spec split: `@scope/name@1.2.0` → name and version (or tag); none given: latest. */
+export function npmSpec(spec: string): { name: string; version: string } {
+  const at = spec.indexOf('@', spec.startsWith('@') ? 1 : 0);
+  return at > 0 ? { name: spec.slice(0, at), version: spec.slice(at + 1) || 'latest' } : { name: spec, version: 'latest' };
+}
+
+/**
+ * What the registry says about the version npx would fetch: its version and unpacked size (dist.unpackedSize).
+ * The package's own size only (what it depends on is not counted); undefined when the registry cannot say (a
+ * range such as ^1.2, a private package, no network). `registry`: npm's own setting when the person has one.
+ */
+export async function npmPackageInfo(spec: string, fetchJson: (url: string) => Promise<unknown>, registry = 'https://registry.npmjs.org'): Promise<{ version: string; bytes?: number } | undefined> {
+  const { name, version } = npmSpec(spec);
+  if (!/^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*$/i.test(name) || !/^[\w.+-]+$/.test(version)) return undefined;
+  try {
+    const data = (await fetchJson(`${registry.replace(/\/+$/, '')}/${name.replace('/', '%2f')}/${encodeURIComponent(version)}`)) as { version?: unknown; dist?: { unpackedSize?: unknown } } | undefined;
+    if (!data || typeof data.version !== 'string') return undefined;
+    const bytes = data.dist?.unpackedSize;
+    return { version: data.version, ...(typeof bytes === 'number' && bytes > 0 ? { bytes } : {}) };
+  } catch {
+    return undefined;
+  }
 }

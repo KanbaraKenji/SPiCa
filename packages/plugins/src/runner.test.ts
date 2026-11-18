@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { missedDownload, packageOf, runnerLaunch, runnerOf } from './runner.ts';
+import { missedDownload, npmPackageInfo, npmSpec, packageOf, runnerLaunch, runnerOf } from './runner.ts';
 
 describe('npx and uvx services', () => {
   it('knows npx and uvx however they are written', () => {
@@ -45,5 +45,25 @@ describe('npx and uvx services', () => {
     expect(missedDownload('uvx', 'error: Network connectivity is disabled, but the requested data wasn\'t found in the cache')).toBe(true);
     expect(missedDownload('uvx', 'error: No interpreter found for Python >=3.10 in managed installations')).toBe(true);
     expect(missedDownload('uvx', 'FileNotFoundError: notes.db')).toBe(false);
+  });
+
+  it('asks the registry how big the npx package is (its own size); says nothing when it cannot', async () => {
+    expect(npmSpec('@example/files-server@2.1.0')).toEqual({ name: '@example/files-server', version: '2.1.0' });
+    expect(npmSpec('@example/files-server')).toEqual({ name: '@example/files-server', version: 'latest' });
+    expect(npmSpec('cowsay@next')).toEqual({ name: 'cowsay', version: 'next' });
+    const asked: string[] = [];
+    const registry = async (url: string) => {
+      asked.push(url);
+      if (url.endsWith('/missing/latest')) throw new Error('HTTP 404');
+      return { version: '2.1.0', dist: { unpackedSize: 1843200 } };
+    };
+    expect(await npmPackageInfo('@example/files-server', registry)).toEqual({ version: '2.1.0', bytes: 1843200 });
+    expect(asked[0]).toBe('https://registry.npmjs.org/@example%2ffiles-server/latest');
+    expect(await npmPackageInfo('x@1.0.0', registry, 'https://npm.example.com/')).toEqual({ version: '2.1.0', bytes: 1843200 });
+    expect(asked[1]).toBe('https://npm.example.com/x/1.0.0');
+    expect(await npmPackageInfo('missing', registry)).toBeUndefined();
+    // a range is not something the registry answers by URL: not asked
+    expect(await npmPackageInfo('x@^1.2', registry)).toBeUndefined();
+    expect(asked).toHaveLength(3);
   });
 });

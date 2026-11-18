@@ -214,10 +214,12 @@ export const MCP_STATUS: Record<McpStatus, string> = {
 export const DOWNLOAD_HOSTS: Record<'npx' | 'uvx', string> = { npx: 'registry.npmjs.org', uvx: 'pypi.org' };
 
 /** The download list for a service that waits for one (a package, perhaps uv's own Python; sizes not known before). */
-export function downloadPreview(need: { runner: 'npx' | 'uvx'; package: string; python: boolean }): InstallPreview {
+export function downloadPreview(need: { runner: 'npx' | 'uvx'; package: string; python: boolean; version?: string; bytes?: number }): InstallPreview {
+  // the name without the version written in it, the version the registry said beside it
+  const name = need.version ? need.package.replace(/(.)@[^@/]*$/, '$1') : need.package;
   return {
     ...(need.python ? { python: { version: '', host: 'github.com' } } : {}),
-    packages: [{ name: need.package || need.runner }],
+    packages: [{ name: name || need.runner, ...(need.version ? { version: need.version } : {}), ...(need.bytes ? { bytes: need.bytes } : {}) }],
     packageHost: DOWNLOAD_HOSTS[need.runner],
   };
 }

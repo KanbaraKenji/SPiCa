@@ -164,10 +164,15 @@ describe.runIf(process.platform === 'win32')('npx and uvx: nothing downloaded un
 
   it('npx: offline first; 待下载 with what; after the person agrees, 正在下载 then running; the next start needs nothing', async () => {
     const { bin, marker } = await launcher('npx');
-    const { rt, s, events } = setup();
+    const rt = makeRuntime();
+    const events: UserMcpEvent[] = [];
+    // the registry, as a stub: how big the package is
+    const s = new UserMcpServers({ host: runtimeHost(rt), endTree: false, onEvent: (e) => events.push(e), fetchJson: async () => ({ version: '1.4.0', dist: { unpackedSize: 52_000 } }) });
+    services = s;
     const env = { PATH: `${bin};${process.env.PATH ?? ''}` };
     await s.set([notes({ command: 'npx', args: ['-y', '@example/files'], env })]);
-    expect(s.states()[0]).toMatchObject({ status: 'needs-download', download: { runner: 'npx', package: '@example/files', python: false } });
+    await until(() => s.states()[0]?.download?.bytes !== undefined);
+    expect(s.states()[0]).toMatchObject({ status: 'needs-download', download: { runner: 'npx', package: '@example/files', python: false, version: '1.4.0', bytes: 52_000 } });
     const { existsSync } = await import('node:fs');
     expect(existsSync(marker)).toBe(false);
     events.length = 0;

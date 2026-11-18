@@ -11,7 +11,7 @@ export interface McpState {
   tools: string[];
   lastError?: string;
   logTail: string[];
-  download?: { runner: 'npx' | 'uvx'; package: string; python: boolean };
+  download?: { runner: 'npx' | 'uvx'; package: string; python: boolean; version?: string; bytes?: number };
   problem?: McpProblemView;
 }
 

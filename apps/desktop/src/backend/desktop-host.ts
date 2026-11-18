@@ -14,7 +14,7 @@
 // configure(patch) (no restart).
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
+import { netFetch, serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
 import { attachBackend as attachPlugins, localizeView, runtimeHost, UserMcpServers, type PluginConfigInput, type UserMcpConfig } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
@@ -79,6 +79,12 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   const userMcp = new UserMcpServers({
     host: runtimeHost(rt),
     ...(options.uv ? { uv: options.uv } : {}),
+    // an npx package's size before it is downloaded (the registry's metadata, through the app's proxy)
+    fetchJson: async (url) => {
+      const r = await netFetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
     onEvent: () => parent?.postMessage({ type: 'mcp.changed' }),
     onLog: (name, line) => parent?.postMessage({ type: 'log', source: 'plugin', plugin: `mcp:${name}`, line }),
   });

@@ -53,7 +53,7 @@ describe('MCP services in the main process', () => {
   it('the list: how each is doing, tools without the prefix, what a waiting one would download; switched off is off', async () => {
     const states: McpState[] = [
       { name: 'notes', status: 'running', tools: ['notes__hello'], logTail: [] },
-      { name: 'docs', status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs', python: false } },
+      { name: 'docs', status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs@3', python: false, version: '3.0.1', bytes: 40960 } },
     ];
     const { deps } = setup(states);
     await runMcp({ op: 'save', was: null, draft: draft() }, deps);
@@ -63,7 +63,7 @@ describe('MCP services in the main process', () => {
       ['notes', 'running', ['hello']],
       ['docs', 'needs-download', []],
     ]);
-    expect(r.list.servers[1]!.download).toEqual({ packages: [{ name: '@example/docs' }], packageHost: 'registry.npmjs.org' });
+    expect(r.list.servers[1]!.download).toEqual({ packages: [{ name: '@example/docs', version: '3.0.1', bytes: 40960 }], packageHost: 'registry.npmjs.org' });
     expect(r.list.taken).toEqual(['mail']);
     const off = await runMcp({ op: 'setEnabled', name: 'notes', on: false }, deps);
     expect(off.list.servers[0]).toMatchObject({ status: 'off', tools: [] });

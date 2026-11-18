@@ -6,7 +6,7 @@
 // npx and uvx services start offline first and download only once the person agreed (runner.ts).
 import { homedir } from 'node:os';
 import { findCommand } from '@spica/core';
-import { hasBundledPython, missedDownload, packageOf, runnerLaunch, runnerOf, type BundledUv, type DownloadNeed } from './runner.ts';
+import { hasBundledPython, missedDownload, npmPackageInfo, packageOf, runnerLaunch, runnerOf, type BundledUv, type DownloadNeed } from './runner.ts';
 import type { McpLaunch, PluginHost } from './host.ts';
 import { scrubSecrets } from './user-config.ts';
 import { mcpProblem, type McpProblem } from './mcp-problem.ts';
@@ -60,6 +60,11 @@ export interface UserMcpOptions {
   defaultCwd?: string;
   /** The app's own uv: uvx runs as it when the computer has no uvx. */
   uv?: BundledUv;
+  /**
+   * Reads JSON from the web (the core's netFetch: the app's proxy and certificates), to say how big an npx package
+   * is before it is downloaded. Absent: sizes are not looked up.
+   */
+  fetchJson?: (url: string) => Promise<unknown>;
   /** How long a service may take to download itself and answer, once allowed. Default 30 min. */
   downloadTimeoutMs?: number;
   /** Lines kept of its error output. Default 20. */
@@ -83,6 +88,8 @@ interface Running extends SupervisedRun {
   download?: 'needed' | 'allowed';
   /** Left stopped after crashing again and again (how many times, in how many seconds). */
   crashLoop?: { count: number; seconds: number };
+  /** npx: what the registry said about the package (looked up once while it waits). */
+  npm?: { version: string; bytes?: number } | null;
 }
 
 /** The version without a handshake (MCP 2026-07-28), as the core reports it. */
@@ -181,7 +188,21 @@ export class UserMcpServers {
     const runner = runnerOf(run.config.command);
     if (!runner) return undefined;
     const bundled = runner === 'uvx' && !this.#uvOnPath(run) && this.#o.uv;
-    return { runner, package: packageOf(runner, run.config.args), python: bundled ? !hasBundledPython(bundled) : false };
+    const npm = run.npm ? { version: run.npm.version, ...(run.npm.bytes ? { bytes: run.npm.bytes } : {}) } : {};
+    return { runner, package: packageOf(runner, run.config.args), python: bundled ? !hasBundledPython(bundled) : false, ...npm };
+  }
+
+  /** npx: how big the package is, from the registry (npm's own registry setting when the service has one). */
+  async #lookUpSize(run: Running): Promise<void> {
+    const fetchJson = this.#o.fetchJson;
+    if (!fetchJson) return;
+    run.npm = null;
+    const env = { ...process.env, ...run.config.env };
+    const registry = Object.entries(env).find(([k]) => k.toLowerCase() === 'npm_config_registry')?.[1];
+    const info = await npmPackageInfo(packageOf('npx', run.config.args), fetchJson, registry || undefined);
+    if (!info || this.#runs.get(run.config.name) !== run) return;
+    run.npm = info;
+    this.#emit({ type: 'user-mcp.status', name: run.config.name, status: this.#status(run, run.status) });
   }
 
   #uvOnPath(run: Running): boolean {
@@ -219,6 +240,7 @@ export class UserMcpServers {
         // the package is not here: nothing is fetched until the person agrees
         run.download = 'needed';
         this.#emit({ type: 'user-mcp.status', name: run.config.name, status: 'needs-download' });
+        if (runner === 'npx' && run.npm === undefined) void this.#lookUpSize(run);
         return;
       }
       if (run.download === 'allowed') delete run.download;
