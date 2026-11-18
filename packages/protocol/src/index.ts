@@ -1016,6 +1016,8 @@ export interface FileCardMeta {
   /** Which part was read. `rows` like "1-200", `range` like "A1:F40". */
   read: { pages?: string; sheet?: string; rows?: string; range?: string };
   truncated?: boolean;
+  /** A picture (PNG, JPEG, GIF, WEBP, BMP): its width and height in pixels, as the file is (not the copy a model gets). */
+  image?: { width: number; height: number };
   /** PDF without a text layer (scanned). */
   noTextLayer?: boolean;
   /** Detected text encoding (e.g. UTF-8, GBK). */

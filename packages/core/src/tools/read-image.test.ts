@@ -8,6 +8,7 @@ import { tempDir } from '../testing/helpers.ts';
 import { Tracer } from '../trace.ts';
 import type { CoreEventBody } from '../types.ts';
 import { readFileTool } from './fs-tools.ts';
+import { producedFileCard } from './file-card.ts';
 import { PAGE_PICTURE_BYTES, pagePictures } from './read-image.ts';
 import type { ToolContext } from './types.ts';
 
@@ -63,7 +64,8 @@ describe('read_file on a picture', () => {
     expect(r.images).toHaveLength(1);
     expect(r.images![0]).toMatchObject({ type: 'image', mediaType: 'image/png', width: 280, height: 140, name: 'chart.png' });
     expect(r.images![0]!.path.startsWith(join(dir, 'media'))).toBe(true);
-    expect(events.find((e) => e.type === 'file.card')).toMatchObject({ file: { name: 'chart.png', kind: 'other' } });
+    expect(events.find((e) => e.type === 'file.card')).toMatchObject({ file: { name: 'chart.png', kind: 'other', image: { width: 280, height: 140 } } });
+    expect(r.content).toContain('(picture, 280x140 px, ');
   });
 
   it('makes a large PNG smaller itself', async () => {
@@ -170,6 +172,25 @@ describe('read_file on scanned PDF pages', () => {
     ctx.imagesAllowed = false;
     await readFileTool.execute({ path: 'scan.pdf' }, ctx);
     expect(seen.at(-1)).toBe(0);
+  });
+});
+
+describe('cards for files a call made', () => {
+  it('say a picture with its size, and an old Excel or Word file as Excel or Word', async () => {
+    await writeFile(join(dir, 'photo.jpg'), jpegHeader(4000, 3000));
+    const bmp = Buffer.alloc(64);
+    bmp.write('BM', 0, 'latin1');
+    bmp.writeUInt32LE(40, 14);
+    bmp.writeInt32LE(1400, 18);
+    bmp.writeInt32LE(-2600, 22);
+    await writeFile(join(dir, 'scan.bmp'), bmp);
+    await writeFile(join(dir, 'old.xls'), 'x');
+    await writeFile(join(dir, 'old.doc'), 'x');
+    expect(await producedFileCard(join(dir, 'photo.jpg'), 'created')).toMatchObject({ kind: 'other', image: { width: 4000, height: 3000 } });
+    expect(await producedFileCard(join(dir, 'scan.bmp'), 'created')).toMatchObject({ image: { width: 1400, height: 2600 } });
+    expect((await producedFileCard(join(dir, 'old.xls'), 'created'))?.kind).toBe('xlsx');
+    expect((await producedFileCard(join(dir, 'old.doc'), 'created'))?.kind).toBe('docx');
+    expect(await producedFileCard(join(dir, 'old.doc'), 'created')).not.toHaveProperty('image');
   });
 });
 

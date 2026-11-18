@@ -9,10 +9,11 @@ import { basename, join } from 'node:path';
 import { isoNow } from '../events.ts';
 import { encodePngCompact, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, type PreparedImage } from '../images.ts';
 import type { FileCardMeta, ImageBlock } from '../types.ts';
+import { PICTURE_EXTENSIONS, pictureSize } from './file-card.ts';
 import type { PageImage, ToolContext, ToolOutput } from './types.ts';
 
-/** Files read_file hands to the model as pictures. */
-export const PICTURE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+/** Files read_file hands to the model as pictures (the ones whose card says picture). */
+export { PICTURE_EXTENSIONS };
 
 /** The sentence for a model that does not take images. */
 export const NO_IMAGES = 'The current model does not take images, so it cannot be shown; a model that takes images can look at it.';
@@ -45,8 +46,18 @@ function kb(bytes: number): string {
 
 /** read_file on a picture file. */
 export async function readPicture(abs: string, info: Stats, shown: string, ctx: ToolContext): Promise<ToolOutput> {
-  const card: FileCardMeta = { path: abs, name: basename(abs), kind: 'other', sizeBytes: info.size, modifiedAt: isoNow(info.mtime), extractedAt: isoNow(), read: {} };
-  const head = `${shown} (picture, ${info.size} bytes, modified ${isoNow(info.mtime)})`;
+  const size = await pictureSize(abs);
+  const card: FileCardMeta = {
+    path: abs,
+    name: basename(abs),
+    kind: 'other',
+    sizeBytes: info.size,
+    modifiedAt: isoNow(info.mtime),
+    extractedAt: isoNow(),
+    read: {},
+    ...(size ? { image: size } : {}),
+  };
+  const head = `${shown} (picture${size ? `, ${size.width}x${size.height} px` : ''}, ${info.size} bytes, modified ${isoNow(info.mtime)})`;
   if (ctx.imagesAllowed === false) {
     ctx.emit({ type: 'file.card', callId: ctx.callId, file: card });
     return { content: `${head}\n${NO_IMAGES}` };

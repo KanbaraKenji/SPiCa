@@ -285,6 +285,8 @@ describe('file cards', () => {
     const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · Read pages 1-5 · Partly read');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · Read');
+    expect(fileCardLine({ ...base, kind: 'other', image: { width: 4000, height: 3000 }, read: {} })).toBe('图片 · 4000×3000');
+    expect(fileCardLine({ ...base, kind: 'other', read: {} })).toBe('文件');
     expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · Read');
     expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · Read 「报价」 rows 1-3');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，无法读取文字');
