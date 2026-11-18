@@ -491,7 +491,6 @@ const mcpStore = new McpServerStore(app.getPath('userData'), {
   encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
   decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
 });
-if (backendKind === 'fake') seedDemoMcp(mcpStore);
 
 /**
  * Each saved provider's 花费上限 as the core takes it: the amount for a period (fixed periods of its days from when the
@@ -1865,7 +1864,14 @@ const mcpBackend: McpBackend =
         download: (name) => backend.call<McpState[]>('userMcpDownload', name),
       }
     : new FakeMcpBackend(() => sendToWindow(DesktopChannel.McpChanged));
-if (mcpBackend instanceof FakeMcpBackend) void mcpBackend.set(mcpStore.configs());
+// the demo's samples, saved once sealing works (after ready)
+if (mcpBackend instanceof FakeMcpBackend) {
+  const fake = mcpBackend;
+  void app.whenReady().then(() => {
+    seedDemoMcp(mcpStore);
+    return fake.set(mcpStore.configs());
+  });
+}
 /** Names a service the person adds cannot take: the plugins' servers' (a plugin's name, or name-server). */
 async function takenMcpNames(): Promise<string[]> {
   const r = await pluginService.run({ op: 'state' }).catch(() => null);
