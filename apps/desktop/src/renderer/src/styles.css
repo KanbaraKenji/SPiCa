@@ -9226,3 +9226,73 @@ input[type='radio']:disabled {
   width: 100%;
   max-width: 560px;
 }
+/* Settings › MCP 服务 (settings/McpServers.tsx): the list and a service's page as 插件's; commands in the code font. */
+.mcp-mono {
+  font-family: var(--font-mono);
+}
+
+.mcp-log {
+  margin-top: 8px;
+}
+
+.tool-command.mcp-log pre,
+.tool-command.mcp-command pre {
+  padding-left: 10px;
+  padding-right: 10px;
+  text-indent: 0;
+}
+
+.plugin-facts.mcp-facts {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mcp-approval {
+  margin-top: 16px;
+}
+
+.mcp-facts dd.mcp-mono {
+  overflow-wrap: anywhere;
+}
+
+/* 参数: one a line, as wide as 环境变量's rows. */
+.provider-editor .form-row > .field-control > .mcp-args {
+  width: 100%;
+  white-space: pre;
+  overflow-x: auto;
+  max-width: 420px;
+  height: auto;
+  min-height: calc(var(--control-h) * 2);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  resize: vertical;
+}
+
+/* 工作文件夹: the box, then the folder button beside it. */
+.provider-editor .form-row > .field-control.mcp-with-button {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-paste-note {
+  margin: 6px 0 0;
+}
+
+.mcp-editor > .mcp-paste {
+  margin-top: 12px;
+}
+
+/* Before saving: the whole command, then where it runs and its variables. An argument wraps only when it is
+   longer than the line (each is kept whole otherwise, so where one ends is plain). */
+.mcp-arg {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.mcp-confirm-facts {
+  margin-top: 10px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}

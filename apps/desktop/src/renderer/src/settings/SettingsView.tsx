@@ -15,12 +15,17 @@ import { General, type GeneralProps, type WorkflowsApi } from './General';
 import { Icon, type IconName } from '../ui/Icon';
 import { useModal } from '../ui/useModal';
 import { Memory, type MemoryProps } from './Memory';
+import { McpServers } from './McpServers';
+import { demoMcpApi } from './mcp-demo';
+
+// MOCKUP wiring (layout drafts): sample services only.
+const MCP_DEMO = demoMcpApi();
 import { Usage, type UsageApi } from './Usage';
 import { matches, SettingsSearchContext } from './Group';
 import type { UpdateState } from '../../../shared/updates';
 import { N_, t } from '../../../shared/i18n';
 
-export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'mcp' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: N_('常规') },
@@ -30,6 +35,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'usage', label: N_('用量') },
   { id: 'memory', label: N_('记忆') },
   { id: 'plugins', label: N_('插件') },
+  { id: 'mcp', label: N_('MCP 服务') },
   { id: 'about', label: N_('关于') },
 ];
 
@@ -38,7 +44,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
  * picture he sent 2026-11-12): you (账号); how Spica works for you (常规, 外观, 记忆); what it works with (模型,
  * 插件); then 关于 on its own.
  */
-const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'usage', 'plugins'], ['about']];
+const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'usage', 'plugins', 'mcp'], ['about']];
 
 /** Each section's mark before its name (Claude's column has one). */
 const NAV_ICON: Record<SettingsTab, IconName> = {
@@ -49,6 +55,7 @@ const NAV_ICON: Record<SettingsTab, IconName> = {
   models: 'model',
   usage: 'chart',
   plugins: 'plugin',
+  mcp: 'tool',
   about: 'info',
 };
 
@@ -170,6 +177,8 @@ export function SettingsView({ reveal, shell, providers, plugins, version, updat
         {...(onPluginsTab ? { onTab: onPluginsTab } : {})}
         {...(focusPlugin ? { focus: focusPlugin } : {})}
       />
+    ) : id === 'mcp' ? (
+      <McpServers api={MCP_DEMO} ownPage />
     ) : id === 'about' ? (
       <About
         version={version}
