@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import CFB from 'cfb';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { extractFile } from './index.ts';
 import { MINUTES, makeDocx, makeInventoryXlsx, makePdf } from './testing/fixtures.ts';
@@ -8,6 +9,16 @@ import { makeDoc, makeScannedTextPdf, makeXls, xlsCell } from './testing/legacy-
 import { rkValue } from './xls.ts';
 
 let dir: string;
+
+/** A Word 6.0 / 95 file: its information block is marked 0xA5DC. */
+function word6(): Uint8Array {
+  const doc = CFB.utils.cfb_new();
+  const word = Buffer.alloc(1024);
+  word.writeUInt16LE(0xa5dc, 0);
+  word.writeUInt16LE(0x0065, 2);
+  CFB.utils.cfb_add(doc, 'WordDocument', word);
+  return new Uint8Array(CFB.write(doc, { type: 'buffer', fileType: 'cfb' }) as Buffer);
+}
 const f = (name: string) => join(dir, name);
 
 const SHARED = ['物料', '数量', '入库日期', '六角螺栓 M8', 'Washer', '示例供应商的一条很长的备注文字'];
@@ -42,7 +53,7 @@ beforeAll(async () => {
       { name: 'hidden one', hidden: true, cells: [] },
     ],
     SHARED,
-    { sstSplitAt: 5 },
+    { sstSplitAt: 5, embedded: true },
   );
   const rows = Array.from({ length: 60 }, (_, i) => xlsCell.rk(i, 0, i + 1));
   const files: [string, Uint8Array | string][] = [
@@ -58,10 +69,12 @@ beforeAll(async () => {
         'Page {PAGE|3} of the notes',
         { cells: [['事项', '负责人'], ['报价单\n第二行', 'ALEX.CHEN'], ['', '空格']] },
         '会后补充一行。',
-      ]),
+        'Chart: {EMBED Excel.Sheet.8|\u0001}',
+      ], { embedded: true }),
     ],
     ['renamed.doc', await makeDocx(MINUTES)],
     ['rtf.doc', '{\\rtf1\\ansi hello}'],
+    ['word6.doc', word6()],
     ['scan.pdf', await makeScannedTextPdf([['Scanned page one', 'Invoice 2026-11'], ['Scanned page two']])],
     ['mixed.pdf', await makeScannedTextPdf([['Only this page is scanned']], [Array.from({ length: 4 }, () => 'This page has a real text layer.')])],
     ['many.pdf', await makeScannedTextPdf(Array.from({ length: 13 }, (_, i) => [`Page ${i + 1}`]))],
@@ -117,24 +130,26 @@ describe('.doc (Word 97-2003)', () => {
   it('reads paragraphs and tables as numbered blocks, fields as their result', async () => {
     const r = await extractFile(f('minutes.doc'));
     expect(r.meta.kind).toBe('docx');
-    expect(r.text).toContain('Word 97-2003 document: 4 paragraphs and 1 table (5 numbered blocks).');
+    expect(r.text).toContain('Word 97-2003 document: 5 paragraphs and 1 table (6 numbered blocks). It holds 1 picture or embedded object, which are not read.');
     expect(r.text).toContain('[1] 周例会纪要');
     expect(r.text).toContain('[3] Page 3 of the notes');
     expect(r.text).toContain('[4] Table 1 (3 rows × 2 columns):');
     expect(r.text).toContain('| 报价单 第二行 | ALEX.CHEN |');
     expect(r.text).toContain('|  | 空格 |');
     expect(r.text).toContain('[5] 会后补充一行。');
+    expect(r.text).toContain('[6] Chart:');
   });
 
   it('pages with offset/limit like .docx', async () => {
     const r = await extractFile(f('minutes.doc'), { offset: 2, limit: 2 });
-    expect(r.text).toContain('Showing blocks 2-3 of 5.');
+    expect(r.text).toContain('Showing blocks 2-3 of 6.');
     expect(r.text).not.toContain('周例会纪要');
   });
 
   it('reads a .docx under the old name, and says what an RTF file is', async () => {
     expect((await extractFile(f('renamed.doc'))).text).toContain('一、会议信息');
     await expect(extractFile(f('rtf.doc'))).rejects.toThrow('RTF');
+    await expect(extractFile(f('word6.doc'))).rejects.toThrow('Word 6.0/95');
   });
 });
 

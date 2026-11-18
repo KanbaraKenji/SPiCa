@@ -155,7 +155,8 @@ function openXls(bytes: Uint8Array): XlsBook {
   } catch (err) {
     throw new ExtractError(`Not a readable ${WHAT}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  const entry = CFB.find(doc, 'Workbook') ?? CFB.find(doc, 'Book');
+  // the root's stream: embedded objects (MBD… storages) carry streams of the same name
+  const entry = CFB.find(doc, '/Workbook') ?? CFB.find(doc, '/Book');
   if (!entry?.content) throw new ExtractError(`Not a readable ${WHAT} (no Workbook stream: it may be another Office file saved as .xls).`);
   const stream = Buffer.from(entry.content as Uint8Array);
   const recs = records(stream, 0);

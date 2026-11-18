@@ -9,7 +9,9 @@ import { makePdf } from './fixtures.ts';
 
 function ole(streams: Record<string, Buffer>): Uint8Array {
   const doc = CFB.utils.cfb_new();
-  for (const [name, data] of Object.entries(streams)) CFB.utils.cfb_add(doc, name, data);
+  // the root's streams first: cfb_add finds an existing stream by its name alone and would write over an embedded one
+  const entries = Object.entries(streams).sort(([a], [b]) => Number(a.includes('/')) - Number(b.includes('/')));
+  for (const [name, data] of entries) CFB.utils.cfb_add(doc, name, data);
   return new Uint8Array(CFB.write(doc, { type: 'buffer', fileType: 'cfb' }) as Buffer);
 }
 
@@ -77,7 +79,7 @@ export const xlsCell = {
  * A BIFF8 workbook. The shared strings are split over SST and CONTINUE records after `sstSplit` bytes of character
  * data of the string at `sstSplitAt`, so a string goes on in the next record (with its new flags byte).
  */
-export function makeXls(sheets: XlsSheet[], shared: string[], opts: { date1904?: boolean; sstSplitAt?: number } = {}): Uint8Array {
+export function makeXls(sheets: XlsSheet[], shared: string[], opts: { date1904?: boolean; sstSplitAt?: number; embedded?: boolean } = {}): Uint8Array {
   // SST: header, then strings; one string may be cut in the middle into a CONTINUE record
   const sstParts: Buffer[] = [u32(shared.length), u32(shared.length)];
   let cont: Buffer | undefined;
@@ -112,7 +114,9 @@ export function makeXls(sheets: XlsSheet[], shared: string[], opts: { date1904?:
     at += bodies[i]!.length;
     return r;
   });
-  return ole({ Workbook: Buffer.concat([globalsHead, ...recs, tail, ...bodies]) });
+  // an embedded object first, with a stream of the same name (a reader must take the root's)
+  const embedded: Record<string, Buffer> = opts.embedded ? { 'MBD0001/Workbook': Buffer.from('not this workbook') } : {};
+  return ole({ ...embedded, Workbook: Buffer.concat([globalsHead, ...recs, tail, ...bodies]) });
 }
 
 // ---------------------------------------------------------------- DOC (Word 97)
@@ -124,7 +128,7 @@ export type DocPara = string | { cells: string[][] };
  * text is one UTF-16 piece; each paragraph's properties (in table, row end) are written in PAPX pages.
  * A paragraph text may hold "{code|result}", written as a field (the code is left out when read).
  */
-export function makeDoc(paras: DocPara[]): Uint8Array {
+export function makeDoc(paras: DocPara[], opts: { embedded?: boolean } = {}): Uint8Array {
   // text and paragraph runs: [start char, end char (after the mark), inTable, ttp]
   let text = '';
   const runs: [number, number, boolean, boolean][] = [];
@@ -211,7 +215,9 @@ export function makeDoc(paras: DocPara[]): Uint8Array {
   fib.copy(word, 0);
   textBytes.copy(word, TEXT_FC);
   fkp.copy(word, fkpPage * 512);
-  return ole({ WordDocument: word, '1Table': table });
+  // an embedded document first, with streams of the same names (a reader must take the root's)
+  const embedded: Record<string, Buffer> = opts.embedded ? { 'ObjectPool/_1/WordDocument': Buffer.alloc(600), 'ObjectPool/_1/1Table': Buffer.alloc(40) } : {};
+  return ole({ ...embedded, WordDocument: word, '1Table': table });
 }
 
 // ---------------------------------------------------------------- scanned PDF

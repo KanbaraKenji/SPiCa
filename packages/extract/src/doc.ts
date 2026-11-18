@@ -35,7 +35,10 @@ function fail(why: string): never {
 
 /** The FIB's (fc, lcb) pair number `i` of FibRgFcLcb97, and ccpText. */
 function fib(word: Buffer): { tableName: string; ccpText: number; pair(i: number): [number, number] } {
-  if (word.length < 0x200 || word.readUInt16LE(0) !== 0xa5ec) fail('no Word 97 file information block');
+  const ident = word.length >= 4 ? word.readUInt16LE(0) : 0;
+  // Word 6.0 and 95 mark their file information block 0xA5DC, Word 97 and later 0xA5EC
+  if (ident === 0xa5dc) throw new ExtractError('This is a Word 6.0/95 document, which is not read here; open it in Word and save it as .docx.');
+  if (word.length < 0x200 || ident !== 0xa5ec) fail('no Word 97 file information block');
   const flags = word.readUInt16LE(0x0a);
   if (flags & 0x0100) throw new ExtractError('This document is password protected; it cannot be read without the password.');
   const nFib = word.readUInt16LE(2);
@@ -145,18 +148,20 @@ function paraAt(paras: Para[], fc: number): Para | undefined {
 
 type Token = { t: 'text'; s: string } | { t: 'para'; inTable: boolean } | { t: 'cell' } | { t: 'row' };
 
-export function parseDoc(bytes: Uint8Array): DocBlock[] {
+/** The blocks of the main text, and how many pictures or embedded objects it holds (their content is not read). */
+export function parseDoc(bytes: Uint8Array): { blocks: DocBlock[]; objects: number } {
   let doc: CFB.CFB$Container;
   try {
     doc = CFB.read(Buffer.from(bytes), { type: 'buffer' });
   } catch (err) {
     throw new ExtractError(`Not a readable ${WHAT}: ${err instanceof Error ? err.message : String(err)}`);
   }
-  const wordEntry = CFB.find(doc, 'WordDocument');
+  // the root's streams: embedded objects (ObjectPool) carry streams of the same names
+  const wordEntry = CFB.find(doc, '/WordDocument');
   if (!wordEntry?.content) fail('no WordDocument stream: it may be another Office file saved as .doc');
   const word = Buffer.from(wordEntry.content as Uint8Array);
   const f = fib(word);
-  const tableEntry = CFB.find(doc, f.tableName);
+  const tableEntry = CFB.find(doc, `/${f.tableName}`);
   if (!tableEntry?.content) fail(`the ${f.tableName} stream is missing`);
   const table = Buffer.from(tableEntry.content as Uint8Array);
   const [fcClx, lcbClx] = f.pair(33);
@@ -173,6 +178,7 @@ export function parseDoc(bytes: Uint8Array): DocBlock[] {
     tokens.push(t);
   };
   const field: number[] = []; // nesting of fields: 1 while in the code part, 2 in the result
+  let objects = 0;
   for (const pc of list) {
     if (pc.cpStart >= f.ccpText) break;
     const count = Math.min(pc.cpEnd, f.ccpText) - pc.cpStart;
@@ -192,6 +198,7 @@ export function parseDoc(bytes: Uint8Array): DocBlock[] {
       } else if (code === 0x0d) mark({ t: 'para', inTable: paraAt(paras, pc.fc + i * width)?.inTable ?? false });
       else if (code === 0x0b || code === 0x0c) text += '\n';
       else if (code === 0x1e) text += '-';
+      else if (code === 0x01 || code === 0x08) objects++;
       else if (code === 0x09 || code >= 0x20) text += ch;
       // 0x01 pictures, 0x02 footnote marks, 0x05 comment marks, 0x08 drawings, 0x1f optional hyphens: left out
     }
@@ -244,9 +251,11 @@ export function parseDoc(bytes: Uint8Array): DocBlock[] {
   if (row.length || rows.length) endTable();
   const tail = clean(cur);
   if (tail) blocks.push({ type: 'p', text: tail });
-  return blocks;
+  return { blocks, objects };
 }
 
 export async function extractDoc(src: SourceFile, req: ExtractRequest, maxChars: number): Promise<ExtractResult> {
-  return renderDocBlocks(parseDoc(src.bytes), WHAT, src, req, maxChars);
+  const { blocks, objects } = parseDoc(src.bytes);
+  const note = objects > 0 ? `It holds ${objects} picture${objects === 1 ? '' : 's'} or embedded object${objects === 1 ? '' : 's'}, which are not read.` : undefined;
+  return renderDocBlocks(blocks, WHAT, src, req, maxChars, note);
 }
