@@ -1,5 +1,7 @@
 // Minimal MCP client over stdio (newline-delimited JSON-RPC 2.0):
-// initialize → notifications/initialized → tools/list → tools/call.
+// initialize → notifications/initialized → tools/list → tools/call; with protocol 'auto', server/discover first
+// (MCP 2026-07-28: no handshake, each request carries the version in _meta) and initialize only when the server
+// does not know it. On Windows a .cmd or .bat (the npx and uvx shims) is started through cmd.exe (win-command.ts).
 // Tool calls ask for progress (MCP 2025-06-18 progress utility): a report
 // restarts the wait, up to an overall limit; a call that times out or is
 // stopped is cancelled at the server (notifications/cancelled).
@@ -16,6 +18,7 @@ import type { ImageBlock } from '../types.ts';
 import { keepMedia, type KeptMedia } from './media.ts';
 import { childEnv } from '../util.ts';
 import { descendants, endTree, listProcesses } from './process-tree.ts';
+import { windowsLaunch } from './win-command.ts';
 
 export interface McpServerConfig {
   /** Short name; tools appear as `<name>__<tool>`. */
@@ -35,6 +38,14 @@ export interface McpServerConfig {
    */
   inheritEnv?: 'all' | string[];
   cwd?: string;
+  /**
+   * Which MCP version to speak. 'legacy' (default): the initialize handshake (2025-06-18). 'auto': ask first with
+   * server/discover in the 2026-07-28 way and keep to it when the server knows it; any other answer, or none
+   * within discoverTimeoutMs, and the client falls back to initialize (the spec's stdio backward compatibility).
+   */
+  protocol?: 'legacy' | 'auto';
+  /** How long 'auto' waits for the answer to server/discover before it takes the server for an older one. Default 5 s. */
+  discoverTimeoutMs?: number;
   /**
    * How long a request may go without an answer. Default 60 s. A tool call
    * carries a progress token, and each progress notification for it starts
@@ -97,6 +108,8 @@ export interface McpProgress {
 
 export interface McpRequestOptions {
   signal?: AbortSignal;
+  /** This request's own wait for an answer (instead of config.timeoutMs). */
+  timeoutMs?: number;
   /** Ask the server for progress (adds _meta.progressToken); each report restarts the wait. */
   onProgress?(p: McpProgress): void;
 }
@@ -112,6 +125,21 @@ interface Pending {
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
+/** The version without a handshake (MCP 2026-07-28). */
+export const MODERN_PROTOCOL = '2026-07-28';
+const DEFAULT_DISCOVER_MS = 5_000;
+const CLIENT_INFO = { name: 'spica', version: '0.1.0' };
+
+/** An MCP error answer, its JSON-RPC code and data kept. */
+export class McpRpcError extends Error {
+  readonly code: number | undefined;
+  readonly data: unknown;
+  constructor(code: number | undefined, message: string, data?: unknown) {
+    super(`MCP error ${code ?? ''}: ${message}`);
+    this.code = code;
+    this.data = data;
+  }
+}
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_CALL_MS = 60 * 60_000;
 /** Node fires a longer setTimeout after 1 ms, so a huge limit is held to this (about 24 days). */
@@ -136,6 +164,8 @@ export class McpStdioClient {
   readonly #queue: { start: () => void; fail: (e: Error) => void }[] = [];
   #inFlight = 0;
   serverInfo: { name?: string; version?: string } = {};
+  /** The version in use once connected: MODERN_PROTOCOL, or the one the handshake agreed. */
+  protocolVersion: string | undefined;
 
   /** Tool calls waiting for their turn right now (for showing "waiting"). */
   get waiting(): number {
@@ -157,11 +187,14 @@ export class McpStdioClient {
 
   async connect(): Promise<void> {
     const c = this.config;
-    const child = spawn(c.command, c.args ?? [], {
+    // the app's proxy and certificates, so the server connects like the app; its own env wins
+    const env = { ...withNetworkEnv(childEnv(c.inheritEnv)), ...(c.env ?? {}) };
+    const launch = windowsLaunch(c.command, c.args ?? [], env, c.cwd);
+    const child = spawn(launch.command, launch.args, {
       cwd: c.cwd,
-      // the app's proxy and certificates, so the server connects like the app; its own env wins
-      env: { ...withNetworkEnv(childEnv(c.inheritEnv)), ...(c.env ?? {}) },
+      env,
       windowsHide: true,
+      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.#child = child;
@@ -187,13 +220,57 @@ export class McpStdioClient {
       }
     });
     child.on('error', (err) => this.#fail(new Error(`could not start MCP server "${c.name}": ${err.message}`)));
+    if (c.protocol === 'auto' && (await this.#discover())) return;
     const init = (await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
-      capabilities: c.onSampling ? { sampling: {} } : {},
-      clientInfo: { name: 'spica', version: '0.1.0' },
-    })) as { serverInfo?: { name?: string; version?: string } };
+      capabilities: this.#capabilities(),
+      clientInfo: CLIENT_INFO,
+    })) as { protocolVersion?: string; serverInfo?: { name?: string; version?: string } };
     this.serverInfo = init.serverInfo ?? {};
+    this.protocolVersion = typeof init.protocolVersion === 'string' ? init.protocolVersion : PROTOCOL_VERSION;
     this.notify('notifications/initialized', {});
+  }
+
+  #capabilities(): Record<string, unknown> {
+    return this.config.onSampling ? { sampling: {} } : {};
+  }
+
+  /** What every request carries in _meta in MODERN_PROTOCOL. */
+  #modernMeta(): Record<string, unknown> {
+    return {
+      'io.modelcontextprotocol/protocolVersion': MODERN_PROTOCOL,
+      'io.modelcontextprotocol/clientInfo': CLIENT_INFO,
+      'io.modelcontextprotocol/clientCapabilities': this.#capabilities(),
+    };
+  }
+
+  /**
+   * server/discover (MCP 2026-07-28). True: the server speaks MODERN_PROTOCOL and no handshake follows. False: an
+   * older server (any other error, or no answer in time); initialize follows. A newer server that does not offer
+   * MODERN_PROTOCOL is an error: the spec says not to fall back then.
+   */
+  async #discover(): Promise<boolean> {
+    const c = this.config;
+    const versionsError = (list: string): Error => new Error(`MCP server "${c.name}" supports only ${list}; Spica speaks ${MODERN_PROTOCOL} and ${PROTOCOL_VERSION}`);
+    let r: { supportedVersions?: unknown; _meta?: Record<string, unknown> } | undefined;
+    try {
+      r = (await this.request('server/discover', { _meta: this.#modernMeta() }, { timeoutMs: c.discoverTimeoutMs ?? DEFAULT_DISCOVER_MS })) as typeof r;
+    } catch (err) {
+      if (!this.running) throw err; // it quit: nothing to fall back to
+      if (err instanceof McpRpcError && err.code === -32022) {
+        const supported = (err.data as { supported?: unknown } | undefined)?.supported;
+        throw Object.assign(versionsError(Array.isArray(supported) ? supported.join(', ') : 'other versions'), { cause: err });
+      }
+      return false;
+    }
+    const versions = Array.isArray(r?.supportedVersions) ? r.supportedVersions.filter((v): v is string => typeof v === 'string') : [];
+    // an answer that names no versions is not a newer server: taken for an older one
+    if (versions.length === 0) return false;
+    if (!versions.includes(MODERN_PROTOCOL)) throw versionsError(versions.join(', '));
+    this.protocolVersion = MODERN_PROTOCOL;
+    const info = r?._meta?.['io.modelcontextprotocol/serverInfo'];
+    this.serverInfo = info && typeof info === 'object' ? (info as { name?: string; version?: string }) : {};
+    return true;
   }
 
   async listTools(): Promise<McpToolInfo[]> {
@@ -225,6 +302,12 @@ export class McpStdioClient {
       answer = await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), onProgress: onProgress ?? (() => {}) });
     } finally {
       done();
+    }
+    if ((answer as { resultType?: unknown } | undefined)?.resultType === 'input_required') {
+      // MCP 2026-07-28: the server needs something (a form for the person, a model's answer) before it can go on;
+      // Spica does not answer those yet
+      const asks = Object.values((answer as { inputRequests?: Record<string, { method?: string }> }).inputRequests ?? {}).map((q) => q?.method ?? '?');
+      return { content: `The MCP server asked for more input before it can finish (${asks.join(', ') || 'input_required'}); Spica cannot answer that yet.`, isError: true };
     }
     const result = answer as {
       content?: { type: string; text?: string; uri?: string; data?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
@@ -312,14 +395,19 @@ export class McpStdioClient {
     if (!this.#child || this.#closed) return Promise.reject(new Error(`MCP server "${this.config.name}" is not running`));
     const id = this.#nextId++;
     const name = this.config.name;
-    const idleMs = Math.min(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMER_MS);
+    const idleMs = Math.min(opts.timeoutMs ?? this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMER_MS);
     const overallMs = Math.min(Math.max(this.config.maxCallMs ?? DEFAULT_MAX_CALL_MS, idleMs), MAX_TIMER_MS);
     const { signal, onProgress } = opts;
     // The token is the request id: unique among running requests, as the spec requires.
-    const sent =
+    let sent =
       onProgress && params && typeof params === 'object'
         ? { ...params, _meta: { ...((params as { _meta?: object })._meta ?? {}), progressToken: id } }
         : params;
+    // MODERN_PROTOCOL: every request says the version, who asks and what it can do
+    if (this.protocolVersion === MODERN_PROTOCOL) {
+      const p = sent && typeof sent === 'object' ? (sent as { _meta?: object }) : {};
+      sent = { ...p, _meta: { ...this.#modernMeta(), ...(p._meta ?? {}) } };
+    }
     return new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); // never sent
       const onAbort = (): void => end(Object.assign(new Error('aborted'), { name: 'AbortError' }), 'user interrupted');
@@ -331,7 +419,8 @@ export class McpStdioClient {
         clearTimeout(p.overall);
         this.#pending.delete(id);
         signal?.removeEventListener('abort', onAbort);
-        if (cancel && method !== 'initialize') this.notify('notifications/cancelled', { requestId: id, reason: cancel });
+        // never for initialize (the spec forbids it), nor for the server/discover probe (an older server never knew it)
+        if (cancel && method !== 'initialize' && method !== 'server/discover') this.notify('notifications/cancelled', { requestId: id, reason: cancel });
         if (err) reject(err);
         else resolve(value);
       };
@@ -496,7 +585,7 @@ export class McpStdioClient {
       }
       const p = this.#pending.get(msg.id);
       if (!p) continue; // late: the request already timed out or was stopped
-      if (msg.error) p.reject(new Error(`MCP error ${msg.error.code ?? ''}: ${msg.error.message ?? 'unknown'}`));
+      if (msg.error) p.reject(new McpRpcError(msg.error.code, msg.error.message ?? 'unknown', (msg.error as { data?: unknown }).data));
       else p.resolve(msg.result);
     }
   }
