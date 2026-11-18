@@ -9226,3 +9226,168 @@ input[type='radio']:disabled {
   width: 100%;
   max-width: 560px;
 }
+/* The conversation's plan (chat/PlanStrip, update_plan): in the input area just above the message box, as wide as
+   it (as the question card, .ask-dock): one line (the step's mark, how far, the step being worked on, the arrow);
+   opened, all the steps above that line, so the line stays where it was clicked. */
+.plan-dock {
+  flex: none;
+  width: calc(100% - 28px);
+  max-width: 760px;
+  margin: 0 auto 8px;
+  translate: var(--centre-shift, 0px) 0;
+}
+
+.plan-strip {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-raised);
+  box-shadow: var(--spica-input-shadow);
+}
+
+.plan-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-line:hover {
+  background: var(--spica-hover);
+}
+
+.plan-strip.is-open > .plan-line {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.plan-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: var(--lh-body);
+}
+
+.plan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--spica-muted);
+}
+
+.plan-dot.is-current {
+  border-color: var(--spica-accent);
+}
+
+.plan-count {
+  flex: none;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plan-chevron {
+  flex: none;
+  color: var(--spica-muted);
+  rotate: 180deg;
+}
+
+.plan-strip.is-open .plan-chevron {
+  rotate: none;
+}
+
+.plan-steps {
+  margin: 0;
+  padding: 8px 12px 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  border-bottom: 1px solid var(--spica-border);
+}
+
+.plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.plan-step.is-completed .plan-step-text {
+  color: var(--spica-muted);
+}
+
+/* Finished, back in the conversation where it was finished: as wide as what it says, like an answered question. */
+.plan-strip.is-record {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 560px;
+  box-shadow: none;
+  background: var(--spica-surface);
+  border-color: var(--spica-border);
+}
+
+.plan-strip.is-record .plan-chevron {
+  rotate: -90deg;
+}
+
+.plan-strip.is-record.is-open .plan-chevron {
+  rotate: none;
+}
+
+/* mock B: the plan's line at the top of the question card, a line under it. */
+.ask-top {
+  flex: none;
+  margin: -12px -12px 8px;
+  border-bottom: 1px solid var(--spica-border);
+}
+
+.ask-top .plan-strip {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* mock C: the plan joined to the top of the message box. */
+.plan-dock.is-joined {
+  margin-bottom: -1px;
+  position: relative;
+  z-index: 1;
+}
+
+.plan-dock.is-joined + .composer-wrap .composer {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.plan-dock.is-joined .plan-strip {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: none;
+  background: var(--spica-surface);
+}
