@@ -116,8 +116,8 @@ describe('get_diagnostics', () => {
     await mkdir(proj);
     await writeFile(join(proj, 'total.js'), 'function f(a) {\n  return a.reduce((s, x) => s + x, 0\n}\n');
     const r = await tool.execute({}, { ...ctx(), cwd: proj });
-    expect(r.content).not.toContain('eslint');
-    expect(r.content).toMatch(/^1 error\(s\)/);
+    expect(r.content.split('\n')[0]).toBe('1 error(s), 0 warning(s)');
+    expect(r.content).toContain('only checked that 1 file(s) parse');
     expect(r.content).toMatch(/total\.js:\d+:\d+ error SyntaxError/);
   });
 
