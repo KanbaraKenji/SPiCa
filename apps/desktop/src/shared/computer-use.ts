@@ -9,6 +9,8 @@
 //   full     everything
 // highRisk: allowed, marked 高风险 on the card (Explorer, Settings). shared: one exe runs many programs (java,
 // python, node, Store apps), so allowing one allows them all: allowed for this conversation only, never always.
+// Shared with 设置 › 常规 › 受限的程序, which lists the groups below as they are.
+import { N_ } from './i18n';
 
 export type Tier = 'blocked' | 'view' | 'click' | 'full';
 
@@ -115,7 +117,16 @@ export function allows(tier: Tier, what: 'see' | 'click' | 'type'): boolean {
   return tier === 'full';
 }
 
-/** The fixed rows of 设置 › 受限的程序: each list's exe names with their tier (the person cannot remove them). */
-export function fixedRules(): { exe: string; rule: Rule }[] {
-  return [...RULES.entries()].filter(([, r]) => r.tier !== 'full' || r.highRisk).map(([exe, rule]) => ({ exe, rule }));
-}
+/**
+ * The fixed rows of 设置 › 受限的程序 (the person cannot remove them): what each group is, a few of its programs by
+ * name, and how far they may be operated. Programs running as administrator are out of reach whatever the list
+ * says (Windows drops input sent to them).
+ */
+export const RESTRICTED_GROUPS: { title: string; examples: string[]; tier: Tier | 'highRisk' }[] = [
+  { title: N_('{app} 自己'), examples: [], tier: 'blocked' },
+  { title: N_('证券、交易、加密货币客户端'), examples: ['Trader Workstation', 'MetaTrader', 'Exodus'], tier: 'blocked' },
+  { title: N_('以管理员身份运行的程序'), examples: [], tier: 'blocked' },
+  { title: N_('浏览器'), examples: ['Microsoft Edge', 'Google Chrome', 'Firefox'], tier: 'view' },
+  { title: N_('终端、代码编辑器'), examples: ['Windows Terminal', 'PowerShell', 'VS Code'], tier: 'click' },
+  { title: N_('文件资源管理器、系统设置'), examples: [], tier: 'highRisk' },
+];

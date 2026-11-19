@@ -6,7 +6,7 @@ import { encodePng, fitForModel, maskScreen, MASK_GREY, resize, type Bitmap } fr
 import { driverKind } from './driver';
 import { FakeDriver } from './fake-driver';
 import { clickSteps, keySteps } from './input';
-import { allows, exeName, ruleFor } from './restricted';
+import { allows, exeName, ruleFor } from '../../shared/computer-use';
 
 const NOTEPAD = 'C:\\Windows\\System32\\notepad.exe';
 const EXCEL = 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE';
@@ -147,7 +147,7 @@ describe('approval', () => {
     const p = await agent.prepare('s1', { apps: ['notepad', 'python'], callId: 'c1' });
     expect(p.apps[1]).toMatchObject({ shared: true, title: 'tool window' });
     agent.grant('s1', { callId: 'c1', always: true });
-    expect(always()).toEqual([{ exe: NOTEPAD, name: '记事本' }]);
+    expect(always()).toEqual([{ exe: NOTEPAD, name: '记事本', icon: expect.stringMatching(/^data:image\/png;base64,/) }]);
     expect((await agent.prepare('s9', { apps: ['notepad'], callId: 'c2' })).ask).toBe(false);
     expect((await agent.prepare('s9', { apps: ['python'], callId: 'c3' })).ask).toBe(true);
   });

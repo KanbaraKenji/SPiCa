@@ -152,4 +152,16 @@ export const EN_SETTINGS: Catalog = {
   浏览数据: 'Browsing data',
   已清除: 'Cleared',
   清除: 'Clear',
+  // 常规 › 操作电脑
+  操作电脑: 'Computer use',
+  '允许 Agent 操作电脑': 'Let the agent operate this computer',
+  始终允许的程序: 'Always allowed programs',
+  受限的程序: 'Restricted programs',
+  选择程序: 'Choose a program',
+  不允许: 'Not allowed',
+  '{app} 自己': '{app} itself',
+  '证券、交易、加密货币客户端': 'Trading, brokerage and crypto apps',
+  以管理员身份运行的程序: 'Programs running as administrator',
+  '终端、代码编辑器': 'Terminals, code editors',
+  '文件资源管理器、系统设置': 'File Explorer, Settings',
 };

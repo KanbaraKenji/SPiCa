@@ -311,9 +311,13 @@ export class AgentStore {
     await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
-  /** `allowFolder`: a write outside the conversation's folders, allowed for that folder from now on. */
-  async confirm(id: string, callId: string, approved: boolean, allowFolder = false): Promise<void> {
-    await this.#card(id, callId, () => (allowFolder ? this.#api.confirm(id, callId, approved, { allowFolder: true }) : this.#api.confirm(id, callId, approved)));
+  /**
+   * `allowFolder`: a write outside the conversation's folders, allowed for that folder from now on. `always`: 始终允许
+   * rather than 允许一次 (操作电脑's card).
+   */
+  async confirm(id: string, callId: string, approved: boolean, allowFolder = false, always = false): Promise<void> {
+    const options = { ...(allowFolder ? { allowFolder: true } : {}), ...(always && approved ? { always: true } : {}) };
+    await this.#card(id, callId, () => (Object.keys(options).length ? this.#api.confirm(id, callId, approved, options) : this.#api.confirm(id, callId, approved)));
   }
 
   /** Answering a card the core no longer waits on (no pending ask / confirm): the card is marked cancelled, no notice. */

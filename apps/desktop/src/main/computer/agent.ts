@@ -11,12 +11,13 @@
 import { crop, encodePng, fitForModel, greyOut, maskScreen, resize, type Bitmap, type Rect } from './bitmap';
 import { windowAt, type Driver, type WindowInfo } from './driver';
 import { clickSteps, keySteps, type Button, type InputStep } from './input';
-import { allows, exeName, ruleFor, type Rule, type Tier } from './restricted';
+import { allows, exeName, ruleFor, type Rule, type Tier } from '../../shared/computer-use';
 
 /** A program the person allowed always (设置 › 始终允许的程序). */
 export interface AlwaysApp {
   exe: string;
   name: string;
+  icon?: string;
 }
 
 /** Where the settings keep what was allowed and what was added to 受限的程序. */
@@ -192,7 +193,7 @@ export class ComputerAgent {
     const once = this.#once.get(sessionId) ?? new Set<string>();
     const forever: AlwaysApp[] = [];
     for (const a of granted) {
-      if (always && !a.shared) forever.push({ exe: a.exe, name: a.name });
+      if (always && !a.shared) forever.push({ exe: a.exe, name: a.name, ...(a.icon ? { icon: a.icon } : {}) });
       else once.add(a.exe.toLowerCase());
     }
     this.#once.set(sessionId, once);

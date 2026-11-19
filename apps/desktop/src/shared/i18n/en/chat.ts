@@ -334,4 +334,14 @@ export const EN_CHAT: Catalog = {
   还没有配置模型: 'No model configured yet',
   记忆已关闭: 'Memory is off',
   '邮件检查失败：邮件插件无响应。': 'Mail check failed: the mail plugin isn’t responding.',
+  // 操作电脑's approval card
+  其他允许方式: 'Other ways to allow',
+  允许一次: 'Allow once',
+  高风险: 'High risk',
+  只看: 'View only',
+  只能点: 'Click only',
+  '操作 {n} 个程序': { one: 'Operate {n} program', other: 'Operate {n} programs' },
+  '已始终允许 {n} 个程序': { one: 'Always allowed {n} program', other: 'Always allowed {n} programs' },
+  '已允许一次 {n} 个程序': { one: 'Allowed {n} program once', other: 'Allowed {n} programs once' },
+  '已拒绝 {n} 个程序': { one: 'Denied {n} program', other: 'Denied {n} programs' },
 };

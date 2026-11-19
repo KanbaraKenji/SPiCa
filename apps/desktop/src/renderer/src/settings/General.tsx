@@ -10,6 +10,7 @@ import { useGuard } from '../ui/guard';
 import { InfoTip } from '../ui/InfoTip';
 import { useKeptDraft } from './drafts';
 import { Switch } from './Switch';
+import { ComputerUse } from './ComputerUse';
 import { Group, Pane, Row } from './Group';
 import { APP_NAME } from '../../../shared/app-identity';
 import type { PluginView } from '../../../shared/plugin-view';
@@ -483,6 +484,7 @@ export function General(props: GeneralProps) {
       <Startup {...props} />
       <FilePreviews {...props} />
       <Browser {...props} />
+      <ComputerUse settings={props.settings} onChange={props.onChange} {...(props.pickFiles ? { pickFiles: props.pickFiles } : {})} />
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

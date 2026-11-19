@@ -1,7 +1,7 @@
 // A made-up desktop for 操作电脑 (driver.ts): a few windows drawn as coloured blocks, input written down instead of
 // sent, Escape pressed by a test. Used by the tests, by test windows (SPICA_HIDDEN) and with the demo backend, so
 // none of them ever sees the real screen or moves the real mouse.
-import type { Bitmap } from './bitmap';
+import { encodePng, type Bitmap } from './bitmap';
 import type { Driver, WindowInfo } from './driver';
 import type { InputStep } from './input';
 
@@ -11,13 +11,13 @@ interface FakeWindow extends WindowInfo {
 }
 
 /** Programs the fake desktop knows, by exe: their name, colour and where their window opens. */
-export const FAKE_PROGRAMS: Record<string, { name: string; colour: number; title: string }> = {
-  'C:\\Windows\\explorer.exe': { name: '文件资源管理器', colour: 0x2f5f8f, title: '' },
-  'C:\\Windows\\System32\\notepad.exe': { name: '记事本', colour: 0xf4f4f4, title: '无标题 - 记事本' },
-  'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE': { name: 'Microsoft Excel', colour: 0x1d6f42, title: '采购清单.xlsx - Excel' },
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe': { name: 'Microsoft Edge', colour: 0x2b88d8, title: 'example.com - Microsoft Edge' },
-  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe': { name: 'Windows PowerShell', colour: 0x012456, title: 'Windows PowerShell' },
-  'C:\\Windows\\System32\\mspaint.exe': { name: '画图', colour: 0xe8e0d0, title: '无标题 - 画图' },
+export const FAKE_PROGRAMS: Record<string, { name: string; colour: number; title: string; icon: number }> = {
+  'C:\\Windows\\explorer.exe': { name: '文件资源管理器', colour: 0x2f5f8f, title: '', icon: 0xe0a526 },
+  'C:\\Windows\\System32\\notepad.exe': { name: '记事本', colour: 0xf4f4f4, title: '无标题 - 记事本', icon: 0x3b82c4 },
+  'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE': { name: 'Microsoft Excel', colour: 0x1d6f42, title: '采购清单.xlsx - Excel', icon: 0x1d6f42 },
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe': { name: 'Microsoft Edge', colour: 0x2b88d8, title: 'example.com - Microsoft Edge', icon: 0x2b88d8 },
+  'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe': { name: 'Windows PowerShell', colour: 0x012456, title: 'Windows PowerShell', icon: 0x012456 },
+  'C:\\Windows\\System32\\mspaint.exe': { name: '画图', colour: 0xe8e0d0, title: '无标题 - 画图', icon: 0xd9534f },
 };
 
 export const FAKE_SPICA_PID = 1;
@@ -137,8 +137,9 @@ export class FakeDriver implements Driver {
     return FAKE_PROGRAMS[exe]?.name ?? exe.split('\\').pop() ?? exe;
   }
 
-  async icon(): Promise<string | undefined> {
-    return undefined;
+  async icon(exe: string): Promise<string | undefined> {
+    const p = FAKE_PROGRAMS[exe];
+    return p ? fakeIcon(p.icon) : undefined;
   }
 
   async locate(name: string): Promise<string | undefined> {
@@ -159,4 +160,16 @@ export class FakeDriver implements Driver {
 function shade(c: number): number {
   const f = (v: number) => Math.round(v * 0.8);
   return (f((c >> 16) & 0xff) << 16) | (f((c >> 8) & 0xff) << 8) | f(c & 0xff);
+}
+
+/** A made-up program icon: a 16-pixel square of its colour (as a PNG data URL). */
+export function fakeIcon(colour: number): string {
+  const data = Buffer.alloc(16 * 16 * 4);
+  for (let o = 0; o < data.length; o += 4) {
+    data[o] = colour & 0xff;
+    data[o + 1] = (colour >> 8) & 0xff;
+    data[o + 2] = (colour >> 16) & 0xff;
+    data[o + 3] = 0xff;
+  }
+  return `data:image/png;base64,${encodePng({ width: 16, height: 16, data }).toString('base64')}`;
 }

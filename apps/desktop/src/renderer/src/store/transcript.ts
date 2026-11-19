@@ -6,6 +6,7 @@ import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
+import { COMPUTER_ACCESS, computerCard, settleComputer, type ComputerBlock } from './computer-card';
 
 export { humanError } from '../../../shared/errors';
 
@@ -63,6 +64,8 @@ export type Block =
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
+  /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
+  | ComputerBlock
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
@@ -433,7 +436,7 @@ function cancelOpenCards(items: Item[], keep: ReadonlySet<string> = new Set()): 
     if (it.kind !== 'response') continue;
     for (const b of it.blocks) {
       if (keep.has((b as { callId?: string }).callId ?? '')) continue;
-      if ((b.type === 'ask' && b.answer === undefined && !b.cancelled) || (b.type === 'confirm' && b.approved === undefined && !b.cancelled)) {
+      if ((b.type === 'ask' && b.answer === undefined && !b.cancelled) || ((b.type === 'confirm' || b.type === 'computer') && b.approved === undefined && !b.cancelled)) {
         b.cancelled = true;
         it.interrupted = true;
       }
@@ -443,6 +446,14 @@ function cancelOpenCards(items: Item[], keep: ReadonlySet<string> = new Set()): 
 
 /** A tool result for a question or a confirmation: an answer, or (an error: the core cancelled it) cancelled. */
 function settleCard(items: Item[], callId: string, content: string, isError: boolean | undefined): void {
+  const computer = findBlock(items, 'computer', callId);
+  if (computer && computer.approved === undefined && !computer.cancelled) {
+    const stopped = !!isError && STOPPED_WAITING.test(resultBody(content));
+    const next = settleComputer(computer, resultBody(content), !!isError, stopped);
+    if (next) replaceBlock(items, computer, next);
+    else removeBlock(items, computer);
+    if (stopped) markInterrupted(items, callId);
+  }
   const ask = findBlock(items, 'ask', callId);
   if (ask && ask.answer === undefined) {
     if (isError) {
@@ -459,6 +470,18 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
 
 /** What the core writes as the result of a question or confirmation dropped because the run was stopped. */
 const STOPPED_WAITING = /^Cancelled\b/;
+
+/** A block taken out. Mutates `items`. */
+function removeBlock(items: Item[], old: Block): void {
+  for (const it of items) {
+    if (it.kind !== 'response') continue;
+    const at = it.blocks.indexOf(old);
+    if (at >= 0) {
+      it.blocks.splice(at, 1);
+      return;
+    }
+  }
+}
 
 /** `old` swapped for `next` where it stands. Mutates `items`. */
 function replaceBlock(items: Item[], old: Block, next: Block): void {
@@ -480,7 +503,7 @@ function markInterrupted(items: Item[], callId: string): void {
 /** The card `callId` marked cancelled (the core said it no longer waits on it). */
 export function cancelCard(prev: Transcript, callId: string): Transcript {
   const t = clone(prev);
-  for (const type of ['ask', 'confirm'] as const) {
+  for (const type of ['ask', 'confirm', 'computer'] as const) {
     const b = findBlock(t.items, type, callId);
     if (b) b.cancelled = true;
   }
@@ -541,6 +564,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
         } else if (b.type === 'tool_use') {
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
+          else if (b.name === COMPUTER_ACCESS) r.blocks.push(computerCard(b.id, b.input));
           else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
         }
       }
@@ -704,7 +728,13 @@ function applyPending(t: Transcript, p: PendingItem): void {
     // (as it shows live), not done; done comes with its result once it was allowed and ran.
     const call = findBlock(t.items, 'tool', p.callId);
     if (call && call.result === undefined) call.state = 'pending';
-    if (!findBlock(t.items, 'confirm', p.callId)) {
+    if (p.toolName === COMPUTER_ACCESS) {
+      // the card as asked (the programs the main process worked out), in place of the one made from the history
+      const card = computerCard(p.callId, p.input);
+      const was = findBlock(t.items, 'computer', p.callId);
+      if (was) replaceBlock(t.items, was, card);
+      else lastResponse(t.items, `pending-${p.callId}`).blocks.push(card);
+    } else if (!findBlock(t.items, 'confirm', p.callId)) {
       lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.install ? { install: p.install } : {}) });
     }
   }
@@ -782,7 +812,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.call': {
-      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL) return t;
+      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === COMPUTER_ACCESS) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
       lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
       return t;
@@ -792,7 +822,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (!findBlock(items, 'suggest', e.callId)) lastResponse(items, respId).blocks.push(asSuggest(e.callId, e.input));
         return t;
       }
-      if (e.name === ASK_TOOL) return t;
+      if (e.name === ASK_TOOL || e.name === COMPUTER_ACCESS) return t;
       const existing = findBlock(items, 'tool', e.callId);
       if (existing) {
         existing.input = e.input;
@@ -822,6 +852,9 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.end': {
+      // the approval card: whether it was 始终允许 (its result says so on its first line)
+      const card = e.name === COMPUTER_ACCESS ? findBlock(items, 'computer', e.callId) : undefined;
+      if (card && !e.isError && card.always === undefined) card.always = /for every conversation/.test(e.preview);
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
         tool.state = e.isError ? failedState(e.preview) : 'done';
@@ -832,6 +865,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'confirm.request': {
+      if (e.name === COMPUTER_ACCESS) {
+        if (!findBlock(items, 'computer', e.callId)) lastResponse(items, respId).blocks.push(computerCard(e.callId, e.input));
+        return t;
+      }
       if (!findBlock(items, 'confirm', e.callId)) {
         lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.install ? { install: e.install } : {}) });
       }
@@ -850,7 +887,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'confirm.resolved': {
-      const c = findBlock(items, 'confirm', e.callId);
+      const c = findBlock(items, 'confirm', e.callId) ?? findBlock(items, 'computer', e.callId);
       if (c) c.approved = e.approved;
       return t;
     }

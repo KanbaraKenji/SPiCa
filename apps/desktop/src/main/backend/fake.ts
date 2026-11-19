@@ -210,6 +210,8 @@ export class FakeBackend implements AgentBackend {
   #superseded = new Map<string, Message[]>();
   /** Confirmations the user declined: nothing ran. */
   #declined = new Set<string>();
+  /** Calls allowed with 始终允许 (操作电脑's card). */
+  #always = new Set<string>();
   /** Folders a conversation was allowed to write in on a card (始终允许此文件夹), by session. */
   #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
@@ -526,8 +528,9 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
-  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
+  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void> {
     const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
+    if (approved && options?.always) this.#always.add(callId);
     if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder) {
       const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
       set.add(item.outsideFolder);
@@ -1452,6 +1455,39 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已提交' : '用户拒绝了', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '已提交。' : '好的，没有提交。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/操作电脑/.test(text)) {
+        // 操作电脑's approval card (backend/computer-tools.ts): the programs the task needs on one card. The card is
+        // the only thing the conversation shows for the call (no step row); the result says what was allowed.
+        const callId = this.#id('call');
+        const name = 'computer_request_access';
+        const apps: { name: string; exe: string; tier: string; highRisk?: boolean }[] = [
+          { name: 'Microsoft Excel', exe: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE', tier: 'full' },
+          { name: '记事本', exe: 'C:\\Windows\\System32\\notepad.exe', tier: 'full' },
+          { name: '文件资源管理器', exe: 'C:\\Windows\\explorer.exe', tier: 'full', highRisk: true },
+          { name: 'Microsoft Edge', exe: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', tier: 'view' },
+        ];
+        const asked = { apps: apps.map((a) => a.name), reason: '把采购清单整理到记事本' };
+        // the made-up desktop's icons (main/computer/fake-driver.ts fakeIcon)
+        const icons: Record<string, string> = { 'Microsoft Excel': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOQzXciCTGMahjVMHw1AABghc4B2Jx3TgAAAABJRU5ErkJggg==', '记事本': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOwbjpCEmIY1TCqYfhqAAAkk4EQzwyljQAAAABJRU5ErkJggg==', '文件资源管理器': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4sFSNJMQwqmFUw/DVAAC7YqsQXS68ewAAAABJRU5ErkJggg==', 'Microsoft Edge': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPQ7rhBEmIY1TCqYfhqAABRdIsQRzBI7AAAAABJRU5ErkJggg==' };
+        const input = { ...asked, prepared: { apps: apps.map((a) => ({ ...a, icon: icons[a.name], asked: a.name, state: 'ask' })), missing: [], ask: true } };
+        this.#emit(sessionId, { type: 'tool.call', callId, name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input: asked }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: name, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: name });
+        this.#setStatus(sessionId, 'awaiting_confirm', name);
+        waiting = { id: callId, name, input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        const tiers: Record<string, string> = { full: 'full control', view: 'view only (screenshots; no clicks or typing)' };
+        const result = ok
+          ? apps.map((a) => `- ${a.name} (${a.exe}): approved for ${this.#always.has(callId) ? 'every' : 'this'} conversation — ${tiers[a.tier]}${a.highRisk ? ', high risk' : ''}`).join('\n')
+          : 'The user declined this action. Do not retry it unless the user asks.';
+        this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result.slice(0, 160), durationMs: 20 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '好的，开始整理。' : '好的，不操作这些程序。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/两张卡/.test(text)) {

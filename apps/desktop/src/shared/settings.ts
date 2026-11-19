@@ -93,7 +93,8 @@ export const MAIL_INTERVALS = [5, 15, 30, 60] as const;
  */
 export interface ComputerUsePrefs {
   enabled: boolean;
-  always: { exe: string; name: string }[];
+  /** icon: the program's small icon (a PNG data URL) as it was when allowed. */
+  always: { exe: string; name: string; icon?: string }[];
   denied: string[];
 }
 
@@ -105,9 +106,13 @@ export function computerUseValue(v: unknown): ComputerUsePrefs {
   const seen = new Set<string>();
   const always = (Array.isArray(o.always) ? o.always : [])
     .map((a) => (a && typeof a === 'object' ? (a as Record<string, unknown>) : {}))
-    .map((a) => ({ exe: typeof a.exe === 'string' ? a.exe.trim().slice(0, 500) : '', name: typeof a.name === 'string' ? a.name.trim().slice(0, 200) : '' }))
+    .map((a) => ({
+      exe: typeof a.exe === 'string' ? a.exe.trim().slice(0, 500) : '',
+      name: typeof a.name === 'string' ? a.name.trim().slice(0, 200) : '',
+      icon: typeof a.icon === 'string' && a.icon.startsWith('data:image/png;base64,') && a.icon.length <= 20_000 ? a.icon : '',
+    }))
     .filter((a) => a.exe && !seen.has(a.exe.toLowerCase()) && seen.add(a.exe.toLowerCase()))
-    .map((a) => ({ exe: a.exe, name: a.name || a.exe }))
+    .map((a) => ({ exe: a.exe, name: a.name || a.exe, ...(a.icon ? { icon: a.icon } : {}) }))
     .slice(0, 200);
   const names = new Set<string>();
   const denied = (Array.isArray(o.denied) ? o.denied : [])

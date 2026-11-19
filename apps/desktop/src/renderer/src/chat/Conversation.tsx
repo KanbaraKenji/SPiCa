@@ -18,13 +18,15 @@ import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT, installFailureText, NETWORK_FAILURES } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
+import { ComputerCard } from './ComputerCard';
 
 export interface ConversationActions {
   /** `suggested`: the text is a suggested action the user picked. */
   send(text: string, attachments?: string[], suggested?: boolean): void;
   stop(): void;
   answer(callId: string, answer: string): void;
-  confirm(callId: string, approved: boolean, allowFolder?: boolean): void;
+  /** `always`: 始终允许 rather than 允许一次 (操作电脑's card). */
+  confirm(callId: string, approved: boolean, allowFolder?: boolean, always?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */
   openFolder?: (path: string) => void;
@@ -244,6 +246,8 @@ function Response({
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={b.callId} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
             return <ConfirmCard key={b.callId} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
+          case 'computer':
+            return <ComputerCard key={b.callId} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, false, always)} />;
           case 'suggest':
             // Not on an older answer: the next message always follows the newest one.
             return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={(prompt) => actions.send(prompt, undefined, true)} />;

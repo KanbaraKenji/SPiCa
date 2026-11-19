@@ -71,14 +71,15 @@ function untilAborted<T>(p: Promise<T>, signal: AbortSignal): Promise<T> {
 export function accessText(p: Prepared, granted: { always: boolean } | undefined): string {
   const lines: string[] = [];
   for (const a of p.apps) {
+    const risk = a.highRisk ? ', high risk' : '';
     const state =
       a.state === 'blocked'
         ? 'restricted: it cannot be operated'
         : a.state === 'elevated'
           ? 'runs as administrator: Windows does not let Spica operate it'
           : a.state === 'ask' && granted
-            ? `approved${granted.always && !a.shared ? ' for every conversation' : ' for this conversation'} — ${TIER_WORDS[a.tier]}`
-            : `already approved — ${TIER_WORDS[a.tier]}`;
+            ? `approved${granted.always && !a.shared ? ' for every conversation' : ' for this conversation'} — ${TIER_WORDS[a.tier]}${risk}`
+            : `already approved — ${TIER_WORDS[a.tier]}${risk}`;
     lines.push(`- ${a.name} (${a.exe}): ${state}`);
   }
   for (const m of p.missing) lines.push(`- "${m}": no such program found (computer_list_apps lists the programs with a window; a full path to its .exe works too)`);

@@ -131,7 +131,7 @@ describe('computer tools', () => {
       accessText(
         {
           apps: [
-            { asked: 'a', exe: 'A.exe', name: 'A', tier: 'full', state: 'ask' },
+            { asked: 'a', exe: 'A.exe', name: 'A', tier: 'full', highRisk: true, state: 'ask' },
             { asked: 'p', exe: 'python.exe', name: 'Python', tier: 'full', shared: true, state: 'ask' },
             { asked: 'e', exe: 'msedge.exe', name: 'Edge', tier: 'view', state: 'allowed' },
             { asked: 't', exe: 'tws.exe', name: 'TWS', tier: 'blocked', state: 'blocked' },
@@ -143,7 +143,7 @@ describe('computer tools', () => {
       ),
     ).toBe(
       [
-        '- A (A.exe): approved for every conversation — full control',
+        '- A (A.exe): approved for every conversation — full control, high risk',
         '- Python (python.exe): approved for this conversation — full control',
         '- Edge (msedge.exe): already approved — view only (screenshots; no clicks or typing)',
         '- TWS (tws.exe): restricted: it cannot be operated',
