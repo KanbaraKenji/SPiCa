@@ -85,13 +85,13 @@ export function mcpProblemText(p: McpProblemView): string {
     case 'version':
       return t('版本不兼容（服务仅支持 {versions}）', { versions: p.versions.join(t('、')) });
     case 'unreachable':
-      return p.status ? t('无法打开网址（HTTP {status}），请检查网址', { status: p.status }) : t('无法打开网址，请检查网址和网络');
+      return p.status ? t('无法打开网址（HTTP {status}）', { status: p.status }) : t('无法打开网址');
     case 'needs-key':
-      return t('需要密钥，请填写「密钥」');
+      return t('需要密钥');
     case 'bad-key':
-      return t('密钥无效，请检查「密钥」');
+      return t('密钥无效');
     case 'certificate':
-      return p.reason === 'expired' ? t('证书已过期') : p.reason === 'name' ? t('证书与网址不符，请检查网址') : t('证书不受信任，请在「信任的证书文件」中添加');
+      return p.reason === 'expired' ? t('证书已过期') : p.reason === 'name' ? t('证书与网址不符') : t('证书不受信任');
     default:
       return t('启动失败');
   }

@@ -83,11 +83,11 @@ describe("why a service stopped, in the interface's words", () => {
     expect(mcpProblemText({ kind: 'timeout', seconds: 60 })).toBe('连接超时（60 秒内无响应）');
     expect(mcpProblemText({ kind: 'crash-loop', count: 4, seconds: 60 })).toBe('60 秒内崩溃 4 次，已停止重启');
     expect(mcpProblemText({ kind: 'version', versions: ['2027-01-01'] })).toBe('版本不兼容（服务仅支持 2027-01-01）');
-    expect(mcpProblemText({ kind: 'unreachable' })).toBe('无法打开网址，请检查网址和网络');
-    expect(mcpProblemText({ kind: 'unreachable', status: 404 })).toBe('无法打开网址（HTTP 404），请检查网址');
-    expect(mcpProblemText({ kind: 'needs-key' })).toBe('需要密钥，请填写「密钥」');
-    expect(mcpProblemText({ kind: 'bad-key' })).toBe('密钥无效，请检查「密钥」');
-    expect(mcpProblemText({ kind: 'certificate', reason: 'untrusted' })).toBe('证书不受信任，请在「信任的证书文件」中添加');
+    expect(mcpProblemText({ kind: 'unreachable' })).toBe('无法打开网址');
+    expect(mcpProblemText({ kind: 'unreachable', status: 404 })).toBe('无法打开网址（HTTP 404）');
+    expect(mcpProblemText({ kind: 'needs-key' })).toBe('需要密钥');
+    expect(mcpProblemText({ kind: 'bad-key' })).toBe('密钥无效');
+    expect(mcpProblemText({ kind: 'certificate', reason: 'untrusted' })).toBe('证书不受信任');
     setLocale('en');
     try {
       expect(mcpProblemText({ kind: 'not-found', command: 'node' })).toBe('Command “node” not found (Node.js needed)');

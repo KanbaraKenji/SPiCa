@@ -5,7 +5,8 @@
 //   legacy  2025-06-18 Streamable HTTP: initialize first, Mcp-Session-Id, JSON answers
 //   sse     2024-11-05 HTTP+SSE: GET opens a stream whose first event names where to POST; answers on the stream
 // `key`: every request must carry Authorization: Bearer <key> (401 otherwise). `tls`: { cert, key } PEM, served
-// over https. Run as a program: node fake-mcp-http.mjs <era> <port> [key] (prints the address).
+// over https. Run as a program: node fake-mcp-http.mjs <era> <port> [key] (prints the address); FAKE_MCP_TLS=<folder
+// with cert.pem and key.pem> serves it over https.
 import { createServer as createHttp } from 'node:http';
 import { createServer as createHttps } from 'node:https';
 
@@ -143,6 +144,10 @@ export async function startFakeMcpHttp(o) {
 
 if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(/^\//, '')}`) {
   const [era = 'modern', port = '0', key] = process.argv.slice(2);
-  const s = await startFakeMcpHttp({ era, port: Number(port), ...(key ? { key } : {}) });
+  // FAKE_MCP_TLS: a folder with cert.pem and key.pem (a throwaway certificate): served over https
+  const tlsDir = process.env.FAKE_MCP_TLS;
+  const { readFileSync } = await import('node:fs');
+  const tls = tlsDir ? { cert: readFileSync(`${tlsDir}/cert.pem`), key: readFileSync(`${tlsDir}/key.pem`) } : undefined;
+  const s = await startFakeMcpHttp({ era, port: Number(port), ...(key ? { key } : {}), ...(tls ? { tls } : {}) });
   console.log(s.url);
 }
