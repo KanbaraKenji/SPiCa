@@ -1,7 +1,8 @@
 // Real-model smoke for taking back 始终允许: the user allows a folder outside the conversation's folder on the
 // card, writes there again without a card, then asks in their own words to be asked again; the agent takes the
-// folder back with allowed_folders (no card for that), and the next write there shows the card again. The paths
-// are relative (a path the user types counts as given, and would need no card at all).
+// folder back with allowed_folders (no card for that), and the next write there shows the card again. The writes
+// use relative paths (a path the user types counts as given, and would need no card at all); the second time the
+// user names the folder in full when asking to be asked again, which must not give it anew.
 //
 //   node --env-file=../../.env.local scripts/smoke-allowed-folders.ts
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -50,7 +51,14 @@ async function turn(text: string, answer: 'always' | 'once' | 'no' | 'none' = 'n
   console.log(`\n> ${text}`);
   const before = cards().length;
   let r = await s.send(text).done;
-  while (r.reason === 'awaiting_confirm') {
+  while (r.reason === 'awaiting_confirm' || r.reason === 'awaiting_answer') {
+    if (r.reason === 'awaiting_answer') {
+      // the agent asks before writing (it may, after being told to ask first): the user says go ahead
+      const q = events.filter((e) => e.type === 'ask.request').at(-1) as Extract<CoreEvent, { type: 'ask.request' }>;
+      console.log(`  [ask] ${q.question.slice(0, 120)}; answer: 可以，直接写。`);
+      r = await s.answer(q.callId, '可以，直接写。')!;
+      continue;
+    }
     const c = cards().at(-1)!;
     console.log(`  [card] ${c.name} → ${c.outsideFolder ?? '(no folder)'}; answer: ${answer}`);
     if (answer === 'none') break;
@@ -73,8 +81,17 @@ try {
   check('taking it back: allowed_folders called, no card', calls('allowed_folders') >= 1 && t3.cards === 0);
   check('taking it back: the folder is gone', s.allowedWriteFolders().length === 0);
 
-  const t4 = await turn('在 ../minutes/c.md 里写一行「下周再评审」。', 'none');
-  check('the next write there: the card again', t4.cards === 1 && t4.reason === 'awaiting_confirm' && cards().at(-1)?.outsideFolder !== undefined);
+  const t4 = await turn('在 ../minutes/c.md 里写一行「下周再评审」。', 'once');
+  check('the next write there: the card again', t4.cards === 1 && cards().at(-1)?.outsideFolder !== undefined);
+
+  const t5 = await turn('在 ../minutes/d.md 里写一行「样机下周到」。', 'always');
+  check('allowed for good again', t5.cards === 1 && s.allowedWriteFolders().length === 1);
+
+  const t6 = await turn(`以后往 ${minutes} 写要先问我。`, 'no');
+  check('his own words with the folder in full: taken back, no card', t6.cards === 0 && s.allowedWriteFolders().length === 0 && !s.mayWriteIn(minutes));
+
+  const t7 = await turn('在 ../minutes/e.md 里写一行「评审改到周五」。', 'none');
+  check('the next write there: the card again', t7.cards === 1 && t7.reason === 'awaiting_confirm');
 } finally {
   await rt.close();
   await rm(root, { recursive: true, force: true }).catch(() => {});

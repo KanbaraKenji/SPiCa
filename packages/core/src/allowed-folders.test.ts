@@ -59,7 +59,7 @@ describe('allowed_folders', () => {
     const { s } = setup();
     gw.enqueue({ toolCalls: [{ id: 'l0', name: 'allowed_folders', args: { action: 'list' } }] }, { text: 'none' });
     await s.send('which folders?').done;
-    expect(lastResult(s, 'l0')).toContain('No folder has been allowed');
+    expect(lastResult(s, 'l0')).toContain('Nothing outside the working folder');
     await allowFor(s, join(outside, 'b.md'), 'w1');
     gw.enqueue({ toolCalls: [{ id: 'l1', name: 'allowed_folders', args: { action: 'list' } }] }, { text: 'one' });
     await s.send('which folders?').done;
@@ -105,7 +105,7 @@ describe('allowed_folders', () => {
     await allowFor(s, join(outside, 'b.md'), 'w1');
     gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', folder: other } }] }, { text: 'ok' });
     await s.send('take back drafts').done;
-    expect(lastResult(s, 'r1')).toContain('is not one of the folders allowed');
+    expect(lastResult(s, 'r1')).toContain('is not among what was allowed');
     expect(s.allowedWriteFolders()).toEqual([realPath(outside)]);
   });
 
@@ -115,6 +115,29 @@ describe('allowed_folders', () => {
     await s.send('allow drafts').done;
     expect(lastResult(s, 'r1')).toContain('action must be');
     expect(s.allowedWriteFolders()).toEqual([]);
+  });
+
+  it('the user names the folder when asking to be asked again: the next write there still asks', async () => {
+    const { events, s } = setup();
+    await allowFor(s, join(outside, 'b.md'), 'w1');
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', folder: outside } }] }, { text: 'ok' });
+    await s.send(`ask me before writing to ${outside} from now on`).done;
+    expect(lastResult(s, 'r1')).toContain('will ask the user again');
+    const before = events.filter((e) => e.type === 'confirm.request').length;
+    gw.enqueue({ toolCalls: [{ id: 'w2', name: 'write_file', args: { path: join(outside, 'c.md'), content: 'c' } }] });
+    expect((await s.send('write the summary').done).reason).toBe('awaiting_confirm');
+    expect(events.filter((e) => e.type === 'confirm.request')).toHaveLength(before + 1);
+  });
+
+  it('a path typed after taking back counts again (the user gave it anew)', async () => {
+    const { s } = setup();
+    await allowFor(s, join(outside, 'b.md'), 'w1');
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', all: true } }] }, { text: 'ok' });
+    await s.send('undo the always-allow').done;
+    expect(s.mayWriteIn(outside)).toBe(false);
+    gw.enqueue({ text: 'ok' });
+    await s.send(`now put the notes in ${outside}`).done;
+    expect(s.mayWriteIn(outside)).toBe(true);
   });
 
   it('a sub-agent takes back for the whole conversation', async () => {
@@ -127,14 +150,35 @@ describe('allowed_folders', () => {
     expect(s.allowedWriteFolders()).toEqual([]);
   });
 
-  it('still writable for another reason (a path the user typed): taken back, and the result says it still is', async () => {
+  it('a folder the user only typed (never a card) is listed and can be taken back too', async () => {
     const { s } = setup();
-    await allowFor(s, join(outside, 'b.md'), 'w1');
     gw.enqueue({ text: 'noted' });
     await s.send(`the minutes are in ${outside}`).done;
+    expect(s.mayWriteIn(outside)).toBe(true);
+    gw.enqueue({ toolCalls: [{ id: 'l1', name: 'allowed_folders', args: { action: 'list' } }] }, { text: 'ok' });
+    await s.send('where can you write?').done;
+    expect(lastResult(s, 'l1')).toContain('Given by the user');
     gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', folder: outside } }] }, { text: 'ok' });
+    await s.send('ask me first next time').done;
+    expect(lastResult(s, 'r1')).toContain('will ask the user again');
+    expect(s.mayWriteIn(outside)).toBe(false);
+  });
+
+  it('a relative folder is read against the working folder', async () => {
+    const { s } = setup();
+    await allowFor(s, join(outside, 'b.md'), 'w1');
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', folder: '../minutes' } }] }, { text: 'ok' });
     await s.send('undo it').done;
-    expect(lastResult(s, 'r1')).toContain('still writable without asking');
+    expect(s.allowedWriteFolders()).toEqual([]);
+  });
+
+  it('the working folder cannot be taken back: the result says it is still writable', async () => {
+    const { s } = setup();
+    gw.enqueue({ text: 'noted' });
+    await s.send(`the drafts are in ${join(work, 'drafts')}`).done;
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'allowed_folders', args: { action: 'revoke', folder: join(work, 'drafts') } }] }, { text: 'ok' });
+    await s.send('ask me before writing to drafts').done;
+    expect(lastResult(s, 'r1')).toContain('Still writable without asking');
   });
 });
 
