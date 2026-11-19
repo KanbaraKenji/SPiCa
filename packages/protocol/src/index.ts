@@ -1311,8 +1311,10 @@ export interface AgentApi {
   /**
    * `allowFolder` (with approved, on a confirmation with `outsideFolder`): the conversation may write in that folder
    * from now on without asking (kept with the conversation; its sub-agents too).
+   * `always` (with approved): the person chose 始终允许 rather than 允许一次; the tool is told (computer_request_access
+   * keeps the programs for every conversation). Tools that have no such choice run as for a plain approval.
    */
-  confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void>;
+  confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): Promise<string>;

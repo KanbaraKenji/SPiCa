@@ -6,6 +6,8 @@
 //   workflows()                     what the core read from the workflow folder
 //   usageLog({ filter, file })      the core's usage log written to a file (设置 › 常规)
 //   browser_* tools                  the built-in browser for agents (they ask the main process; backend/browser-tools.ts)
+//   computer_* tools                 操作电脑: programs on this computer (they ask the main process; backend/computer-tools.ts)
+//   computerUse(on)                  设置 › 常规 › 操作电脑 switched (the tools are offered only while on)
 //   mcpHttpStart / Stop / State     Spica's MCP service over HTTP for scripts on this machine
 //                                   (设置 › 常规 › 开发者; loopback only, token in a file)
 // Models, mail and the workflow folder change through the core's own
@@ -18,6 +20,7 @@ import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
 import { browserHook, browserTools } from './browser-tools';
+import { computerHook, computerTools } from './computer-tools';
 import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
@@ -35,6 +38,8 @@ export interface DesktopHostOptions {
   userConfig?: Record<string, PluginConfigInput>;
   /** The interface language when the core started (shared/i18n); the words of the plugin page follow it, and setLocale after. */
   locale?: Locale;
+  /** 设置 › 常规 › 操作电脑 when the core started (computerUse after). */
+  computerUse?: boolean;
 }
 
 /** Tried first, so scripts usually find the same address; any free port when it is taken. */
@@ -76,6 +81,14 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     ? [
         ...browserTools((method, params) => bridge.host(method, params), { roots: uploadRoots }).map((tool) => rt.tools.register(tool, 'desktop')),
         rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params), uploadRoots)),
+      ]
+    : [];
+  // 操作电脑's tools: the main process decides what may be seen and touched (main/computer/agent.ts)
+  let computerOn = options.computerUse === true;
+  const unregisterComputer = bridge
+    ? [
+        ...computerTools((method, params) => bridge.host(method, params), { enabled: () => computerOn, takesImages: (p, m) => rt.imagesAllowed(p, m) }).map((tool) => rt.tools.register(tool, 'desktop')),
+        rt.hooks.register('desktop-computer', computerHook((method, params) => bridge.host(method, params))),
       ]
     : [];
 
@@ -125,6 +138,10 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         if (isLocale(locale)) setLocale(locale);
         return null;
       },
+      computerUse: (on: unknown) => {
+        computerOn = on === true;
+        return null;
+      },
       setUserAccount: async (account: unknown) => {
         await plugins.setUserAccount(typeof account === 'string' ? account : '');
         return null;
@@ -140,7 +157,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     // The app's network settings changed (the core calls this): plugin servers restart to use them.
     networkChanged: () => plugins.networkChanged(),
     close: async () => {
-      for (const off of unregisterBrowser) off();
+      for (const off of [...unregisterBrowser, ...unregisterComputer]) off();
       await stopHttp();
       await plugins.close();
     },
