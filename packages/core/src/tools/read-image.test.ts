@@ -212,6 +212,21 @@ describe('read_file with a region', () => {
     expect(r.content).toContain('1000x750 px, the picture\'s full detail');
   });
 
+  it('does not read a picture over the pixel limit, whole or a part, and does not ask the host to', async () => {
+    await writeFile(join(dir, 'huge.jpg'), jpegHeader(10000, 10000));
+    let asked = 0;
+    ctx.fitImage = async () => {
+      asked++;
+      return undefined;
+    };
+    for (const region of [undefined, '0,0,10,10']) {
+      const r = await readFileTool.execute({ path: 'huge.jpg', ...(region ? { region } : {}) }, ctx);
+      expect(r.isError).toBe(true);
+      expect(r.content).toContain('10000x10000 is 100 million pixels, more than the 72 million a picture may have to be read here');
+    }
+    expect(asked).toBe(0);
+  });
+
   it('says the one sentence when the model does not take images', async () => {
     await writeFile(join(dir, 'sheet.png'), png(40, 20));
     ctx.imagesAllowed = false;

@@ -89,7 +89,8 @@ export const readFileTool: Tool = {
       'Documents (PDF, Word, Excel, PowerPoint, CSV, also the older .doc and .xls) are converted to text when an extractor is installed: ' +
       'use pages ("3" or "2-5", slides for PowerPoint) and sheet (name or 1-based index); for tables offset/limit count rows. ' +
       `PDF pages with no or very little text (scanned pages) come back as page images, up to ${IMAGE_LIMITS.maxPerMessage} per call. ` +
-      'region shows one part of a picture, or of one PDF page (with pages), in more detail.',
+      'region shows one part of a picture, or of one PDF page (with pages), in more detail: when small text is not legible, ' +
+      'read the part with region instead of writing a script to crop or enlarge the picture.',
     inputSchema: {
       type: 'object',
       properties: {

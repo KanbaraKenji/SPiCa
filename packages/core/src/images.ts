@@ -95,7 +95,21 @@ export interface Rgba {
   data: Uint8Array; // RGBA, 4 bytes per pixel
 }
 
-/** Decode a PNG to RGBA, or undefined for the kinds not handled here (16-bit, interlaced, <8-bit). */
+/**
+ * Most pixels a picture may have to be read (decoded here or by the host): 72 million, an A1 drawing scanned at 300 dpi.
+ * Decoding takes about 8 bytes a pixel at its peak (measured: a 10,000 x 10,000 PNG, 100 million pixels, about 1 GB
+ * and 3.5 s before RGBA pictures were kept in one copy).
+ */
+export const MAX_PICTURE_PIXELS = 72_000_000;
+
+/** Why a picture of this size is not read, or undefined when it may be. */
+export function tooManyPixels(width: number, height: number): string | undefined {
+  return width * height > MAX_PICTURE_PIXELS
+    ? `${width}x${height} is ${Math.round((width * height) / 1e6)} million pixels, more than the ${MAX_PICTURE_PIXELS / 1e6} million a picture may have to be read here`
+    : undefined;
+}
+
+/** Decode a PNG to RGBA, or undefined for the kinds not handled here (16-bit, interlaced, <8-bit) and pictures over MAX_PICTURE_PIXELS. */
 export function decodePng(buf: Buffer): Rgba | undefined {
   let pos = 8;
   let width = 0;
@@ -123,11 +137,15 @@ export function decodePng(buf: Buffer): Rgba | undefined {
     pos += 12 + len;
   }
   const channels = ({ 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 } as Record<number, number>)[color];
-  if (!channels || depth !== 8 || interlace !== 0 || !width || !height) return undefined;
+  if (!channels || depth !== 8 || interlace !== 0 || !width || !height || width * height > MAX_PICTURE_PIXELS) return undefined;
   if (color === 3 && !palette) return undefined;
-  const raw = inflateSync(Buffer.concat(idat));
   const stride = width * channels;
-  const rows = new Uint8Array(stride * height);
+  // inflated in one piece of the size it will have (not grown chunk by chunk and joined: twice the memory)
+  const raw = inflateSync(Buffer.concat(idat), { chunkSize: Math.max(64 * 1024, (stride + 1) * height) });
+  if (raw.length < (stride + 1) * height) return undefined;
+  // rows are unfiltered in place: row y moves to y * stride, before where its filtered bytes start, so no byte is
+  // written before it is read (and a large picture is in memory once)
+  const rows = new Uint8Array(raw.buffer, raw.byteOffset, stride * height);
   let prev = new Uint8Array(stride);
   for (let y = 0; y < height; y++) {
     const at = y * (stride + 1);
@@ -153,6 +171,8 @@ export function decodePng(buf: Buffer): Rgba | undefined {
     }
     prev = out;
   }
+  // RGBA already: the rows are the pixels (no second copy of a large picture)
+  if (color === 6) return { width, height, data: rows };
   const rgba = new Uint8Array(width * height * 4);
   for (let i = 0, j = 0; i < width * height; i++, j += 4) {
     const s = i * channels;
@@ -383,7 +403,7 @@ export function decodeBmp(buf: Buffer): Rgba | undefined {
     const bpp = buf.readUInt16LE(28);
     const compression = buf.readUInt32LE(30);
     const height = Math.abs(rawHeight);
-    if (width <= 0 || height === 0 || width * height > 100_000_000) return undefined;
+    if (width <= 0 || height === 0 || width * height > MAX_PICTURE_PIXELS) return undefined;
     if (!(compression === 0 || (compression === 3 && bpp === 32))) return undefined;
     if (![1, 4, 8, 24, 32].includes(bpp)) return undefined;
     const used = buf.readUInt32LE(46);

@@ -7,7 +7,7 @@ import type { Stats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { isoNow } from '../events.ts';
-import { cropRgba, decodeBmp, decodePng, encodePngCompact, IMAGE_LIMITS, imageTokens, prepareDecoded, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage, type PreparedImage } from '../images.ts';
+import { cropRgba, decodeBmp, decodePng, encodePngCompact, IMAGE_LIMITS, imageTokens, prepareDecoded, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage, tooManyPixels, type PreparedImage } from '../images.ts';
 import type { FileCardMeta, ImageBlock } from '../types.ts';
 import { PICTURE_EXTENSIONS, pictureSize } from './file-card.ts';
 import type { PageImage, PixelRect, ToolContext, ToolOutput } from './types.ts';
@@ -24,6 +24,9 @@ function mediaDir(ctx: Pick<ToolContext, 'mediaDir' | 'sessionId'>): string {
 
 /** The picture at `src` within the limits: by the core's own checks, else the host's smaller copy. */
 export async function fit(src: string, ctx: Pick<ToolContext, 'mediaDir' | 'sessionId' | 'fitImage'>): Promise<PreparedImage> {
+  const size = await pictureSize(src);
+  const tooMany = size ? tooManyPixels(size.width, size.height) : undefined;
+  if (tooMany) return { ok: false, code: 'image.too_large', message: tooMany };
   const dir = mediaDir(ctx);
   const own = prepareImage(src, dir);
   if (own.ok || !ctx.fitImage) return own;
@@ -74,7 +77,7 @@ export function regionPixels(r: Region, width: number, height: number): PixelRec
 /** What a model is told when a picture went as a smaller copy: how to look at a part in more detail. */
 function zoomHint(longSide: number, sentLong: number, how: string): string {
   const times = longSide / sentLong;
-  return `Small text may not be legible at this size. ${how} region="left,top,right,bottom" (percent of the width and height, e.g. "0,0,50,50" for the top left quarter) to see a part at up to ${times.toFixed(1)}x this detail.`;
+  return `Small text may not be legible at this size. ${how} region="left,top,right,bottom" (percent of the width and height, e.g. "0,0,50,50" for the top left quarter) to see a part at up to ${times.toFixed(1)}x this detail, instead of writing a script to crop it.`;
 }
 
 /** The part `rect` of the picture at `src`: cut here from a PNG or BMP, else by the host. */
@@ -117,6 +120,8 @@ export async function readPicture(abs: string, info: Stats, shown: string, ctx: 
   }
   if (region) {
     if (!size) return { content: `${head}\nThe size of this picture cannot be read, so a part of it cannot be cut.`, isError: true };
+    const tooMany = tooManyPixels(size.width, size.height);
+    if (tooMany) return { content: `${head}\nThe part cannot be sent: ${tooMany}.`, isError: true };
     const rect = regionPixels(region, size.width, size.height);
     const p = await fitPart(abs, rect, ctx);
     if (!p.ok) return { content: `${head}\nThe part cannot be sent: ${p.message}.`, isError: true };
