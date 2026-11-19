@@ -1027,7 +1027,9 @@ export class Session {
           } else if (ev.type === 'thinking') {
             this.#emit({ type: 'thinking.delta', delta: ev.delta });
           } else if (ev.type === 'tool_call') {
-            this.#emit({ type: 'tool.call', callId: ev.id, name: ev.name });
+            // a service the person added: its name as written, from the first line on (before tool.start)
+            const server = this.#rt.tools.get(ev.name)?.server;
+            this.#emit({ type: 'tool.call', callId: ev.id, name: ev.name, ...(server ? { server } : {}) });
           } else {
             response = ev.response;
           }
@@ -1102,7 +1104,13 @@ export class Session {
           role: 'assistant',
           kind: 'assistant',
           content: response.content,
-          meta: { model: response.model, stopReason: response.stopReason, ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}) },
+          meta: {
+            model: response.model,
+            stopReason: response.stopReason,
+            ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}),
+            // calls to a service the person added: its name as written, for the window while a call waits for 允许
+            ...this.#serverInfo(response.content),
+          },
           ...(response.providerExtras ? { providerExtras: response.providerExtras } : {}),
         },
         { seq: partial.seq, persisted: partial.saved },
@@ -1555,6 +1563,13 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
   }
 
   /** What kind of step a call is, and the model's one-line description of it when it gave one (run_command). */
+  /** toolInfo for the calls of a message that go to a service the person added (none: nothing). */
+  #serverInfo(content: readonly ContentBlock[]): { toolInfo?: NonNullable<MessageMeta['toolInfo']> } {
+    const info: NonNullable<MessageMeta['toolInfo']> = {};
+    for (const b of content) if (b.type === 'tool_use' && this.#rt.tools.get(b.name)?.server) info[b.id] = this.#toolInfo(b.name, b.input);
+    return Object.keys(info).length > 0 ? { toolInfo: info } : {};
+  }
+
   #toolInfo(name: string, input: unknown): ToolCallInfo {
     const tool = this.#rt.tools.get(name);
     const said = tool?.summaryParam ? (input as Record<string, unknown> | null)?.[tool.summaryParam] : undefined;

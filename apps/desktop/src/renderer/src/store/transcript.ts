@@ -580,7 +580,11 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
           else if (b.name === PLAN_TOOL) r.blocks.push(asPlan(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
-          else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
+          else {
+            // a call to a service the person added carries its name as written (stored with the call)
+            const server = m.meta?.toolInfo?.[b.id]?.server;
+            r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done', ...(server ? { server } : {}) });
+          }
         }
       }
       mark(m);
@@ -824,7 +828,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'tool.call': {
       if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === PLAN_TOOL) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
-      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
+      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending', ...(e.server ? { server: e.server } : {}) });
       return t;
     }
     case 'tool.start': {

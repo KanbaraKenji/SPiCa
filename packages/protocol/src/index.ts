@@ -682,8 +682,8 @@ export type CoreEventBody =
   | { type: 'text.delta'; delta: string }
   /** Streaming reasoning text (when the model exposes it). */
   | { type: 'thinking.delta'; delta: string }
-  /** A model has started writing a tool call (arguments still streaming). */
-  | { type: 'tool.call'; callId: string; name: string }
+  /** A model has started writing a tool call (arguments still streaming). `server`: as in ToolCallInfo. */
+  | { type: 'tool.call'; callId: string; name: string; server?: string }
   /** A complete message was appended to the session. */
   | { type: 'message'; message: Message }
   /** A plugin hook changed a message after it had been streamed. */
