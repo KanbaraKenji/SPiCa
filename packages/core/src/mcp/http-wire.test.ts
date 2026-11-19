@@ -122,6 +122,30 @@ describe('MCP at a web address', () => {
     await expect(c.connect()).rejects.toThrow(/could not be reached \(tls\.untrusted\)/);
   });
 
+  it('a redirect to another site is never followed with the key (POST, and the GET that looks for HTTP+SSE)', async () => {
+    const { createServer } = await import('node:http');
+    const other: string[] = [];
+    const elsewhere = createServer((req, res) => {
+      other.push(`${req.method} ${req.headers['x-api-key'] ?? ''}`);
+      res.writeHead(200, { 'content-type': 'text/event-stream' }).end('event: endpoint\ndata: /m\n\n');
+    });
+    await new Promise<void>((r) => elsewhere.listen(0, '127.0.0.1', r));
+    const otherPort = (elsewhere.address() as { port: number }).port;
+    // "localhost" is another site than 127.0.0.1
+    const here = createServer((req, res) => {
+      if (req.method === 'POST') return void res.writeHead(405).end();
+      res.writeHead(302, { location: `http://localhost:${otherPort}/sse` }).end();
+    });
+    await new Promise<void>((r) => here.listen(0, '127.0.0.1', r));
+    open.push(
+      () => new Promise((r) => elsewhere.close(r)),
+      () => new Promise((r) => here.close(r)),
+    );
+    const { c } = client(`http://127.0.0.1:${(here.address() as { port: number }).port}/mcp`, { headers: { 'x-api-key': KEY } });
+    await expect(c.connect()).rejects.toThrow(/answered HTTP 405/);
+    expect(other).toEqual([]);
+  });
+
   it('header values: plain ASCII as is, anything else in base64', () => {
     expect(headerValue('us-west1')).toBe('us-west1');
     expect(headerValue('Hello, 世界')).toBe('=?base64?SGVsbG8sIOS4lueVjA==?=');

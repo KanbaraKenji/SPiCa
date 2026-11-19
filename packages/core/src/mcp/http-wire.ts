@@ -235,7 +235,7 @@ export class McpHttpWire {
     const headers: Record<string, string> = { ...(this.#o.headers ?? {}), accept: 'text/event-stream' };
     let res: Response;
     try {
-      res = await this.#fetch(base, { method: 'GET', headers, signal: stream.signal });
+      res = await this.#fetch(base, { method: 'GET', headers, signal: stream.signal, redirect: 'manual' });
     } catch {
       return false;
     }
@@ -315,7 +315,7 @@ export class McpHttpWire {
     const session = this.#session;
     if (!session) return;
     try {
-      const res = await this.#fetch(this.#o.url, { method: 'DELETE', headers: { ...(this.#o.headers ?? {}), 'mcp-session-id': session }, signal: AbortSignal.timeout(3_000) });
+      const res = await this.#fetch(this.#o.url, { method: 'DELETE', headers: { ...(this.#o.headers ?? {}), 'mcp-session-id': session }, signal: AbortSignal.timeout(3_000), redirect: 'manual' });
       await res.body?.cancel().catch(() => undefined);
     } catch {
       // gone already, or does not take DELETE: nothing to do
