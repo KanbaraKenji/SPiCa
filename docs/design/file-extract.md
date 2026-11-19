@@ -16,7 +16,7 @@
                                  ├─ PDF  → unpdf（pdf.js）按页取文字层；字很少的页（扫描页）
                                  │         → PDFium（WebAssembly）画成图，交给内核发给模型
                                  ├─ Word / Excel / PPT → fflate 解压 + saxes 流式读 XML
-                                 ├─ 旧版 .doc / .xls → cfb 读 OLE 容器，按微软公开的二进制格式取字
+                                 ├─ 旧版 .doc / .xls / .ppt → cfb 读 OLE 容器，按微软公开的二进制格式取字
                                  └─ CSV / 文本 → 认编码（UTF-8 / GBK / UTF-16）
                                  ▼
                        { text: 排好版的正文, meta: FileCardMeta, truncated }
@@ -42,13 +42,15 @@ new Runtime({ ..., extractors: createExtractors() });
 | Excel | .xlsx .xlsm | 每张表：行号照 Excel、列用字母；共享字符串、日期、时间、百分比、布尔、公式的缓存值；隐藏表标「hidden」 | 表：`sheet`（表名或从 1 起的序号）；行：`offset` / `limit`（行号） | 所有表的名称和范围（如 `A1:F120`） |
 | Excel 97-2003 | .xls | BIFF8 工作簿：共享字符串（跨 CONTINUE 记录）、数字 / RK / MULRK、日期格式、公式缓存值（数字、文字、布尔、错误）、布尔与错误值；排版和 .xlsx 同一套代码（`extractSheets`） | 同 Excel | 同 Excel |
 | PowerPoint | .pptx .pptm | 每页文字、表格行、演讲者备注 | 页：`pages` | 没显示的页号 |
+| PowerPoint 97-2003 | .ppt | 按放映顺序每页文字：占位符的字（标题、正文，存在幻灯片列表里）和文本框的字（存在每页的绘图里），按绘图里的先后排；演讲者备注；快速保存（只追加改过的记录）的文件按「Current User → 最新一次编辑 → 各次编辑的对象目录」找到每页的最新版本，旧版本不读；编辑之间的链接坏了时按流里的顺序找上一次编辑。表格的每格各成一行（不拼成表）；母版上的字、页眉页脚不读；排版和 .pptx 同一套代码（`renderSlides`） | 同 PowerPoint | 同 PowerPoint |
 | CSV / TSV | .csv .tsv | 表格同 Excel（单表）；自动认分隔符（逗号 / 制表 / 分号 / 竖线）、引号与引号内换行 | 行：`offset` / `limit` | 总行数与范围 |
 | 文本 | .txt .md .markdown .log | 带行号，和内核读纯文本的样子一致 | 行：`offset` / `limit` | 总行数 |
 
 - 读表格时 `offset` 大于 1，会把第 1 行作为 `(header)` 一起给出，模型不用回头找表头。
 - 编码：CSV 和文本自动认 UTF-8、带 BOM 的 UTF-8、带 BOM 的 UTF-16、GBK（按 GB18030 解，向下兼容 GBK）；都不是时按 UTF-8 解并标明「invalid bytes replaced」。
-- `.xls` / `.doc` 先看文件头不看扩展名：OLE 文件按旧格式读；其实是 zip 的（改名的 .xlsx / .docx）交给新格式；是文本的（导出的 HTML、TSV）按文本或 CSV 读；`.doc` 其实是 RTF 时报「RTF，不在这里读」。Excel 5.0/95（BIFF5）、Word 6.0/95、加密文件都报明原因。
+- `.xls` / `.doc` / `.ppt` 先看文件头不看扩展名：OLE 文件按旧格式读；其实是 zip 的（改名的 .xlsx / .docx）交给新格式；是文本的（导出的 HTML、TSV）按文本或 CSV 读；`.doc` 其实是 RTF 时报「RTF，不在这里读」。Excel 5.0/95（BIFF5）、Word 6.0/95、PowerPoint 95 及更早、加密文件都报明原因。
 - 图片（.png .jpg .jpeg .gif .webp .bmp）不归提取器：内核 read_file 直接把图交给模型（`packages/core/src/tools/read-image.ts`），量尺寸、缩小、算 token 用附件那一套（`images.ts`）。8 位 PNG 和常见的 BMP（1/4/8/24/32 位、不压缩）内核自己解码、缩小，BMP 一律转成 PNG 发（模型都不收 BMP）；超限的 JPEG 由外壳用 Chromium 缩（`nativeImage`，它只认 PNG 和 JPEG）；超限的 GIF、WEBP 和少见的 BMP 由外壳交给 Windows 自带的解码器（`createThumbnailFromPath`：它只按正方形框等比缩，所以框取原图长边、不超过 1568；做的时候主进程会停 0.1–0.6 秒；竖的大 BMP 试过会失败，所以 BMP 不走这条），都经内核的 `Runtime.imageFitter` → 主进程 `images.fit`。在限内的 GIF、WEBP 原样发。当前模型标明不收图时，返回一句说明、不发图。
+- **只看一块**（`region`，图片和 PDF 页都能用）：`region="左,上,右,下"`，按宽高的百分比，如 `"50,0,100,50"` 是右上四分之一。图片按原图像素裁出那一块（8 位 PNG 和常见 BMP 内核自己裁，其余交外壳 `images.fit` 带裁剪框：Chromium 读得了的用 `nativeImage.crop`，GIF、WEBP 先按原图大小取系统缩略图再裁，系统给小了就按比例换算），这一块不超过 1568 就按原分辨率发，结果写「the picture's full detail」；还超就再缩，写明保留了原图百分之几的细节、框小一点更清楚。PDF 页按这一块的长边画到 1568（整页最长不超过 28,000 px，约 A4 2,400 dpi），文字页也能画（图纸常是带文字层的矢量 PDF），结果写明比整页图放大了几倍；要和 `pages="N"` 一起给、只认一页。图片发的是缩小版时，结果末尾提示模型「小字可能认不清，用 region 看一块，最多放大到 N 倍」；页面图也带同样的提示。附件里的大图同样：内核用同一套缩小（外壳不再先缩），原图复制到 `media/<会话 id>/original-<内容哈希>/原文件名`，在图后面加一句告诉模型原图尺寸和路径，模型用 read_file 加 region 看原图的一块。实测（deepseek-flash）：6000×4000 的零件编号表，格子里的字缩小后只有 5–6 px，缩小版上模型答「认不清」；给原图时模型自己读了 12 次 region、答对；粘贴同一张截图时读了 2 次、答对。
 - 其余扩展名（.ts、.json 等）不归提取器，内核照旧按 UTF-8 文本读。
 
 模型看到的样子（库存表第 3 行）：
@@ -119,7 +121,7 @@ row	A	B	C	D	E	F
 | pdf-lib | 1.17.1 | MIT | 只在测试 | 生成 PDF 样例（中文用不嵌入字形的 Identity-H 字体 + ToUnicode 表，不带字体文件） |
 
 把 PDF 页画成图的几种做法（2026-11-18 比过）：pdf.js 自己画要 canvas，Node 里只有 @napi-rs/canvas（MIT，原生二进制，每个平台约 29–39 MB）；mupdf 的 wasm（14 MB）是 AGPL，不能进 Apache 仓库；只取 PDF 里嵌的图片（unpdf 的 extractImages，零新依赖）对多张拼成一页、带遮罩或旋转的扫描件会出错；@hyzyla/pdfium 也是 PDFium wasm，但 14 MB。所以用 @embedpdf/pdfium：真渲染、纯 wasm、体积最小。
-旧版 .xls / .doc 不用 SheetJS（npm 上停在 0.18.5，有未修的告警，7.5 MB）、word-extractor（MIT，但带一份旧 saxes 5 和用不着的 yauzl，且表格单元格会被摊平）：BIFF8 和 Word 97 的取字部分照微软公开的格式（MS-XLS、MS-DOC）自己读，约 600 行，只借 cfb 读外层的 OLE 容器。
+旧版 .xls / .doc / .ppt 不用 SheetJS（npm 上停在 0.18.5，有未修的告警，7.5 MB）、word-extractor（MIT，但带一份旧 saxes 5 和用不着的 yauzl，且表格单元格会被摊平）：BIFF8、Word 97 和 PowerPoint 97 的取字部分照微软公开的格式（MS-XLS、MS-DOC、MS-PPT）自己读，约 800 行，只借 cfb 读外层的 OLE 容器。
 为什么不用 mammoth / exceljs / SheetJS：三种 Office 格式都是「zip + XML」，自己读只要两个小库，Word / Excel / PPT 共用一套读法；mammoth 只管 Word，exceljs 带上百个间接依赖，npm 上的 SheetJS 停在 0.18.5 且有未修的安全告警。PPT 样例手工拼包，因为能用的 PPT 写库带一个有高危告警的依赖。
 
 ## 7. 测试与冒烟
@@ -135,7 +137,7 @@ row	A	B	C	D	E	F
 ## 8. 留口
 
 - **OCR**：扫描页现在画成图交给能看图的模型读；不能看图的模型读不了。以后要在本机识别文字，可以接在 `pdf-render.ts` 画出的图后面。
-- **更多格式**：`FORMATS` 表里加一行（扩展名 + 处理函数）即可。可能要加的：旧版 .ppt（同样是 OLE 容器，「PowerPoint Document」流里按幻灯片取 TextCharsAtom / TextBytesAtom，约 120 行，不用新依赖）、.rtf、.html、.odt / .ods、.eml。
+- **更多格式**：`FORMATS` 表里加一行（扩展名 + 处理函数）即可。可能要加的：.rtf、.html、.odt / .ods、.eml。
 - **Word 页码**：docx 没有固定页，现在按块编号；要「第几页」需要排版引擎，不做。
 - **合并单元格、批注、图片里的文字**：现在不读。
 

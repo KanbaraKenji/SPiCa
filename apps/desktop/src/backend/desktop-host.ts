@@ -79,8 +79,8 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
       ]
     : [];
   // read_file's pictures the core cannot make smaller itself (JPEG, WEBP, GIF, BMP): Chromium's decoders in the main process (main/images.ts).
-  if (bridge) rt.imageFitter = async (src, dir) => {
-    const path = await bridge.host('images.fit', [src, dir]);
+  if (bridge) rt.imageFitter = async (src, dir, crop) => {
+    const path = await bridge.host('images.fit', crop ? [src, dir, crop] : [src, dir]);
     return typeof path === 'string' ? path : undefined;
   };
 

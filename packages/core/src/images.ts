@@ -335,6 +335,26 @@ export function prepareImage(src: string, dir: string, limits: { maxLongSide: nu
   return fitDecoded(decoded, limits, store);
 }
 
+/** The pixels of `img` in the rectangle (whole pixels, inside the picture). */
+export function cropRgba(img: Rgba, x: number, y: number, width: number, height: number): Rgba {
+  const data = new Uint8Array(width * height * 4);
+  for (let r = 0; r < height; r++) {
+    const at = ((y + r) * img.width + x) * 4;
+    data.set(img.data.subarray(at, at + width * 4), r * width * 4);
+  }
+  return { width, height, data };
+}
+
+/** Pixels decoded here (a PNG, a BMP, a part of one) as the PNG that goes to the model, stored in `dir`. */
+export function prepareDecoded(img: Rgba, dir: string, limits: { maxLongSide: number; maxBytes: number } = IMAGE_LIMITS): PreparedImage {
+  return fitDecoded(img, limits, (bytes, ext) => {
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${createHash('sha256').update(bytes).digest('hex').slice(0, 20)}.${ext}`);
+    writeFileSync(path, bytes);
+    return path;
+  });
+}
+
 /** Decoded pixels as a PNG within the limits: shrunk to the long edge, then further while the file is still too big. */
 function fitDecoded(decoded: Rgba, limits: { maxLongSide: number; maxBytes: number }, store: (bytes: Buffer, ext: string) => string): PreparedImage {
   let scale = Math.min(1, limits.maxLongSide / Math.max(decoded.width, decoded.height));

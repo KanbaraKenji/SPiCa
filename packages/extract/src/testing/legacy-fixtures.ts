@@ -270,3 +270,204 @@ export async function makeScannedTextPdf(pages: string[][], textPages: string[][
   }
   return out.save();
 }
+
+// ---------------------------------------------------------------------------
+// PowerPoint 97-2003 ([MS-PPT]): records of an 8-byte header (version and instance, type, length).
+
+function pptRec(
+  type: number,
+  body: Buffer | Buffer[],
+  opts: { ver?: number; instance?: number } = {},
+): Buffer {
+  const data = Array.isArray(body) ? Buffer.concat(body) : body;
+  const head = Buffer.alloc(8);
+  head.writeUInt16LE(
+    ((opts.instance ?? 0) << 4) | (opts.ver ?? (Array.isArray(body) ? 0xf : 0)),
+    0,
+  );
+  head.writeUInt16LE(type, 2);
+  head.writeUInt32LE(data.length, 4);
+  return Buffer.concat([head, data]);
+}
+
+const pptText = (s: string) => [
+  pptRec(0x0f9f, u32(1)),
+  pptRec(0x0fa0, Buffer.from(s, "utf16le")),
+];
+
+/** A slide's or notes page's drawing: one shape per entry, its text in the shape or pointing at the slide list. */
+function pptDrawing(shapes: ({ ref: number } | { text: string })[]): Buffer {
+  const sp = shapes.map((s) =>
+    pptRec(0xf004, [
+      pptRec(
+        0xf00d,
+        "ref" in s ? [pptRec(0x0f9e, u32(s.ref))] : pptText(s.text),
+      ),
+    ]),
+  );
+  return pptRec(0x040c, [pptRec(0xf002, [pptRec(0xf003, sp)])]);
+}
+
+export interface PptSlide {
+  /** Placeholder text (title, body): kept in the slide list, the slide's drawing points at it. */
+  placeholders?: string[];
+  /** Text boxes of the slide's own. */
+  boxes?: string[];
+  notes?: string[];
+}
+
+/**
+ * A PowerPoint 97 presentation. `fastSave`: a second save that only appended a changed first slide (the old one stays
+ * in the stream, the newest persist directory points past it). `shuffled`: the slides' records are written in reverse
+ * order (the slide list keeps the show order).
+ */
+export function makePpt(
+  slides: PptSlide[],
+  opts: {
+    fastSave?: PptSlide;
+    shuffled?: boolean;
+    encrypted?: boolean;
+    brokenLink?: boolean;
+  } = {},
+): Uint8Array {
+  const n = slides.length;
+  const slideId = (i: number) => 2 + i;
+  const notesId = (i: number) => 2 + n + i;
+  const docFor = (slides: PptSlide[]) => {
+    const list = pptRec(
+      0x0ff0,
+      slides.flatMap((s, i) => [
+        pptRec(
+          0x03f3,
+          Buffer.concat([
+            u32(slideId(i)),
+            u32(0),
+            u32(s.placeholders?.length ?? 0),
+            u32(256 + i),
+            u32(0),
+          ]),
+        ),
+        ...(s.placeholders ?? []).flatMap(pptText),
+      ]),
+      { instance: 0 },
+    );
+    const notesList = pptRec(
+      0x0ff0,
+      slides.flatMap((s, i) =>
+        s.notes
+          ? [
+              pptRec(
+                0x03f3,
+                Buffer.concat([
+                  u32(notesId(i)),
+                  u32(0),
+                  u32(0),
+                  u32(512 + i),
+                  u32(0),
+                ]),
+              ),
+            ]
+          : [],
+      ),
+      { instance: 2 },
+    );
+    return pptRec(0x03e8, [
+      pptRec(0x03e9, Buffer.alloc(40), { ver: 1 }),
+      list,
+      notesList,
+    ]);
+  };
+  const docRec = docFor(slides);
+  const slideRec = (s: PptSlide, i: number) =>
+    pptRec(0x03ee, [
+      pptRec(
+        0x03ef,
+        Buffer.concat([
+          u32(0),
+          Buffer.alloc(8),
+          u32(0),
+          u32(s.notes ? notesId(i) : 0),
+          u16(0),
+          u16(0),
+        ]),
+        { ver: 2 },
+      ),
+      pptDrawing([
+        ...(s.placeholders ?? []).map((_, k) => ({ ref: k })),
+        ...(s.boxes ?? []).map((text) => ({ text })),
+      ]),
+    ]);
+  const notesRec = (s: PptSlide) =>
+    pptRec(0x03f0, [
+      pptRec(0x03f1, Buffer.alloc(8), { ver: 1 }),
+      pptDrawing([{ text: "1" }, ...(s.notes ?? []).map((text) => ({ text }))]),
+    ]);
+
+  const parts: Buffer[] = [];
+  const offsets = new Map<number, number>();
+  const put = (id: number, b: Buffer) => {
+    offsets.set(
+      id,
+      parts.reduce((a, p) => a + p.length, 0),
+    );
+    parts.push(b);
+  };
+  put(1, docRec);
+  const order = slides.map((_, i) => i);
+  for (const i of opts.shuffled ? [...order].reverse() : order)
+    put(slideId(i), slideRec(slides[i]!, i));
+  slides.forEach((s, i) => s.notes && put(notesId(i), notesRec(s)));
+  const size = () => parts.reduce((a, p) => a + p.length, 0);
+  const directory = (ids: number[]) =>
+    pptRec(
+      0x1772,
+      ids.flatMap((id) => [u32((1 << 20) | id), u32(offsets.get(id)!)]),
+    );
+  const edit = (prev: number, dirAt: number) =>
+    pptRec(
+      0x0ff5,
+      Buffer.concat([
+        u32(slideId(0)),
+        u16(0),
+        Buffer.from([0, 3]),
+        u32(prev),
+        u32(dirAt),
+        u32(1),
+        u32(notesId(n)),
+        u16(1),
+        u16(0),
+      ]),
+    );
+  const dirAt = size();
+  parts.push(directory([...offsets.keys()]));
+  let current = size();
+  parts.push(edit(0, dirAt));
+  if (opts.fastSave) {
+    // the slide list (in the document record) holds the placeholder text: saved again with the slide
+    put(1, docFor([opts.fastSave, ...slides.slice(1)]));
+    put(slideId(0), slideRec(opts.fastSave, 0));
+    const dir2 = size();
+    parts.push(directory([1, slideId(0)]));
+    const first = current;
+    current = size();
+    // a damaged link: the newest edit says the one before it is itself
+    parts.push(edit(opts.brokenLink ? current : first, dir2));
+  }
+  const user = pptRec(
+    0x0ff6,
+    Buffer.concat([
+      u32(0x14),
+      u32(opts.encrypted ? 0xf3d1c4df : 0xe391c05f),
+      u32(current),
+      u16(0),
+      u16(0x03f4),
+      Buffer.from([3, 0]),
+      u16(0),
+      u32(8),
+    ]),
+  );
+  return ole({
+    "PowerPoint Document": Buffer.concat(parts),
+    "Current User": user,
+  });
+}

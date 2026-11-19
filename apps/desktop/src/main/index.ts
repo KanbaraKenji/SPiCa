@@ -430,7 +430,8 @@ const backend: AgentBackend =
           // The conversation open in the window: the core writes its settings-change card there too.
           'ui.activeSession': () => activeSessionId,
           // read_file's large pictures made to fit, as attached ones are (main/images.ts).
-          'images.fit': (src: string, dir: string) => fitForModel(pictureIo, String(src), String(dir)),
+          'images.fit': (src: string, dir: string, crop?: { x: number; y: number; width: number; height: number }) =>
+            fitForModel(pictureIo, String(src), String(dir), crop && typeof crop === 'object' ? { x: Number(crop.x) || 0, y: Number(crop.y) || 0, width: Number(crop.width) || 1, height: Number(crop.height) || 1 } : undefined),
           // The built-in browser for agents (backend/browser-tools.ts, main/browser/agent.ts).
           'browser.open': (sessionId: string, args: Record<string, unknown>) => browserAgent.open(sessionId, args),
           'browser.read': (sessionId: string, args: Record<string, unknown>) => browserAgent.read(sessionId, args),

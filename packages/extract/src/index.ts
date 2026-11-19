@@ -4,6 +4,7 @@ import { extname } from 'node:path';
 import { extractDoc } from './doc.ts';
 import { extractDocx } from './docx.ts';
 import { extractPdf } from './pdf.ts';
+import { extractPpt } from './ppt.ts';
 import { extractPptx } from './pptx.ts';
 import { loadSource, type SourceFile } from './source.ts';
 import { extractCsv, extractText } from './text.ts';
@@ -59,6 +60,14 @@ const extractOldWord: Handler = (src, req, maxChars) => {
   throw new ExtractError('Not a readable Word 97-2003 document (not an Office file).');
 };
 
+/** .ppt: PowerPoint 97-2003, else a .pptx under the old name. */
+const extractOldPowerPoint: Handler = (src, req, maxChars, signal) => {
+  const kind = sniff(src.bytes);
+  if (kind === 'ole') return extractPpt(src, req, maxChars, signal);
+  if (kind === 'zip') return extractPptx(src, req, maxChars, signal);
+  throw new ExtractError('Not a readable PowerPoint 97-2003 presentation (not an Office file).');
+};
+
 interface Format {
   kind: FileKind;
   label: string;
@@ -73,6 +82,7 @@ export const FORMATS: readonly Format[] = [
   { kind: 'xlsx', label: 'Excel', extensions: ['.xlsx', '.xlsm'], run: extractXlsx },
   { kind: 'xlsx', label: 'Excel', extensions: ['.xls'], run: extractOldExcel },
   { kind: 'pptx', label: 'PowerPoint', extensions: ['.pptx', '.pptm'], run: extractPptx },
+  { kind: 'pptx', label: 'PowerPoint', extensions: ['.ppt'], run: extractOldPowerPoint },
   { kind: 'csv', label: 'CSV', extensions: ['.csv', '.tsv'], run: extractCsv },
   { kind: 'text', label: 'Text', extensions: ['.txt', '.md', '.markdown', '.log'], run: extractText },
 ];

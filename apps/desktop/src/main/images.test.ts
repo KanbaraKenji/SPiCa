@@ -16,6 +16,10 @@ function fake(width: number, height: number, bytesPerPixel = 1): Picture & { res
     },
     toPNG: () => Buffer.alloc(w * h * bytesPerPixel),
     toJPEG: () => Buffer.alloc(Math.round(w * h * bytesPerPixel * 0.3)),
+    crop: (r) => {
+      resizedTo.push(`crop ${r.x},${r.y} ${r.width}x${r.height}`);
+      return make(r.width, r.height);
+    },
   });
   return Object.assign(make(width, height), { resizedTo });
 }
@@ -56,18 +60,13 @@ describe('pictures for a message', () => {
     expect(none.fromPaste(Buffer.from('x'))).toBeNull();
   });
 
-  it('a dropped picture over the limits is replaced by a smaller copy; others stay; non-pictures are not touched', () => {
+  it('a dropped picture is passed on as it is, however large; non-pictures give nothing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'attach-'));
     dirs.push(dir);
     const big = join(dir, 'photo.jpg');
-    const small = join(dir, 'icon.png');
     writeFileSync(big, Buffer.alloc(10));
-    writeFileSync(small, Buffer.alloc(10));
-    const imgs = new AttachImages(join(dir, 'out'), { fromBuffer: () => fake(1, 1), fromPath: (p) => (p === big ? fake(4000, 3000) : fake(100, 100)) });
-    const copy = imgs.prepare(big);
-    expect(copy).not.toBe(big);
-    expect(copy?.endsWith('.jpg')).toBe(true);
-    expect(imgs.prepare(small)).toBe(small);
+    const imgs = new AttachImages(join(dir, 'out'), { fromBuffer: () => fake(1, 1), fromPath: () => fake(4000, 3000) });
+    expect(imgs.prepare(big)).toBe(big);
     expect(imgs.prepare(join(dir, 'notes.txt'))).toBeNull();
   });
 });
@@ -109,5 +108,32 @@ describe('pictures read_file shows the model', () => {
     expect(asked).toEqual(['scan.bmp 1568x1568', 'small.gif 300x300']);
     expect(await fitForModel({ fromBuffer: () => empty, fromPath: () => empty }, join(dir, 'scan.bmp'), join(dir, 'media'))).toBeNull();
     expect(headerSize(Buffer.from('not a picture at all, just some text here'))).toBeUndefined();
+  });
+
+  it("cuts a part, in the original's pixels, also from a system picture that came out smaller", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-fit-'));
+    dirs.push(dir);
+    const photo = fake(4000, 3000, 0.1);
+    const jpg = await fitForModel({ fromBuffer: () => fake(1, 1), fromPath: () => photo }, join(dir, 'photo.jpg'), join(dir, 'media'), { x: 1000, y: 750, width: 1000, height: 750 });
+    expect(jpg).toMatch(/[\\/]media[\\/]part-[0-9a-f]{20}\.jpg$/);
+    expect(photo.resizedTo).toEqual(['crop 1000,750 1000x750']);
+
+    const gif = Buffer.from('474946383961' + 'b80b' + 'd007', 'hex'); // 3000 x 2000
+    writeFileSync(join(dir, 'plan.gif'), Buffer.concat([gif, Buffer.alloc(32)]));
+    const empty = { ...fake(1, 1), isEmpty: () => true };
+    const half = fake(1500, 1000);
+    const boxes: string[] = [];
+    const io = {
+      fromBuffer: () => empty,
+      fromPath: () => empty,
+      thumbnail: async (_p: string, s: { width: number; height: number }) => {
+        boxes.push(`${s.width}x${s.height}`);
+        return half;
+      },
+    };
+    expect(await fitForModel(io, join(dir, 'plan.gif'), join(dir, 'media'), { x: 300, y: 200, width: 600, height: 400 })).toMatch(/part-.*\.png$/);
+    // asked at the original's size; the system gave half: the part is cut at half too
+    expect(boxes).toEqual(['3000x3000']);
+    expect(half.resizedTo).toEqual(['crop 150,100 300x200']);
   });
 });
