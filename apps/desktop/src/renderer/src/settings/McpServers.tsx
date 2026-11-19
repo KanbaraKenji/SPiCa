@@ -492,8 +492,8 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
                 onChange={(e) => set({ key: e.target.value })}
               />
               {draft.keySaved ? (
-                <button type="button" className="btn btn-square" aria-label={t('删除密钥')} title={t('删除密钥')} onClick={() => set({ keySaved: false, key: '' })}>
-                  <Icon name="trash" size={16} />
+                <button type="button" className="icon-btn" aria-label={t('删除密钥')} title={t('删除密钥')} onClick={() => set({ keySaved: false, key: '' })}>
+                  <Icon name="trash" size={14} />
                 </button>
               ) : null}
             </FormRow>
