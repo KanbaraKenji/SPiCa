@@ -32,6 +32,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   CwdChangeMeta,
+  ChangePreview,
   GuardCause,
   Message,
   ProjectDetail,
@@ -180,6 +181,9 @@ export interface RuntimeInternals {
   limiter(providerId: string): RateLimiter;
   parentChain(sessionId: string): string[];
   services(session: Session): Record<string, unknown>;
+  /** A confirmation card outside the run's own pauses (a step of a running call asks on it). */
+  askOutsideSession(card: Parameters<Runtime['askOutsideSession']>[0]): { callId: string; answer: Promise<boolean> };
+  resolveViewConfirm(callId: string, approved: boolean): boolean;
   onUserMessage(session: Session, message: Message): void;
   onStatus(session: Session, status: SessionStatus): void;
   onRunEnd(session: Session, result: RunResult): void;
@@ -990,28 +994,32 @@ export class Runtime implements RuntimeInternals {
     name: string;
     input: unknown;
     reason: string;
-    cause: GuardCause;
+    /** Why the guard asks (shown under the card); none for a hook's or an irreversible tool's own question. */
+    cause?: GuardCause;
     /** What it allows cannot be undone: the card shows 无法撤销. */
     irreversible?: boolean;
+    change?: ChangePreview;
     callId?: string;
     host?: Session;
     userOnly?: boolean;
+    /** Waits until it is answered (a step of a running call); otherwise unanswered after 10 minutes means no. */
+    untilAnswered?: boolean;
   }): { callId: string; answer: Promise<boolean> } {
     const callId = card.callId ?? newId('ask');
     const where = { sessionId: card.host?.id ?? '', parentChain: card.host?.parentChain ?? [] };
     if (card.userOnly) this.#userOnly.add(callId);
     const answer = new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
-      timer.unref?.();
+      const timer = card.untilAnswered ? undefined : setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
+      timer?.unref?.();
       const finish = (approved: boolean) => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         this.#viewConfirms.delete(callId);
         this.#userOnly.delete(callId);
         this.events.emit(where, { type: 'confirm.resolved', callId, approved });
         resolve(approved);
       };
       this.#viewConfirms.set(callId, finish);
-      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, cause: card.cause, ...(card.irreversible ? { irreversible: true } : {}) });
+      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, ...(card.cause ? { cause: card.cause } : {}), ...(card.irreversible ? { irreversible: true } : {}), ...(card.change ? { change: card.change } : {}) });
     });
     return { callId, answer };
   }

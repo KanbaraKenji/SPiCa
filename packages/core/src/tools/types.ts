@@ -31,6 +31,17 @@ export interface ToolContext {
   providerKind?: string;
   /** The host's image shrinker (Runtime.imageFitter). */
   fitImage?: ImageFitter;
+  /**
+   * Runs another tool of this conversation as one step of this call (browser_batch), judged as a call of its own
+   * would be: hooks, the guard (outside content met by earlier steps counts), the approval mode. A confirmation is
+   * asked on a card right then; the step waits for the answer. Absent where there is no conversation (a plugin view).
+   */
+  step?(name: string, input: Record<string, unknown>): Promise<StepResult>;
+}
+
+/** How a step went: ran (ok / error), was blocked by a hook, declined by the user, or is not a tool here. */
+export interface StepResult extends ToolOutput {
+  status: 'ok' | 'error' | 'denied' | 'declined' | 'unavailable';
 }
 
 /** A copy of the picture at `src` within IMAGE_LIMITS, written in `dir`: its path, or undefined when it cannot be made. */
