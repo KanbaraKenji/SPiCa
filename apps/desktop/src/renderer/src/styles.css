@@ -4578,8 +4578,8 @@ button.ctx-row:hover {
 
 /* its words as the rows' names above (size, weight), quieter by colour only: it opens, it is not a field */
 .provider-editor > .provider-more .fold-head {
-  font-size: inherit;
-  line-height: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   font-weight: 500;
 }
 
