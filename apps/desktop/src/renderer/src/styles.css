@@ -9364,3 +9364,35 @@ input[type='radio']:disabled {
 .plan-strip.is-record.is-open .plan-chevron {
   rotate: none;
 }
+
+/* The 等待子任务 row opened: a line per sub-agent, its name, how far its plan is, the step it is on. */
+.child-progress {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.child-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.child-progress-name {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.child-progress-row .plan-current {
+  color: var(--spica-muted);
+}

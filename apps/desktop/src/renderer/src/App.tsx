@@ -23,6 +23,7 @@ import { ContextMenu } from './ui/ContextMenu';
 import { DetailPanel } from './shell/DetailPanel';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import { ConfirmTarget } from './chat/Blocks';
+import { ChildSourceContext, type ChildSource } from './chat/ChildProgress';
 import type { ComposerTools } from './chat/Composer';
 import { enabledModels, type ModelRef, type ProviderView } from '../../shared/providers';
 import { SettingsView, type SettingsTab } from './settings/SettingsView';
@@ -340,6 +341,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.sessions, state.firstLines, state.projects, mail.threadId, locale]);
+  // The 等待子任务 row opened: each sub-agent's name and plan, from its own conversation.
+  const childSource = useMemo<ChildSource>(() => ({ parentId: state.activeId, sessions, transcripts: state.transcripts, load: (id) => void agent.load(id) }), [agent, state.activeId, sessions, state.transcripts]);
   // Sub-agents under the open conversation that wait for the user: said under the status line,
   // so a parent that "waits for its sub-tasks" does not look stuck.
   const waiting = useMemo<WaitingChild[]>(() => {
@@ -1314,6 +1317,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               onDismissProblem={() => mailStore.dismissProblem()}
             />
           ) : state.loaded ? (
+            <ChildSourceContext.Provider value={childSource}>
             <Conversation
               session={session}
               transcript={transcript}
@@ -1327,6 +1331,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               {...(found && found.sessionId === state.activeId ? { found: foundView(found) } : {})}
               onSetupModel={() => openSettings('models')}
             />
+            </ChildSourceContext.Provider>
           ) : (
             <div className="conversation" />
           )}

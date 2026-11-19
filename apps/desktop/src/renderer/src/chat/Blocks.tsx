@@ -22,6 +22,7 @@ import { confirmTitle, fileFolder, fileName, formatBytes, formatClock, formatDur
 import { groupWords, runningGroup, runningWords, toolWords } from './tool-words';
 import { hostOf } from './sources';
 import { CallArgs, CallDetail, callChange, CommandBox, FileChange } from './CallDetail';
+import { ChildProgress } from './ChildProgress';
 
 /** Opens a conversation by id, at message number `seq` when given (rows and links from earlier conversations). */
 export const OpenSessionContext = createContext<((id: string, seq?: number) => void) | null>(null);
@@ -661,6 +662,16 @@ function ToolDetail({ block }: { block: ToolBlock }) {
   const card = useContext(ToolCardsContext)?.[block.callId];
   if (history && HISTORY_TOOLS.has(block.name)) return <HistoryTable card={history} />;
   if (sources) return <SourceList card={sources} />;
+  // wait_agents: how far each sub-agent it waits for is, above what came back
+  if (block.name === 'wait_agents') {
+    const ids = (block.input as { ids?: unknown } | undefined)?.ids;
+    return (
+      <>
+        <ChildProgress ids={Array.isArray(ids) ? ids.map(String) : undefined} />
+        <CallDetail block={block} card={card} />
+      </>
+    );
+  }
   return <CallDetail block={block} card={card} />;
 }
 
