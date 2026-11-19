@@ -209,3 +209,26 @@ describe('a question waiting for its answer', () => {
     expect(document.querySelector('.ask-place')).toBeNull();
   });
 });
+
+describe('a call that waited on 允许 / 拒绝', () => {
+  it('once the cards are gone and the calls are done, no row is left turning (the group and the card are not one key)', () => {
+    const tool = (callId: string, state: 'done' | 'pending', command: string) =>
+      ({ type: 'tool' as const, callId, name: 'run_command', state, ...(state === 'done' ? { input: { command }, durationMs: 40, preview: 'ok' } : { input: undefined }) });
+    const confirm = (callId: string, approved?: boolean) => ({ type: 'confirm' as const, callId, name: 'run_command', input: { command: 'node a.js' }, reason: '', ...(approved !== undefined ? { approved } : {}) });
+    const props = { session: session({ id: 's', status: 'idle' }), actions: {} as unknown as ConversationActions };
+    // waiting on the second call's card: the first call's card (allowed) between them
+    const waiting = {
+      items: [{ kind: 'response' as const, id: 'r1', interrupted: false, blocks: [tool('a', 'done', 'node a.js'), confirm('a', true), tool('b', 'pending', ''), confirm('b')] }],
+    };
+    const { rerender } = render(<Conversation {...props} transcript={waiting} />);
+    // the round over: both ran, the cards are gone, the answer written
+    const over = {
+      items: [{ kind: 'response' as const, id: 'r1', interrupted: false, blocks: [tool('a', 'done', 'node a.js'), tool('b', 'done', 'node b.js'), { type: 'text' as const, text: '都跑完了' }] }],
+    };
+    rerender(<Conversation {...props} transcript={over} />);
+    const heads = [...document.querySelectorAll('.turn-response .fold-head')].map((h) => h.textContent);
+    expect(heads).toHaveLength(1);
+    expect(heads[0]).not.toMatch(/^Running/);
+    expect(document.querySelector('.turn-response .fold-meta svg[class*="status"], .turn-response [title="进行中"]')).toBeNull();
+  });
+});
