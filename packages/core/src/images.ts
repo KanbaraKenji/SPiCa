@@ -6,8 +6,11 @@
 import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { deflateSync, inflateSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { deflate, deflateSync, inflateSync } from 'node:zlib';
 import { IMAGE_LIMITS } from '@spica/protocol';
+
+const deflateAsync = promisify(deflate);
 
 export type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
 
@@ -86,7 +89,7 @@ export function imageSize(buf: Buffer, type: ImageMediaType): { width: number; h
 // shrink (area average), encode (RGBA, 8-bit).
 // ---------------------------------------------------------------------------
 
-interface Rgba {
+export interface Rgba {
   width: number;
   height: number;
   data: Uint8Array; // RGBA, 4 bytes per pixel
@@ -236,20 +239,50 @@ function chunk(type: string, data: Buffer): Buffer {
 
 /** Encode RGBA as an 8-bit RGBA PNG (Sub filter on every row). */
 export function encodePng(img: Rgba): Buffer {
-  const stride = img.width * 4;
+  const { ihdr, raw } = pngRows(img, 4);
+  return pngFile(ihdr, deflateSync(raw, { level: 9 }));
+}
+
+/**
+ * Encode RGBA as the smallest of grey, RGB or RGBA (an opaque grey picture, such as a scanned page, takes a quarter of
+ * the bytes), compressed off the main thread.
+ */
+export async function encodePngCompact(img: Rgba): Promise<Buffer> {
+  let grey = true;
+  let opaque = true;
+  const d = img.data;
+  for (let i = 0; i < d.length && (grey || opaque); i += 4) {
+    if (d[i + 3] !== 255) opaque = false;
+    if (d[i] !== d[i + 1] || d[i] !== d[i + 2]) grey = false;
+  }
+  const channels = opaque ? (grey ? 1 : 3) : 4;
+  const { ihdr, raw } = pngRows(img, channels);
+  return pngFile(ihdr, await deflateAsync(raw, { level: 6 }));
+}
+
+/** IHDR and the filtered rows (Sub filter) for 1 (grey), 3 (RGB) or 4 (RGBA) channels taken from RGBA pixels. */
+function pngRows(img: Rgba, channels: 1 | 3 | 4): { ihdr: Buffer; raw: Buffer } {
+  const stride = img.width * channels;
   const raw = Buffer.alloc((stride + 1) * img.height);
+  const row = new Uint8Array(stride);
   for (let y = 0; y < img.height; y++) {
+    const src = img.data.subarray(y * img.width * 4, (y + 1) * img.width * 4);
+    if (channels === 4) row.set(src);
+    else for (let x = 0, j = 0; x < img.width; x++, j += channels) for (let c = 0; c < channels; c++) row[j + c] = src[x * 4 + c]!;
     const o = y * (stride + 1);
     raw[o] = 1; // Sub
-    const row = img.data.subarray(y * stride, (y + 1) * stride);
-    for (let x = 0; x < stride; x++) raw[o + 1 + x] = (row[x]! - (x >= 4 ? row[x - 4]! : 0)) & 0xff;
+    for (let x = 0; x < stride; x++) raw[o + 1 + x] = (row[x]! - (x >= channels ? row[x - channels]! : 0)) & 0xff;
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(img.width, 0);
   ihdr.writeUInt32BE(img.height, 4);
   ihdr[8] = 8;
-  ihdr[9] = 6;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
+  ihdr[9] = channels === 1 ? 0 : channels === 3 ? 2 : 6;
+  return { ihdr, raw };
+}
+
+function pngFile(ihdr: Buffer, idat: Buffer): Buffer {
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
 }
 
 // ---------------------------------------------------------------------------
@@ -272,15 +305,18 @@ export function prepareImage(src: string, dir: string, limits: { maxLongSide: nu
     return { ok: false, code: 'image.unreadable', message: err instanceof Error ? err.message : String(err) };
   }
   const mediaType = sniffImage(buf);
-  const size = mediaType ? imageSize(buf, mediaType) : undefined;
-  if (!mediaType || !size || !size.width || !size.height) return { ok: false, code: 'image.unreadable', message: 'not a PNG, JPEG, GIF or WEBP image that can be read' };
-  const long = Math.max(size.width, size.height);
   const store = (bytes: Buffer, ext: string) => {
     mkdirSync(dir, { recursive: true });
     const path = join(dir, `${createHash('sha256').update(bytes).digest('hex').slice(0, 20)}.${ext}`);
     writeFileSync(path, bytes);
     return path;
   };
+  // a BMP (no model takes it): decoded here and sent as a PNG, made smaller when over the limits
+  const bmp = mediaType ? undefined : decodeBmp(buf);
+  if (bmp) return fitDecoded(bmp, limits, store);
+  const size = mediaType ? imageSize(buf, mediaType) : undefined;
+  if (!mediaType || !size || !size.width || !size.height) return { ok: false, code: 'image.unreadable', message: 'not a PNG, JPEG, GIF, WEBP or BMP image that can be read' };
+  const long = Math.max(size.width, size.height);
   if (long <= limits.maxLongSide && buf.length <= limits.maxBytes) {
     mkdirSync(dir, { recursive: true });
     const ext = mediaType.split('/')[1]!.replace('jpeg', 'jpg');
@@ -293,19 +329,76 @@ export function prepareImage(src: string, dir: string, limits: { maxLongSide: nu
     return {
       ok: false,
       code: 'image.too_large',
-      message: `${size.width}x${size.height}, ${buf.length} bytes: over ${limits.maxLongSide} px or ${limits.maxBytes} bytes, and only 8-bit PNG can be made smaller here`,
+      message: `${size.width}x${size.height}, ${buf.length} bytes: over ${limits.maxLongSide} px or ${limits.maxBytes} bytes, and only 8-bit PNG and BMP can be made smaller here`,
     };
   }
-  // shrink to the long edge, then further while the file is still too big
-  let scale = Math.min(1, limits.maxLongSide / long);
+  return fitDecoded(decoded, limits, store);
+}
+
+/** Decoded pixels as a PNG within the limits: shrunk to the long edge, then further while the file is still too big. */
+function fitDecoded(decoded: Rgba, limits: { maxLongSide: number; maxBytes: number }, store: (bytes: Buffer, ext: string) => string): PreparedImage {
+  let scale = Math.min(1, limits.maxLongSide / Math.max(decoded.width, decoded.height));
   for (let attempt = 0; attempt < 6; attempt++) {
-    const w = Math.max(1, Math.round(size.width * scale));
-    const h = Math.max(1, Math.round(size.height * scale));
-    const png = encodePng(shrink(decoded, w, h));
+    const w = Math.max(1, Math.round(decoded.width * scale));
+    const h = Math.max(1, Math.round(decoded.height * scale));
+    const png = encodePng(w === decoded.width && h === decoded.height ? decoded : shrink(decoded, w, h));
     if (png.length <= limits.maxBytes) return { ok: true, image: { mediaType: 'image/png', width: w, height: h, bytes: png.length, path: store(png, 'png'), resized: true } };
     scale *= 0.75;
   }
   return { ok: false, code: 'image.too_large', message: 'still over the size limit after shrinking' };
+}
+
+/**
+ * Decode a BMP (Windows bitmap) to RGBA: uncompressed 1, 4, 8, 24 or 32 bits per pixel (32-bit also with the usual
+ * BGRA bit masks), bottom-up or top-down. Undefined for anything else (16-bit, RLE, OS/2 headers, damaged files).
+ */
+export function decodeBmp(buf: Buffer): Rgba | undefined {
+  try {
+    if (buf.length < 54 || buf.toString('latin1', 0, 2) !== 'BM') return undefined;
+    const dataAt = buf.readUInt32LE(10);
+    const dib = buf.readUInt32LE(14);
+    if (dib < 40) return undefined;
+    const width = buf.readInt32LE(18);
+    const rawHeight = buf.readInt32LE(22);
+    const bpp = buf.readUInt16LE(28);
+    const compression = buf.readUInt32LE(30);
+    const height = Math.abs(rawHeight);
+    if (width <= 0 || height === 0 || width * height > 100_000_000) return undefined;
+    if (!(compression === 0 || (compression === 3 && bpp === 32))) return undefined;
+    if (![1, 4, 8, 24, 32].includes(bpp)) return undefined;
+    const used = buf.readUInt32LE(46);
+    const palette = 14 + dib;
+    const colors = bpp <= 8 ? used || 1 << bpp : 0;
+    const stride = Math.ceil((width * bpp) / 32) * 4;
+    if (dataAt + stride * height > buf.length) return undefined;
+    const data = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const row = dataAt + (rawHeight > 0 ? height - 1 - y : y) * stride;
+      for (let x = 0; x < width; x++) {
+        const o = (y * width + x) * 4;
+        if (bpp >= 24) {
+          const p = row + x * (bpp / 8);
+          data[o] = buf[p + 2]!;
+          data[o + 1] = buf[p + 1]!;
+          data[o + 2] = buf[p]!;
+          data[o + 3] = 255; // the 4th byte of 32-bit BMPs is mostly unused padding
+        } else {
+          const bit = x * bpp;
+          const byte = buf[row + (bit >> 3)]!;
+          const k = (byte >> (8 - bpp - (bit & 7))) & ((1 << bpp) - 1);
+          if (k >= colors) return undefined;
+          const c = palette + k * 4;
+          data[o] = buf[c + 2]!;
+          data[o + 1] = buf[c + 1]!;
+          data[o + 2] = buf[c]!;
+          data[o + 3] = 255;
+        }
+      }
+    }
+    return { width, height, data };
+  } catch {
+    return undefined;
+  }
 }
 
 /** The image as base64 for a request, or undefined when the stored copy is gone. */

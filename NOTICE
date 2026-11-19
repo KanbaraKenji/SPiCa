@@ -34,3 +34,11 @@ text is in THIRD-PARTY.txt next to the library. Written at build time by apps/de
 resources/node-libs/papaparse (papaparse 5.7.1)
 Copyright (c) 2015 Matthew Holt
 Licensed under the MIT License (LICENSE next to the library).
+
+PDFium in the agent core (drawing scanned PDF pages)
+----------------------------------------------------
+pdfium.wasm and its JavaScript wrapper (@embedpdf/pdfium 2.15.1), bundled into the app
+Wrapper: Copyright (c) 2024 CloudPDF, Ji Chang; licensed under the MIT License.
+PDFium: Copyright 2014 PDFium Authors; licensed under the BSD 3-Clause License (or the Apache License,
+Version 2.0). The WebAssembly build includes third-party libraries that PDFium builds in (such as zlib,
+libpng, OpenJPEG and Anti-Grain Geometry), each under its own permissive licence.
