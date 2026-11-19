@@ -310,7 +310,8 @@ export function FileChange({ path, lines, numbered }: { path: string; lines: Cha
 }
 
 /** The whole of a call opened: what was done, how it ended when it failed, what came out. */
-export function CallDetail({ block, card }: { block: ToolBlock; card?: FileCardMeta | undefined }) {
+/** `args` false: the call's arguments are said elsewhere (wait_agents: its sub-agents' lines above). */
+export function CallDetail({ block, card, args = true }: { block: ToolBlock; card?: FileCardMeta | undefined; args?: boolean }) {
   const raw = block.result ?? block.preview ?? '';
   const { status, output } = callEnd(block, raw);
   const change = callChange(block, card);
@@ -321,10 +322,10 @@ export function CallDetail({ block, card }: { block: ToolBlock; card?: FileCardM
   const empty = !change && !command && !(block.input && typeof block.input === 'object' && Object.keys(block.input).length);
   return (
     <div className="tool-detail">
-      {input}
+      {args ? input : null}
       {status ? <p className="tool-status">{status}</p> : null}
       {out ? <CallOutput text={out} /> : null}
-      {empty && !status && !out ? <p className="tool-empty">—</p> : null}
+      {args && empty && !status && !out ? <p className="tool-empty">—</p> : null}
     </div>
   );
 }

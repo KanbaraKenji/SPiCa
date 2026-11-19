@@ -668,7 +668,7 @@ function ToolDetail({ block }: { block: ToolBlock }) {
     return (
       <>
         <ChildProgress ids={Array.isArray(ids) ? ids.map(String) : undefined} />
-        <CallDetail block={block} card={card} />
+        <CallDetail block={block} card={card} args={false} />
       </>
     );
   }
