@@ -1,5 +1,6 @@
 // 后台命令 in the details: the commands this conversation started in the background (run_command with
-// run_in_background). The ones running first, each with its ring, how long it has run and 停止; then the ended ones,
+// run_in_background), each by its command (its description in the hover). The ones running first, each with its
+// ring, how long it has run and 停止 (the message box's stop button, smaller); then the ended ones,
 // newest first, with how they ended. After a restart the records come back the same way (core keeps them).
 import { useEffect, useState } from 'react';
 import type { CommandJob } from '@spica/protocol';
@@ -45,6 +46,8 @@ function useSecond(on: boolean): number {
 export function CommandJobs({ jobs, onStop }: { jobs: Record<string, CommandJob> | undefined; onStop?: ((jobId: string) => void) | undefined }) {
   const list = jobsInOrder(jobs);
   const now = useSecond(list.some((j) => !j.end));
+  // Stopping a process tree takes a moment on Windows: 停止 pressed once is greyed until the job says it ended.
+  const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
   if (!list.length) return null;
   return (
     <section className="detail-section">
@@ -55,19 +58,20 @@ export function CommandJobs({ jobs, onStop }: { jobs: Record<string, CommandJob>
       <ul className="detail-list">
         {list.map((j) => {
           const end = j.end ? ended(j) : undefined;
-          const name = j.description || j.command;
           return (
-            <li key={j.id} className="detail-item detail-job" title={j.command}>
+            <li key={j.id} className="detail-item detail-job" title={j.description ? `${j.description}\n${j.command}` : j.command}>
               <span className="detail-item-icon">
                 {end ? <SpicaStatusIcon name={end.icon} size={14} /> : <SpicaStatusIcon name="running" size={14} title={t('运行中')} />}
               </span>
-              <span className="detail-item-main">
-                {name}
-                {j.description ? <span className="detail-item-sub detail-job-cmd"> {j.command}</span> : null}
-              </span>
+              <span className="detail-item-main detail-job-cmd">{j.command}</span>
               <span className="detail-item-meta">{end ? end.meta : formatClock(ms(j.startedAt, now))}</span>
               {!end && onStop ? (
-                <button type="button" className="icon-btn detail-job-stop" onClick={() => onStop(j.id)} aria-label={`${t('停止')} ${name}`} title={t('停止')}>
+                <button type="button" className="icon-btn composer-stop detail-job-stop" disabled={stopping.has(j.id)}
+                  onClick={() => {
+                    setStopping((s) => new Set(s).add(j.id));
+                    onStop(j.id);
+                  }}
+                  aria-label={`${t('停止')} ${j.command}`} title={t('停止')}>
                   <Icon name="stop" size={14} />
                 </button>
               ) : null}

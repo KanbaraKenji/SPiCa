@@ -46,7 +46,7 @@ describe('详情 › 后台命令', () => {
     expect(document.querySelector('.detail-section h3')?.textContent).toBeTruthy();
     const title = [...document.querySelectorAll('.detail-title')].find((h) => h.textContent?.startsWith('后台命令'));
     expect(title?.textContent).toBe('后台命令5');
-    expect(rows().map((r) => r.querySelector('.detail-item-main')?.textContent)).toEqual(['启动预览服务 npm run dev', 'npx vitest --watch', 'python serve.py', 'node build.js', 'node crash.js']);
+    expect(rows().map((r) => r.querySelector('.detail-item-main')?.textContent)).toEqual(['npm run dev', 'npx vitest --watch', 'python serve.py', 'node build.js', 'node crash.js']);
     expect(rows().map((r) => r.querySelector('.detail-item-meta')?.textContent)).toEqual(['2m 5s', '1m 5s', '已停止 · 4m 5s', '7s', '已中断']);
     act(() => void vi.advanceTimersByTime(2000));
     expect(rows()[0]!.querySelector('.detail-item-meta')?.textContent).toBe('2m 7s');
@@ -54,10 +54,13 @@ describe('详情 › 后台命令', () => {
     const stops = screen.getAllByRole('button', { name: /^停止 / });
     expect(stops).toHaveLength(2);
     expect(stops[0]!.getAttribute('title')).toBe('停止');
-    expect(stops[0]!.className).toContain('icon-btn');
+    expect(stops[0]!.className).toContain('composer-stop');
     fireEvent.click(stops[1]!);
     expect(onStopJob).toHaveBeenCalledWith('cmd2');
-    expect(rows()[0]!.getAttribute('title')).toBe('npm run dev');
+    // pressed: greyed until the job says it ended
+    expect((stops[1] as HTMLButtonElement).disabled).toBe(true);
+    expect((stops[0] as HTMLButtonElement).disabled).toBe(false);
+    expect(rows()[0]!.getAttribute('title')).toBe('启动预览服务\nnpm run dev');
   });
 
   it('order and count helpers', () => {

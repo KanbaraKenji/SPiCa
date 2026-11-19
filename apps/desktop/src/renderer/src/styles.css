@@ -961,8 +961,7 @@ button.tree-twisty:hover {
   font-variant-numeric: tabular-nums;
 }
 
-/* 后台命令: the command quieter after its description, in the code font; 停止 at the row's end, kept within the row's
-   height (its hover reaches past it, as .detail-file's). */
+/* 后台命令: the command in the code font; 停止 (the message box's) at the row's end, kept within the row's height. */
 .detail-job-cmd {
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
