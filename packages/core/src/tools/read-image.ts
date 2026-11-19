@@ -7,7 +7,7 @@ import type { Stats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { isoNow } from '../events.ts';
-import { cropRgba, decodeBmp, decodePng, encodePngCompact, imageTokens, prepareDecoded, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage, type PreparedImage } from '../images.ts';
+import { cropRgba, decodeBmp, decodePng, encodePngCompact, IMAGE_LIMITS, imageTokens, prepareDecoded, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage, type PreparedImage } from '../images.ts';
 import type { FileCardMeta, ImageBlock } from '../types.ts';
 import { PICTURE_EXTENSIONS, pictureSize } from './file-card.ts';
 import type { PageImage, PixelRect, ToolContext, ToolOutput } from './types.ts';
@@ -128,8 +128,12 @@ export async function readPicture(abs: string, info: Stats, shown: string, ctx: 
       ? `${img.width}x${img.height} px, the picture's full detail`
       : `${img.width}x${img.height} px, ${Math.round((img.width / rect.width) * 100)}% of the picture's full detail; a smaller region shows more`;
     const tokens = imageTokens(ctx.providerKind ?? '', img.width, img.height);
+    // a picture within the limits goes whole at its own size: a part of it adds no detail
+    const nothingMore = Math.max(size.width, size.height) <= IMAGE_LIMITS.maxLongSide && info.size <= IMAGE_LIMITS.maxBytes
+      ? `\nThe whole picture is sent at this same detail when read without region; a part of it shows nothing more.`
+      : '';
     return {
-      content: `${head}\nThe part (${where}) follows as an image: ${sent}, about ${tokens} tokens.`,
+      content: `${head}\nThe part (${where}) follows as an image: ${sent}, about ${tokens} tokens.${nothingMore}`,
       images: [block(img, `${basename(abs)} part`)],
     };
   }

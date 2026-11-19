@@ -134,19 +134,22 @@ function paragraphs(text: string): string[] {
 }
 
 /** The texts listed for each slide (or notes page) in a SlideListWithText, by the object id of the slide. */
-function listTexts(buf: Buffer, list: Rec): { order: number[]; texts: Map<number, string[]> } {
+function listTexts(buf: Buffer, list: Rec): { order: number[]; texts: Map<number, string[]>; bySlideId: Map<number, number> } {
   const order: number[] = [];
   const texts = new Map<number, string[]>();
+  // the slide (or notes page) identifier other records use (SlideAtom.notesIdRef) -> its object id
+  const bySlideId = new Map<number, number>();
   let current: string[] | undefined;
   for (const r of children(buf, list.start, list.start + list.len)) {
     if (r.type === RT.slidePersist && r.len >= 4) {
       const id = buf.readUInt32LE(r.start);
+      if (r.len >= 16) bySlideId.set(buf.readUInt32LE(r.start + 12), id);
       order.push(id);
       current = [];
       texts.set(id, current);
     } else if ((r.type === RT.textChars || r.type === RT.textBytes) && current) current.push(textOf(buf, r));
   }
-  return { order, texts };
+  return { order, texts, bySlideId };
 }
 
 /** Text of a slide or notes page in drawing order: its own text boxes, and its placeholders' text from the list. */
@@ -205,12 +208,13 @@ export async function extractPpt(src: SourceFile, req: ExtractRequest, maxChars:
   const docRec = header(buf, offsets.get(documentId) ?? -1);
   if (!docRec || docRec.type !== RT.document) fail('the document record is missing');
 
-  let slides: { order: number[]; texts: Map<number, string[]> } = { order: [], texts: new Map() };
-  let notes: Map<number, string[]> = new Map();
+  const none = { order: [], texts: new Map(), bySlideId: new Map() };
+  let slides: ReturnType<typeof listTexts> = none;
+  let notes: ReturnType<typeof listTexts> = none;
   for (const r of children(buf, docRec.start, docRec.start + docRec.len)) {
     if (r.type !== RT.slideList) continue;
     if (r.instance === 0) slides = listTexts(buf, r);
-    else if (r.instance === 2) notes = listTexts(buf, r).texts;
+    else if (r.instance === 2) notes = listTexts(buf, r);
   }
   let skipped = 0;
   const live = slides.order.filter((id) => {
@@ -226,9 +230,10 @@ export async function extractPpt(src: SourceFile, req: ExtractRequest, maxChars:
     const paras = pageText(buf, rec, slides.texts.get(id) ?? []);
     let noteParas: string[] = [];
     const atom = children(buf, rec.start, rec.start + rec.len).find((c) => c.type === RT.slideAtom && c.len >= 16);
-    const notesId = atom ? buf.readUInt32LE(atom.start + 16) : 0;
+    // SlideAtom.notesIdRef is the notes page's identifier in the notes list, not its object id
+    const notesId = atom ? notes.bySlideId.get(buf.readUInt32LE(atom.start + 16)) : undefined;
     const notesRec = notesId ? header(buf, offsets.get(notesId) ?? -1) : undefined;
-    if (notesRec?.type === RT.notes) noteParas = pageText(buf, notesRec, notes.get(notesId) ?? []).filter((p) => !/^\d+$/.test(p));
+    if (notesId && notesRec?.type === RT.notes) noteParas = pageText(buf, notesRec, notes.texts.get(notesId) ?? []).filter((p) => !/^\d+$/.test(p));
     return { paras, notes: noteParas };
   };
   const note = skipped > 0 ? `[${skipped} slide${skipped === 1 ? '' : 's'} listed in the file could not be found and ${skipped === 1 ? 'is' : 'are'} left out.]` : undefined;

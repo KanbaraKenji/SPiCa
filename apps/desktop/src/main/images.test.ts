@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -49,13 +49,18 @@ describe('pictures for a message', () => {
     expect(isImagePath('C:/a/报告.pdf')).toBe(false);
   });
 
-  it('a pasted picture is saved as a PNG file; bytes that are no picture give nothing', () => {
+  it('a pasted picture is saved as a PNG file named by the time, at its own size; bytes that are no picture give nothing', () => {
     const dir = mkdtempSync(join(tmpdir(), 'attach-'));
     dirs.push(dir);
-    const ok = new AttachImages(dir, { fromBuffer: () => fake(10, 10), fromPath: () => fake(10, 10) });
-    const path = ok.fromPaste(Buffer.from('x'));
-    expect(path?.endsWith('.png')).toBe(true);
-    expect(statSync(path!).size).toBe(100);
+    const big = fake(4000, 3000);
+    const ok = new AttachImages(dir, { fromBuffer: () => big, fromPath: () => fake(10, 10) });
+    const path = ok.fromPaste(Buffer.from('x'), new Date(2026, 10, 19, 8, 5, 3));
+    expect(basename(path!)).toBe('2026-11-19 08-05-03.png');
+    expect(statSync(path!).size).toBe(4000 * 3000);
+    expect(big.resizedTo).toEqual([]);
+    // the folders left from earlier runs go at start
+    ok.sweep(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    expect(existsSync(path!)).toBe(false);
     const none = new AttachImages(dir, { fromBuffer: () => ({ ...fake(1, 1), isEmpty: () => true }), fromPath: () => fake(1, 1) });
     expect(none.fromPaste(Buffer.from('x'))).toBeNull();
   });

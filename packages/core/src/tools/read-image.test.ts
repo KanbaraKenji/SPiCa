@@ -191,6 +191,9 @@ describe('read_file with a region', () => {
     await writeFile(join(dir, 'notes.txt'), 'x');
     expect((await readFileTool.execute({ path: 'sheet.png', region: 'top half' }, ctx)).content).toContain('region must be "left,top,right,bottom" in percent');
     expect((await readFileTool.execute({ path: 'sheet.png', region: '60,0,40,100' }, ctx)).content).toContain('right must be more than left');
+    // a picture that went whole at its own size: a part adds nothing, and the model is told so
+    const small = await readFileTool.execute({ path: 'sheet.png', region: '0,0,50,50' }, ctx);
+    expect(small.content).toContain('a part of it shows nothing more.');
     const txt = await readFileTool.execute({ path: 'notes.txt', region: '0,0,50,50' }, ctx);
     expect(txt).toMatchObject({ isError: true, content: 'region is for pictures and PDF pages.' });
   });

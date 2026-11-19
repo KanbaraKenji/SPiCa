@@ -386,7 +386,7 @@ export function makePpt(
           u32(0),
           Buffer.alloc(8),
           u32(0),
-          u32(s.notes ? notesId(i) : 0),
+          u32(s.notes ? 512 + i : 0), // the notes page's identifier in the notes list (not its object id)
           u16(0),
           u16(0),
         ]),

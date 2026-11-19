@@ -59,21 +59,21 @@ export class AttachImages {
     this.#io = io;
   }
 
-  #write(data: Buffer, ext: string): string {
-    mkdirSync(this.#dir, { recursive: true });
-    const path = join(this.#dir, `${randomUUID()}${ext}`);
-    writeFileSync(path, data);
-    return path;
-  }
-
   /**
    * A pasted picture as a PNG file at its own size (the core sends a smaller copy when needed and keeps this one, so
-   * the model can look at a part of it in full detail); null when the bytes are not a picture.
+   * the model can look at a part of it in full detail); null when the bytes are not a picture. Named by the time of
+   * the paste (the name shows on its file card), in a folder of its own.
    */
-  fromPaste(data: Buffer): string | null {
+  fromPaste(data: Buffer, now = new Date()): string | null {
     const pic = this.#io.fromBuffer(data);
     if (pic.isEmpty()) return null;
-    return this.#write(pic.toPNG(), '.png');
+    const folder = join(this.#dir, randomUUID());
+    mkdirSync(folder, { recursive: true });
+    const p2 = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${p2(now.getMonth() + 1)}-${p2(now.getDate())} ${p2(now.getHours())}-${p2(now.getMinutes())}-${p2(now.getSeconds())}`;
+    const path = join(folder, `${stamp}.png`);
+    writeFileSync(path, pic.toPNG());
+    return path;
   }
 
   /**
@@ -95,7 +95,7 @@ export class AttachImages {
     for (const n of names) {
       const p = join(this.#dir, n);
       try {
-        if (now - statSync(p).mtimeMs > 24 * 60 * 60 * 1000) rmSync(p, { force: true });
+        if (now - statSync(p).mtimeMs > 24 * 60 * 60 * 1000) rmSync(p, { recursive: true, force: true });
       } catch {
         // gone already
       }
