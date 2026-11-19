@@ -217,5 +217,7 @@ export const EN_MAIN: Catalog = {
   填入并提交: 'Fill in and submit',
   下载: 'Download',
   点击按钮: 'Click a button',
+  运行脚本: 'Run a script',
+  上传文件: 'Upload files',
   '{field}：{text}': '{field}: {text}',
 };

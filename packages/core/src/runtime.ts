@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { updatePlanTool } from './tools/plan-tool.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
@@ -19,7 +20,7 @@ import { envBinDir, envPackagesOnDisk, pythonEnvStatus } from './python-env.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
-import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './tools/types.ts';
+import { ToolRegistry, validateInput, type FileExtractor, type ImageFitter, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
 import type { SettingsBridge } from './settings-tools.ts';
 import { PluginSampler } from './sampling.ts';
@@ -32,6 +33,7 @@ import type {
   CreateProjectRequest,
   CreateSessionRequest,
   CwdChangeMeta,
+  ChangePreview,
   GuardCause,
   Message,
   ProjectDetail,
@@ -174,10 +176,15 @@ export interface RuntimeInternals {
   readonly tracer: Tracer;
   readonly ledger: CostLedger;
   readonly extractors: FileExtractor[];
+  /** The host's image shrinker (Runtime.imageFitter), for read_file. */
+  readonly imageFitter: ImageFitter | undefined;
   provider(id: string): Provider;
   limiter(providerId: string): RateLimiter;
   parentChain(sessionId: string): string[];
   services(session: Session): Record<string, unknown>;
+  /** A confirmation card outside the run's own pauses (a step of a running call asks on it). */
+  askOutsideSession(card: Parameters<Runtime['askOutsideSession']>[0]): { callId: string; answer: Promise<boolean> };
+  resolveViewConfirm(callId: string, approved: boolean): boolean;
   onUserMessage(session: Session, message: Message): void;
   onStatus(session: Session, status: SessionStatus): void;
   onRunEnd(session: Session, result: RunResult): void;
@@ -323,6 +330,11 @@ export class Runtime implements RuntimeInternals {
    */
   settingsBridge: SettingsBridge | undefined;
   /**
+   * Makes a picture the core cannot shrink itself (JPEG, WEBP, GIF, BMP over IMAGE_LIMITS) fit: the host's copy in
+   * `dir`, or undefined. Set by the desktop host (it has Chromium's decoders); undefined: such pictures are refused.
+   */
+  imageFitter: ImageFitter | undefined;
+  /**
    * Changes to the settings from Spica's MCP service wait for the user's
    * confirmation. Default off: they apply at once and are shown in the
    * conversations (settings.changed, a note with meta.settingsChange).
@@ -380,6 +392,7 @@ export class Runtime implements RuntimeInternals {
       }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
+      updatePlanTool,
       ...projectTools,
       ...historyTools,
       ...createMemoryTools(this),
@@ -983,28 +996,32 @@ export class Runtime implements RuntimeInternals {
     name: string;
     input: unknown;
     reason: string;
-    cause: GuardCause;
+    /** Why the guard asks (shown under the card); none for a hook's or an irreversible tool's own question. */
+    cause?: GuardCause;
     /** What it allows cannot be undone: the card shows 无法撤销. */
     irreversible?: boolean;
+    change?: ChangePreview;
     callId?: string;
     host?: Session;
     userOnly?: boolean;
+    /** Waits until it is answered (a step of a running call); otherwise unanswered after 10 minutes means no. */
+    untilAnswered?: boolean;
   }): { callId: string; answer: Promise<boolean> } {
     const callId = card.callId ?? newId('ask');
     const where = { sessionId: card.host?.id ?? '', parentChain: card.host?.parentChain ?? [] };
     if (card.userOnly) this.#userOnly.add(callId);
     const answer = new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
-      timer.unref?.();
+      const timer = card.untilAnswered ? undefined : setTimeout(() => finish(false), 10 * 60_000); // nobody answered: no
+      timer?.unref?.();
       const finish = (approved: boolean) => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         this.#viewConfirms.delete(callId);
         this.#userOnly.delete(callId);
         this.events.emit(where, { type: 'confirm.resolved', callId, approved });
         resolve(approved);
       };
       this.#viewConfirms.set(callId, finish);
-      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, cause: card.cause, ...(card.irreversible ? { irreversible: true } : {}) });
+      this.events.emit(where, { type: 'confirm.request', callId, name: card.name, input: card.input, reason: card.reason, ...(card.cause ? { cause: card.cause } : {}), ...(card.irreversible ? { irreversible: true } : {}), ...(card.change ? { change: card.change } : {}) });
     });
     return { callId, answer };
   }

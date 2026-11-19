@@ -3,7 +3,7 @@
 import { relocate, shownPath } from './relocate';
 import type { ChangePreview, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
-import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
 
@@ -65,7 +65,9 @@ export type Block =
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
-  | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
+  | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
+  /** An update_plan call: the whole list as it stands after it. `failed`: the core refused it (the plan before it stands). */
+  | { type: 'plan'; callId: string; steps: PlanStep[]; failed?: boolean };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
 export interface ChildNote {
@@ -380,6 +382,38 @@ function asSuggest(callId: string, input: unknown): Block {
   return { type: 'suggest', callId, title: typeof v.title === 'string' ? v.title : '', actions };
 }
 
+function asPlan(callId: string, input: unknown): Block {
+  const { steps, error } = readPlan((input && typeof input === 'object' ? (input as { plan?: unknown }) : {}).plan);
+  return { type: 'plan', callId, steps, ...(error ? { failed: true } : {}) };
+}
+
+/**
+ * The conversation's plan: the steps of the latest update_plan call the core took (in the answers as they stand, not
+ * replaced versions); `item`: the index of the item that holds it. None before the first call, or once cleared.
+ */
+export function currentPlan(t: Transcript): { callId: string; steps: PlanStep[]; item: number } | undefined {
+  for (let i = t.items.length - 1; i >= 0; i--) {
+    const it = t.items[i];
+    if (it?.kind !== 'response') continue;
+    for (let j = it.blocks.length - 1; j >= 0; j--) {
+      const b = it.blocks[j];
+      if (b?.type !== 'plan' || b.failed) continue;
+      return b.steps.length ? { callId: b.callId, steps: b.steps, item: i } : undefined;
+    }
+  }
+  return undefined;
+}
+
+/** The update_plan call an answer finished the plan with (its last plan has every step done): that list stays there. */
+export function finishedPlanIn(blocks: Block[]): string | undefined {
+  for (let j = blocks.length - 1; j >= 0; j--) {
+    const b = blocks[j];
+    if (b?.type !== 'plan' || b.failed) continue;
+    return b.steps.length && b.steps.every((s) => s.status === 'completed') ? b.callId : undefined;
+  }
+  return undefined;
+}
+
 function asAsk(callId: string, input: unknown): Block {
   const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown; recommended?: unknown; multiSelect?: unknown };
   const options = Array.isArray(v.options) ? v.options.map(String) : [];
@@ -445,6 +479,8 @@ function cancelOpenCards(items: Item[], keep: ReadonlySet<string> = new Set()): 
 
 /** A tool result for a question or a confirmation: an answer, or (an error: the core cancelled it) cancelled. */
 function settleCard(items: Item[], callId: string, content: string, isError: boolean | undefined): void {
+  const plan = findBlock(items, 'plan', callId);
+  if (plan && isError) plan.failed = true;
   const ask = findBlock(items, 'ask', callId);
   if (ask && ask.answer === undefined) {
     if (isError) {
@@ -542,6 +578,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           r.blocks.push({ type: 'thinking', text: b.text });
         } else if (b.type === 'tool_use') {
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
+          else if (b.name === PLAN_TOOL) r.blocks.push(asPlan(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
           else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
         }
@@ -785,7 +822,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.call': {
-      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL) return t;
+      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === PLAN_TOOL) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
       lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
       return t;
@@ -793,6 +830,10 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'tool.start': {
       if (e.name === SUGGEST_TOOL) {
         if (!findBlock(items, 'suggest', e.callId)) lastResponse(items, respId).blocks.push(asSuggest(e.callId, e.input));
+        return t;
+      }
+      if (e.name === PLAN_TOOL) {
+        if (!findBlock(items, 'plan', e.callId)) lastResponse(items, respId).blocks.push(asPlan(e.callId, e.input));
         return t;
       }
       if (e.name === ASK_TOOL) return t;
@@ -825,6 +866,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.end': {
+      const plan = findBlock(items, 'plan', e.callId);
+      if (plan && e.isError) plan.failed = true;
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
         tool.state = e.isError ? failedState(e.preview) : 'done';
@@ -1062,7 +1105,9 @@ export function fileCardLine(card: FileCardMeta): string {
 
 /** The two halves of fileCardLine: what the file is (PDF · 4 页) and what was read of it (Read pages 1-3). */
 export function fileCardParts(card: FileCardMeta): { kind: string; read: string } {
-  const kind: string[] = [KIND_LABEL[card.kind] ? t(KIND_LABEL[card.kind]) : card.kind];
+  // a picture: 图片 · 1920×1080 (its size as the file is)
+  const kind: string[] = [card.image ? t('图片') : KIND_LABEL[card.kind] ? t(KIND_LABEL[card.kind]) : card.kind];
+  if (card.image) kind.push(`${card.image.width}×${card.image.height}`);
   if (card.pageCount) kind.push(t('{n} 页', { n: card.pageCount }));
   if (card.sheets?.length) kind.push(t('{n} 个表', { n: card.sheets.length }));
   if (card.slideCount) kind.push(t('{n} 页幻灯片', { n: card.slideCount }));

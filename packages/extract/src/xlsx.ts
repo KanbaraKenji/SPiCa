@@ -16,9 +16,9 @@ interface Workbook {
   parts: ZipParts;
 }
 
-type NumKind = 'date' | 'time' | 'datetime' | 'percent';
+export type NumKind = 'date' | 'time' | 'datetime' | 'percent';
 
-const BUILTIN_KINDS: Record<number, NumKind> = {
+export const BUILTIN_KINDS: Record<number, NumKind> = {
   9: 'percent', 10: 'percent',
   14: 'date', 15: 'date', 16: 'date', 17: 'date', 22: 'datetime',
   18: 'time', 19: 'time', 20: 'time', 21: 'time', 45: 'time', 46: 'time', 47: 'time',
@@ -130,7 +130,7 @@ export function serialToText(serial: number, kind: 'date' | 'time' | 'datetime',
   return date;
 }
 
-function numberText(v: string, kind: NumKind | undefined, date1904: boolean): string {
+export function numberText(v: string, kind: NumKind | undefined, date1904: boolean): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return v;
   if (kind === 'percent') return `${Number((n * 100).toPrecision(12))}%`;
@@ -248,10 +248,32 @@ function quickSize(wb: Workbook, index: number): Pick<Grid, 'name' | 'maxRow' | 
   return { name: wb.sheets[index]!.name, maxRow: end.row, maxCol: end.col };
 }
 
+/** A workbook of any format, as extractSheets lays it out. */
+export interface SheetSource {
+  /** "Excel workbook", "Excel 97-2003 workbook". */
+  readonly label: string;
+  readonly sheets: readonly { name: string; hidden: boolean }[];
+  /** Sheet `index` (0-based) within the window. */
+  grid(index: number, win: SheetWindow): Grid;
+  /** The sheet's size without reading its rows, when the file says it. */
+  size?(index: number): Pick<Grid, 'name' | 'maxRow' | 'maxCol'> | undefined;
+}
+
 export async function extractXlsx(src: SourceFile, req: ExtractRequest, maxChars: number, signal?: AbortSignal): Promise<ExtractResult> {
   const wb = readWorkbook(src.bytes);
   if (wb.sheets.length === 0) throw new ExtractError(`Not a readable ${WHAT} (it lists no sheets).`);
-  const names = wb.sheets.map((s) => s.name);
+  return extractSheets(
+    { label: WHAT, sheets: wb.sheets, grid: (i, win) => parseSheet(wb, i, win), size: (i) => quickSize(wb, i) },
+    src,
+    req,
+    maxChars,
+    signal,
+  );
+}
+
+/** Lay out the sheets asked for (all, or `req.sheet`) and rows `offset`..`offset+limit-1` within the budget. */
+export async function extractSheets(book: SheetSource, src: SourceFile, req: ExtractRequest, maxChars: number, signal?: AbortSignal): Promise<ExtractResult> {
+  const names = book.sheets.map((s) => s.name);
   let targets: number[];
   if (req.sheet !== undefined && req.sheet !== '') {
     const i = pickSheet(names, req.sheet);
@@ -273,9 +295,9 @@ export async function extractXlsx(src: SourceFile, req: ExtractRequest, maxChars
   for (const i of targets) {
     if (stopped) break;
     throwIfAborted(signal);
-    const g = parseSheet(wb, i, { from, to, keepChars: budget.left });
+    const g = book.grid(i, { from, to, keepChars: budget.left });
     grids[i] = g;
-    const label = `=== sheet ${i + 1} "${g.name}"${wb.sheets[i]!.hidden ? ' (hidden)' : ''} — ${g.rowCount} rows with data, ${sheetInfo(g).range ?? 'empty'} ===\n`;
+    const label = `=== sheet ${i + 1} "${g.name}"${book.sheets[i]!.hidden ? ' (hidden)' : ''} — ${g.rowCount} rows with data, ${sheetInfo(g).range ?? 'empty'} ===\n`;
     if (g.rowCount === 0) {
       if (budget.take(`${label}(empty sheet)\n`)) out.push(`${label}(empty sheet)\n`);
       continue;
@@ -296,9 +318,9 @@ export async function extractXlsx(src: SourceFile, req: ExtractRequest, maxChars
   if (shownSheets.length > 1) read = { sheet: shownSheets.join(', ') };
 
   // Sheets we did not open still need their size for the table of contents.
-  const infos = names.map((_, i) => sheetInfo(grids[i] ?? quickSize(wb, i) ?? parseSheet(wb, i, { from: 1, to: 0, keepChars: 0 })));
+  const infos = names.map((_, i) => sheetInfo(grids[i] ?? book.size?.(i) ?? book.grid(i, { from: 1, to: 0, keepChars: 0 })));
 
-  const head = `Excel workbook, ${names.length} sheet${names.length === 1 ? '' : 's'}: ${infos
+  const head = `${book.label}, ${names.length} sheet${names.length === 1 ? '' : 's'}: ${infos
     .map((s, k) => `${k + 1} "${s.name}" (${s.range ?? 'empty'})`)
     .join('; ')}.`;
   const lines = [head, 'Rows are numbered as in Excel; columns are lettered. Cite cells as Sheet!C12.', '', ...out];

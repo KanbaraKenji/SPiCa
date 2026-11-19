@@ -57,8 +57,9 @@ function fakePage(state: { url: string; loading?: boolean; visible?: boolean; sn
     executeJavaScriptInIsolatedWorld: async (_w, [s]) => (/__spicaRefs \|\| \[\]\)\[|document\.activeElement;\n {2}if/.test(s!.code) ? state.facts : /activeElement; if/.test(s!.code) ? undefined : (state.snapshot ?? snap({ url: state.url }))),
     executeJavaScript: async () => (state.visible === false ? 'hidden' : 'visible'),
     capturePage: async () => ({ toPNG: () => Buffer.from('png'), isEmpty: () => false }),
+    // what the page is told to do (input); the protocol's other commands (collecting the console, frames) are not counted
     cdp: async (method, params) => {
-      sent.push([method, params]);
+      if (method.startsWith('Input.')) sent.push([method, params]);
       return {};
     },
   };
@@ -83,7 +84,8 @@ function setup() {
         shown.push(tabId);
         return onScreen;
       },
-      tabs: async (sessionId) => tabs.filter((t) => (t as AgentTabInfo & { session: string }).session === sessionId),
+      // a tab's address is where its page is now
+      tabs: async (sessionId) => tabs.filter((t) => (t as AgentTabInfo & { session: string }).session === sessionId).map((t) => ({ ...t, url: pages.get(t.wcId!)?.state.url ?? t.url })),
     },
     page: (id) => pages.get(id)?.page,
     wait: async () => undefined,
@@ -99,7 +101,8 @@ describe('BrowserAgent', () => {
     expect(first.text).toContain('Address: https://example.com/a');
     await s.agent.open('s1', { url: 'https://example.com/b' });
     expect(s.tabs).toHaveLength(1);
-    expect(s.pages.get(100)!.loaded).toEqual(['https://example.com/b']);
+    // a new tab starts blank (the console and requests are collected from its first request), then loads the address
+    expect(s.pages.get(100)!.loaded).toEqual(['https://example.com/a', 'https://example.com/b']);
     const third = await s.agent.open('s1', { url: 'https://example.com/c', new_tab: true });
     expect(third.tab).toBe(2);
   });
@@ -153,7 +156,9 @@ describe('acting on a page', () => {
     p.state.facts = button();
     const r = await s.agent.click('s1', { ref: 3 });
     expect(r.text.split('\n')[0]).toBe('Clicked [3] "Next".');
+    // the pointer moved there first (a press without it is lost in a frame of another site)
     expect(p.sent.map(([m, a]) => [m, a?.type, a?.x, a?.y])).toEqual([
+      ['Input.dispatchMouseEvent', 'mouseMoved', 120, 40],
       ['Input.dispatchMouseEvent', 'mousePressed', 120, 40],
       ['Input.dispatchMouseEvent', 'mouseReleased', 120, 40],
     ]);
@@ -173,7 +178,7 @@ describe('acting on a page', () => {
     p.state.facts = button({ type: 'submit', name: 'Place order', form: { action: 'https://shop.example/order', method: 'post' } });
     await s.agent.inspect('s1', { tool: 'browser_click', ref: 3, callId: 'c2' });
     await s.agent.click('s1', { ref: 3, callId: 'c2' });
-    expect(p.sent).toHaveLength(2);
+    expect(p.sent).toHaveLength(3);
   });
 
   it('an unconfirmed click arms the form stop; a confirmed one does not', async () => {
@@ -257,9 +262,11 @@ describe('one conversation acts in line', () => {
     };
     await Promise.all([s.agent.type('s1', { ref: 1, text: '张三' }), s.agent.type('s1', { ref: 2, text: 'zhangsan@example.com' })]);
     expect(p.sent.map(([m, a]) => (m === 'Input.insertText' ? `type ${String(a?.text)}` : String(a?.type)))).toEqual([
+      'mouseMoved',
       'mousePressed',
       'mouseReleased',
       'type 张三',
+      'mouseMoved',
       'mousePressed',
       'mouseReleased',
       'type zhangsan@example.com',

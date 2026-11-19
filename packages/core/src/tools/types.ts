@@ -25,7 +25,27 @@ export interface ToolContext {
   confirmedBy?: 'user' | 'view';
   /** ISO 8601: when the user message this round answers was written (present_files tells made from read by it). */
   roundStartedAt?: string;
+  /** The conversation's model takes images: false when it does not (catalog, or a refusal seen); undefined: not known (sent). */
+  imagesAllowed?: boolean;
+  /** The conversation's provider kind (anthropic, openai, ...), for image token estimates. */
+  providerKind?: string;
+  /** The host's image shrinker (Runtime.imageFitter). */
+  fitImage?: ImageFitter;
+  /**
+   * Runs another tool of this conversation as one step of this call (browser_batch), judged as a call of its own
+   * would be: hooks, the guard (outside content met by earlier steps counts), the approval mode. A confirmation is
+   * asked on a card right then; the step waits for the answer. Absent where there is no conversation (a plugin view).
+   */
+  step?(name: string, input: Record<string, unknown>): Promise<StepResult>;
 }
+
+/** How a step went: ran (ok / error), was blocked by a hook, declined by the user, or is not a tool here. */
+export interface StepResult extends ToolOutput {
+  status: 'ok' | 'error' | 'denied' | 'declined' | 'unavailable';
+}
+
+/** A copy of the picture at `src` within IMAGE_LIMITS, written in `dir`: its path, or undefined when it cannot be made. */
+export type ImageFitter = (src: string, dir: string) => Promise<string | undefined>;
 
 export interface ToolOutput {
   content: string;
@@ -105,6 +125,16 @@ export interface ExtractRequest {
   limit?: number;
   /** Upper bound for the returned text (the core's single-read limit). */
   maxChars: number;
+  /** PDF: pages with no or very little text may come back as pictures (ExtractResult.pageImages), at most this many. */
+  pageImages?: number;
+}
+
+/** A PDF page drawn as a picture (a scanned page): RGBA pixels, 4 bytes each. */
+export interface PageImage {
+  page: number;
+  width: number;
+  height: number;
+  rgba: Uint8Array;
 }
 
 /** A formatted extraction: the core adds only the fetch-time line and a header. */
@@ -112,6 +142,8 @@ export interface ExtractResult {
   text: string;
   meta: FileCardMeta;
   truncated?: boolean;
+  /** Pages drawn as pictures (ExtractRequest.pageImages): the core sends them to the model after the text. */
+  pageImages?: PageImage[];
 }
 
 export interface FileExtractor {

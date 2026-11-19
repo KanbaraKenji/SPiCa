@@ -91,9 +91,19 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   void userMcp.set(options.userMcp ?? []).then(() => parent?.postMessage({ type: 'mcp.changed' }));
   // The built-in browser's tools: they ask the main process (host methods browser.*, main/browser/agent.ts).
   const bridge = rt.settingsBridge;
+  // files an upload may take: the conversation's folders and what the person gave it (as for writing, write-scope.ts)
+  const uploadRoots = (sessionId: string) => rt.session(sessionId)?.writeRoots() ?? [];
   const unregisterBrowser = bridge
-    ? [...browserTools((method, params) => bridge.host(method, params)).map((tool) => rt.tools.register(tool, 'desktop')), rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params)))]
+    ? [
+        ...browserTools((method, params) => bridge.host(method, params), { roots: uploadRoots }).map((tool) => rt.tools.register(tool, 'desktop')),
+        rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params), uploadRoots)),
+      ]
     : [];
+  // read_file's pictures the core cannot make smaller itself (JPEG, WEBP, GIF, BMP): Chromium's decoders in the main process (main/images.ts).
+  if (bridge) rt.imageFitter = async (src, dir) => {
+    const path = await bridge.host('images.fit', [src, dir]);
+    return typeof path === 'string' ? path : undefined;
+  };
 
   let http: McpHttpServer | undefined;
   const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);

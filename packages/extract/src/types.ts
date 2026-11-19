@@ -16,6 +16,19 @@ export interface ExtractRequest {
   limit?: number;
   /** Upper bound on returned characters; the extractor also applies its own cap. */
   maxChars?: number;
+  /**
+   * PDF: pages with little or no text (scanned) are drawn as pictures, at most this many (ExtractResult.pageImages).
+   * 0: the reader's model does not take pictures (said in the text). Absent: none are drawn.
+   */
+  pageImages?: number;
+}
+
+/** A PDF page drawn as a picture: RGBA, 4 bytes per pixel. */
+export interface PageImage {
+  page: number;
+  width: number;
+  height: number;
+  rgba: Uint8Array;
 }
 
 export interface SheetInfo {
@@ -48,6 +61,8 @@ export interface ExtractResult {
   text: string;
   meta: FileCardMeta;
   truncated?: boolean;
+  /** Pages drawn as pictures (ExtractRequest.pageImages), in page order. */
+  pageImages?: PageImage[];
 }
 
 /** Thrown for files that cannot be read (corrupt, encrypted, too large). The message is model-facing. */

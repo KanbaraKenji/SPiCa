@@ -93,7 +93,7 @@ interface Run {
 class Aborted extends Error {}
 
 /** Tools of the script that only read (a round that used only these can be regenerated, as in the core). */
-const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
+const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions', 'update_plan']);
 /** remember / forget: taken back when their answer is regenerated, so they do not keep it from being regenerated (as in the core). */
 const MEMORY_TOOLS = new Set(['remember', 'forget']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
@@ -1546,6 +1546,41 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/清单/.test(text)) {
+        // The plan (update_plan) above the message box. 清单没做完: two of five steps done, then the round ends.
+        // Otherwise: the plan, its steps done one by one, a question in the middle (the plan and the question card
+        // at once), the rest after the answer, the plan finished.
+        const steps = ['读评审记录和测试报告', '汇总四家供应商的报价', '起草评审纪要', '列出待办和负责人', '整理成邮件草稿给你过目'];
+        const plan = (done: number, going = true) => ({ plan: steps.map((step, i) => ({ step, status: i < done ? 'completed' : i === done && going ? 'in_progress' : 'pending' })) });
+        const short = /没做完/.test(text);
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(0), 'Plan updated: 0 of 5 steps completed.', 200)));
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '评审纪要.md' }, '评审纪要.md (lines 1-60 of 60)\n样机评审：外壳 120×80×24 mm，续航实测 11.5 小时。', 300)));
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(1), 'Plan updated: 1 of 5 steps completed.', 200)));
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '报价\\四家报价.xlsx' }, '四家报价.xlsx: 4 rows', 300)));
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(2, !short), 'Plan updated: 2 of 5 steps completed.', 200)));
+        if (short) {
+          const lead = '评审记录和报价都看完了，四家里有两家还没回价。纪要等你确认口径后再写。';
+          await this.#stream(sessionId, 'text', lead, signal);
+          blocks.push({ type: 'text', text: lead });
+        } else {
+          const callId = this.#id('call');
+          const input = { question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' };
+          this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'ask_user', input }]);
+          this.#addPending(sessionId, { kind: 'ask', callId, createdAt: isoAt(this.#now()), ...input });
+          this.#emit(sessionId, { type: 'ask.request', callId, ...input });
+          this.#setStatus(sessionId, 'awaiting_answer');
+          waiting = { id: callId, name: 'ask_user', input, stored: true };
+          const answer = await this.#waitFor(run, callId);
+          waiting = undefined;
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: answer }]);
+          this.#setStatus(sessionId, 'thinking');
+          for (let i = 3; i <= 5; i++) {
+            blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(i), `Plan updated: ${i} of 5 steps completed.`, 300)));
+          }
+          const after = `按「${answer}」写好了纪要，待办和负责人列在最后，邮件草稿在草稿箱里，没有发送。`;
+          await this.#stream(sessionId, 'text', after, signal);
+          blocks.push({ type: 'text', text: after });
+        }
       } else if (/确认|发送|发给/.test(text)) {
         const callId = this.#id('call');
         const input = { to: '项目组', subject: '样机评审时间', body: '各位好，样机评审定在周四下午两点。' };
