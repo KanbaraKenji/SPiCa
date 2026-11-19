@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, CommandJob, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -273,6 +273,8 @@ export interface Transcript {
   queued?: { id: string; text: string }[];
   /** File details the core reported (file.card), by call id: the call's first card. */
   fileCards?: Record<string, FileCardMeta>;
+  /** Commands this conversation ran in the background (run_command with run_in_background), by id. */
+  jobs?: Record<string, CommandJob>;
   /** Every card of a call that reported several (a command, present_files, a plugin tool), in order, by call id. */
   fileCardLists?: Record<string, FileCardMeta[]>;
   /** What the history tools found (history.card), by call id: the table under the tool row, and where [name](history:n) links go. */
@@ -996,9 +998,30 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (provider && provider !== 'all') t.errorProvider = provider;
       return t;
     }
+    case 'command.job': {
+      t.jobs = { ...(t.jobs ?? {}), [e.job.id]: e.job };
+      return t;
+    }
     default:
       return t;
   }
+}
+
+/**
+ * The conversation's background commands as the core listed them; the files each changed (known when it ended)
+ * become its run_command call's cards, as they do live (file.card), so they are there after a restart too.
+ */
+export function withJobs(t: Transcript, jobs: readonly CommandJob[]): Transcript {
+  if (!jobs.length) return t;
+  const next: Transcript = { ...t, jobs: { ...(t.jobs ?? {}) } };
+  for (const j of jobs) {
+    next.jobs![j.id] = j;
+    if (j.files?.length && !next.fileCards?.[j.callId]) {
+      next.fileCards = { ...(next.fileCards ?? {}), [j.callId]: j.files[0]! };
+      next.fileCardLists = { ...(next.fileCardLists ?? {}), [j.callId]: j.files };
+    }
+  }
+  return next;
 }
 
 /**

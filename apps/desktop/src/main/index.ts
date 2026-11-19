@@ -593,6 +593,8 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'regenerate',
   'confirm',
   'abort',
+  'listCommandJobs',
+  'stopCommandJob',
   'exportTraces',
   'getTopSession',
   'createProject',
