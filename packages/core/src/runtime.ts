@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { updatePlanTool } from './tools/plan-tool.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
@@ -391,6 +392,7 @@ export class Runtime implements RuntimeInternals {
       }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
+      updatePlanTool,
       ...projectTools,
       ...historyTools,
       ...createMemoryTools(this),
