@@ -43,4 +43,31 @@ describe('ChildProgress (the 等待子任务 row opened)', () => {
     expect([...container.querySelectorAll('.child-progress-row')].map((r) => r.textContent)).toEqual(['报价汇总等待回答']);
     cleanup();
   });
+
+  it('no plan: the step it is on, as its latest call says it; done, 已完成; waiting for a yes, 等待确认', () => {
+    const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+    let writing: Transcript = applyEvent({ items: [] }, ev({ type: 'tool.start', callId: 'c1', name: 'list_dir', input: { path: '.' } }));
+    writing = applyEvent(writing, ev({ type: 'tool.end', callId: 'c1', name: 'list_dir', isError: false, preview: '', durationMs: 5 }));
+    writing = applyEvent(writing, ev({ type: 'tool.start', callId: 'c2', name: 'write_file', input: { path: '安排.md', content: 'x' } }));
+    const wrote = applyEvent(writing, ev({ type: 'tool.end', callId: 'c2', name: 'write_file', isError: false, preview: '', durationMs: 5 }));
+    const src: ChildSource = {
+      parentId: 'top',
+      sessions: [session('a', '新员工第一周安排', 'tool'), session('b', '办公室搬迁', 'thinking'), session('c', '收尾', 'done'), session('d', '核对', 'awaiting_confirm'), session('e', '刚开始', 'thinking')],
+      transcripts: { a: writing, b: wrote, c: wrote, d: wrote },
+      load: () => {},
+    };
+    const { container } = render(
+      <ChildSourceContext.Provider value={src}>
+        <ChildProgress ids={['a', 'b', 'c', 'd', 'e']} />
+      </ChildSourceContext.Provider>,
+    );
+    expect([...container.querySelectorAll('.child-progress-row')].map((r) => r.textContent)).toEqual([
+      '新员工第一周安排Writing 安排.md',
+      '办公室搬迁Wrote 安排.md',
+      '收尾已完成',
+      '核对等待确认',
+      '刚开始进行中',
+    ]);
+    cleanup();
+  });
 });

@@ -1,10 +1,12 @@
 // The sub-agents a wait_agents call waits for, in its opened row: each one's name and how far its plan (update_plan)
-// is, read from its own conversation (loaded once the row opens; its live events keep it current).
+// is, read from its own conversation (loaded once the row opens; its live events keep it current). Without a plan:
+// the step it is on as its latest call's line says it.
 import { createContext, useContext, useEffect } from 'react';
 import { planProgress, type SessionInfo, type SessionStatus } from '@spica/protocol';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { currentPlan, isRunning, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
+import { runningWords, toolWords } from './tool-words';
 
 export interface ChildSource {
   /** The conversation that is open (the parent): a wait without ids waits for its sub-agents. */
@@ -20,6 +22,20 @@ function Mark({ status, finished, running }: { status: SessionStatus | undefined
   if (finished) return <SpicaStatusIcon name="done" size={14} />;
   if (running) return <SpicaStatusIcon name="running" size={14} />;
   return <span className={`plan-dot${isRunning(status) ? ' is-current' : ''}`} aria-hidden="true" />;
+}
+
+/** A sub-agent's latest call as its own row says it: Writing … while it runs, Wrote … once done. */
+export function latestStep(tr: Transcript | undefined): string | undefined {
+  for (const it of [...(tr?.items ?? [])].reverse()) {
+    if (it.kind !== 'response') continue;
+    for (const b of [...it.blocks].reverse()) {
+      if (b.type !== 'tool') continue;
+      if (b.state === 'running' || b.state === 'pending') return runningWords(b);
+      const w = toolWords(b);
+      return [w.verb, w.file?.name ?? w.object].filter(Boolean).join(' ');
+    }
+  }
+  return undefined;
 }
 
 /** A sub-agent's state in words, when its plan does not say (no plan, or it stopped before the plan was done). */
@@ -45,7 +61,7 @@ export function ChildProgress({ ids }: { ids: readonly string[] | undefined }) {
         const finished = all || (!p && (c.status === 'done' || c.status === 'idle'));
         const running = !finished && (c.status === 'queued' || c.status === 'thinking' || c.status === 'tool');
         const state = STATE_WORDS[c.status];
-        const line = all ? t('已完成') : state ? t(state) : p ? (p.current?.step ?? '') : ended ? t('已完成') : t('进行中');
+        const line = all ? t('已完成') : state ? t(state) : p ? (p.current?.step ?? '') : ended ? t('已完成') : (latestStep(tr) ?? t('进行中'));
         return (
           <li key={c.id} className="child-progress-row">
             <span className="plan-mark">

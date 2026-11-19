@@ -42,3 +42,34 @@ describe('readPlan / planProgress', () => {
     expect(planProgress([{ step: 'a', status: 'completed' }])).toMatchObject({ done: 1, total: 1, currentIndex: -1 });
   });
 });
+
+describe('update_plan for sub-agents', () => {
+  it('a sub-agent started with spawn_agent is sent the same update_plan as its parent', async () => {
+    const { makeRuntime, startGateway } = await import('../testing/helpers.ts');
+    const gw = await startGateway();
+    try {
+      const rt = makeRuntime(gw, { defaults: { providerId: 'fake-openai', model: 'fake-model', maxTokens: 512 } });
+      const top = rt.createSession();
+      const seen: { child: boolean; tool: unknown }[] = [];
+      gw.onRequest((req) => {
+        const body = JSON.stringify(req.body);
+        const tools = (req.body.tools ?? []) as { function?: { name?: string } }[];
+        const child = body.includes('write the list');
+        seen.push({ child, tool: tools.find((t) => t.function?.name === 'update_plan') });
+        if (!child && !body.includes('Started sub-agent')) return { toolCalls: [{ name: 'spawn_agent', args: { title: 'helper', task: 'write the list' } }] };
+        return { text: 'ok' };
+      });
+      await top.send('start a helper').done;
+      const kid = rt.sessions().find((s) => s.parentId === top.id);
+      expect(kid).toBeDefined();
+      await kid?.idle();
+      const parentTool = seen.find((s) => !s.child)?.tool;
+      const childTool = seen.find((s) => s.child)?.tool;
+      expect(parentTool).toBeDefined();
+      expect(childTool).toEqual(parentTool);
+      await rt.close();
+    } finally {
+      await gw.stop();
+    }
+  });
+});
