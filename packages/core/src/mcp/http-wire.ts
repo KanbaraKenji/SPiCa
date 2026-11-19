@@ -208,10 +208,10 @@ export class McpHttpWire {
       if (![301, 302, 307, 308].includes(res.status) || !location) return res;
       await res.body?.cancel().catch(() => undefined);
       const next = new URL(location, at);
-      if (next.origin !== at.origin) throw Object.assign(new Error(`MCP server "${this.#o.name}" redirected to another site (${next.origin}); not followed`), { status: res.status });
+      if (next.origin !== at.origin) throw Object.assign(new Error(`MCP server "${this.#o.name}" could not be reached (net.redirect): it sent the request to another site (${next.origin}); not followed`), { status: res.status });
       at = next;
     }
-    throw Object.assign(new Error(`MCP server "${this.#o.name}" redirected too many times`), { status: 310 });
+    throw Object.assign(new Error(`MCP server "${this.#o.name}" could not be reached (net.redirect): too many redirects`), { status: 310 });
   }
 
   #deliver(text: string): void {

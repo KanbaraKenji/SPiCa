@@ -11,10 +11,33 @@ export type McpProblem =
   | { kind: 'crash-loop'; count: number; seconds: number }
   /** A newer MCP version than Spica speaks. */
   | { kind: 'version'; versions: string[] }
+  /** A web address that cannot be reached (no such host, nobody answering, a proxy in the way), or answers with an HTTP error. */
+  | { kind: 'unreachable'; status?: number }
+  /** A web address that wants a key (HTTP 401) and none was given. */
+  | { kind: 'needs-key' }
+  /** The key given is not accepted (HTTP 401 or 403). */
+  | { kind: 'bad-key' }
+  /** The address's certificate: not trusted, expired, or for another name. */
+  | { kind: 'certificate'; reason: 'untrusted' | 'expired' | 'name' }
   | { kind: 'other' };
 
-/** Reads the kind from the start error (the core's words) and what the service wrote. */
-export function mcpProblem(error: string, log: readonly string[], command: string): McpProblem {
+/** Reads the kind from the start error (the core's words) and what the service wrote. `keyGiven`: a web address with headers. */
+export function mcpProblem(error: string, log: readonly string[], command: string, opts: { keyGiven?: boolean } = {}): McpProblem {
+  const http = /answered HTTP (\d{3})/.exec(error);
+  if (http) {
+    const status = Number(http[1]);
+    if (status === 401) return opts.keyGiven ? { kind: 'bad-key' } : { kind: 'needs-key' };
+    if (status === 403 && opts.keyGiven) return { kind: 'bad-key' };
+    return { kind: 'unreachable', status };
+  }
+  const net = /could not be reached \(([\w.]+)\)/.exec(error);
+  if (net) {
+    const code = net[1]!;
+    if (code === 'tls.untrusted') return { kind: 'certificate', reason: 'untrusted' };
+    if (code === 'tls.expired') return { kind: 'certificate', reason: 'expired' };
+    if (code === 'tls.name_mismatch') return { kind: 'certificate', reason: 'name' };
+    return { kind: 'unreachable' };
+  }
   const text = `${error}\n${log.join('\n')}`;
   // cmd.exe, English and Chinese Windows: a program the .cmd calls (node for npx) is not there
   const cmd = /'([^']+)' (?:is not recognized as an internal or external command|不是内部或外部命令)/.exec(text);

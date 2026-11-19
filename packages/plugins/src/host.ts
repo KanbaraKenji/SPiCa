@@ -25,6 +25,10 @@ export interface McpLaunch {
   startTimeoutMs?: number;
   /** 'auto': ask with server/discover (MCP 2026-07-28) first, the initialize handshake otherwise. Default: the handshake only. */
   protocol?: 'legacy' | 'auto';
+  /** A server at a web address instead of a program (command, args, env, cwd unused). */
+  url?: string;
+  /** With url: sent with every request (a key). */
+  headers?: Record<string, string>;
   /** Server stderr, for the plugin log  */
   stderrLog?: (chunk: string) => void;
   /** The process ended; `expected` is true after disconnect(). */
