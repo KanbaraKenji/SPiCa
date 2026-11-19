@@ -1299,7 +1299,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
               {t('拒绝')}
             </button>
             {block.outsideFolder && !block.folderTooWide ? (
-              <AllowSplit disabled={sent} folder={block.outsideFolder} onAllow={(always) => decide(true, always)} />
+              <AllowSplit disabled={sent} hint={block.outsideFolder} onAllow={(always) => decide(true, always)} />
             ) : (
               <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
                 {t('允许')}

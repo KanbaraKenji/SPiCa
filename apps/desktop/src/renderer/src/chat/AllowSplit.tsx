@@ -8,7 +8,11 @@ import { t } from '../../../shared/i18n';
 import { Icon } from '../ui/Icon';
 import { ContextMenu } from '../ui/ContextMenu';
 
-export function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; folder: string; onAllow(always: boolean): void }) {
+/**
+ * Every confirmation that can be allowed for good uses this one (a write outside the folders, the computer-use card):
+ * `onAllow(true)` is Always allow, `onAllow(false)` Allow once; `hint` is the main part's hover text (what is allowed).
+ */
+export function AllowSplit({ disabled, hint, onAllow }: { disabled: boolean; hint?: string; onAllow(always: boolean): void }) {
   // The whole button while its menu is open (the menu's right edge goes on its right edge); null when closed.
   const [box, setBox] = useState<HTMLElement | null>(null);
   const open = box !== null;
@@ -23,7 +27,7 @@ export function AllowSplit({ disabled, folder, onAllow }: { disabled: boolean; f
   };
   return (
     <span className={open ? 'allow-split is-open' : 'allow-split'}>
-      <button type="button" className="btn btn-primary allow-split-main" disabled={disabled} title={folder} onClick={() => onAllow(true)} onKeyDown={onMainKey}>
+      <button type="button" className="btn btn-primary allow-split-main" disabled={disabled} title={hint} onClick={() => onAllow(true)} onKeyDown={onMainKey}>
         {t('始终允许')}
       </button>
       <button
