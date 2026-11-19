@@ -4,9 +4,10 @@
 // picked picture larger than the core's IMAGE_LIMITS is saved smaller (PNG stays
 // PNG, others become JPEG 85) so it is never refused; the core keeps its own copy
 // once the message is sent, so these files are only needed until then.
-import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
-import { extname, join } from 'node:path';
+import { closeSync, mkdirSync, openSync, readdirSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { extname, join, resolve } from 'node:path';
+import { imageSize, sniffImage } from '@spica/core/src/images.ts';
 import { IMAGE_LIMITS } from '@spica/protocol';
 
 /** The parts of Electron's NativeImage this uses (tests pass a fake). */
@@ -21,6 +22,8 @@ export interface Picture {
 export interface PictureIo {
   fromBuffer(data: Buffer): Picture;
   fromPath(path: string): Picture;
+  /** The system's picture of the file at about this size (Windows' decoders: BMP, GIF, WEBP). */
+  thumbnail?(path: string, size: { width: number; height: number }): Promise<Picture>;
 }
 
 const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
@@ -106,4 +109,50 @@ export class AttachImages {
       }
     }
   }
+}
+
+/** Width and height from a BMP, GIF or WEBP header: the kinds only the system's decoders read. */
+export function headerSize(buf: Buffer): { width: number; height: number } | undefined {
+  if (buf.length >= 26 && buf.toString('latin1', 0, 2) === 'BM') {
+    if (buf.readUInt32LE(14) === 12) return { width: buf.readUInt16LE(18), height: buf.readUInt16LE(20) };
+    return { width: Math.abs(buf.readInt32LE(18)), height: Math.abs(buf.readInt32LE(22)) };
+  }
+  const type = sniffImage(buf);
+  return type === 'image/gif' || type === 'image/webp' ? imageSize(buf, type) : undefined;
+}
+
+/**
+ * A picture read_file wants to show the model but the core cannot make smaller itself: a copy within IMAGE_LIMITS in
+ * `dir` (the conversation's media folder), PNG for lossless sources, else JPEG 85; null when it cannot be read.
+ * Chromium reads PNG and JPEG (the core decodes the usual BMPs itself); GIF, WEBP and unusual BMPs go through
+ * Windows' own decoders (`thumbnail`, the shell's picture of the file). The shell fits the picture in a square box and
+ * keeps its proportions (it does not tell width from height on Windows), so the box is the long side, no larger than
+ * the original's. Making it holds the main process for a moment (measured 0.1-0.6 s per picture).
+ */
+export async function fitForModel(io: PictureIo, src: string, dir: string): Promise<string | null> {
+  if (!isImagePath(src)) return null;
+  let pic: Picture | null = io.fromPath(src);
+  if (pic.isEmpty()) {
+    if (!io.thumbnail) return null;
+    let size: { width: number; height: number } | undefined;
+    try {
+      const fd = openSync(src, 'r');
+      const head = Buffer.alloc(64);
+      readSync(fd, head, 0, 64, 0);
+      closeSync(fd);
+      size = headerSize(head);
+    } catch {
+      return null;
+    }
+    if (!size?.width || !size.height) return null;
+    const box = Math.min(IMAGE_LIMITS.maxLongSide, Math.max(size.width, size.height));
+    pic = await io.thumbnail(resolve(src), { width: box, height: box }).catch(() => null);
+    if (!pic || pic.isEmpty()) return null;
+  }
+  const png = ['.png', '.gif', '.bmp'].includes(extname(src).toLowerCase());
+  const data = fitPicture(pic, png);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `fit-${createHash('sha256').update(data).digest('hex').slice(0, 20)}${png ? '.png' : '.jpg'}`);
+  writeFileSync(path, data);
+  return path;
 }

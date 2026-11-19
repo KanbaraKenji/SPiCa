@@ -66,7 +66,7 @@ describe('read_file', () => {
     });
     await writeFile(join(dir, 'book.xlsx'), 'xx');
     const r = await readFileTool.execute({ path: 'book.xlsx', sheet: 'Q1', offset: 1, limit: 50, pages: '2-3' }, ctx);
-    expect(seen).toEqual([{ pages: '2-3', sheet: 'Q1', offset: 1, limit: 50, maxChars: 200_000 }]);
+    expect(seen).toEqual([{ pages: '2-3', sheet: 'Q1', offset: 1, limit: 50, maxChars: 200_000, pageImages: 10 }]);
     expect(r.content.split('\n')[0]).toMatch(/^book\.xlsx \(xlsx, 2 bytes, modified .+; read sheet Q1, rows 1-2, A1:B2\)$/);
     expect(r.content).toContain('| A | B |\n| 1 | 2 |');
     expect(r.content).not.toMatch(/^\s+1\t/m); // no line numbers added

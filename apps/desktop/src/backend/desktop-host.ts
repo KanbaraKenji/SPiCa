@@ -83,6 +83,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         rt.hooks.register('desktop-browser', browserHook((method, params) => bridge.host(method, params), uploadRoots)),
       ]
     : [];
+  // read_file's pictures the core cannot make smaller itself (JPEG, WEBP, GIF, BMP): Chromium's decoders in the main process (main/images.ts).
+  if (bridge) rt.imageFitter = async (src, dir) => {
+    const path = await bridge.host('images.fit', [src, dir]);
+    return typeof path === 'string' ? path : undefined;
+  };
   // 操作电脑's tools: the main process decides what may be seen and touched (main/computer/agent.ts)
   let computerOn = options.computerUse === true;
   const unregisterComputer = bridge

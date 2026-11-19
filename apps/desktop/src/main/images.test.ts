@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AttachImages, fitPicture, isImagePath, type Picture } from './images';
+import { AttachImages, fitForModel, fitPicture, headerSize, isImagePath, type Picture } from './images';
 
 // A picture whose encoded size follows its pixel count (bytesPerPixel), like a photo.
 function fake(width: number, height: number, bytesPerPixel = 1): Picture & { resizedTo: string[] } {
@@ -69,5 +69,45 @@ describe('pictures for a message', () => {
     expect(copy?.endsWith('.jpg')).toBe(true);
     expect(imgs.prepare(small)).toBe(small);
     expect(imgs.prepare(join(dir, 'notes.txt'))).toBeNull();
+  });
+});
+
+describe('pictures read_file shows the model', () => {
+  it('writes a copy within the limits in the given folder: PNG for lossless sources, JPEG for photos', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-fit-'));
+    dirs.push(dir);
+    const io = { fromBuffer: () => fake(1, 1), fromPath: () => fake(4000, 3000, 0.1) };
+    const jpg = await fitForModel(io, join(dir, 'photo.JPG'), join(dir, 'media'));
+    expect(jpg).toMatch(/[\\/]media[\\/]fit-[0-9a-f]{20}\.jpg$/);
+    expect(statSync(jpg!).size).toBeGreaterThan(0);
+    expect(await fitForModel(io, join(dir, 'notes.txt'), join(dir, 'media'))).toBeNull();
+  });
+
+  it("reads what Chromium cannot (BMP, GIF, WEBP) through the system's picture, never larger than the original", async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'spica-fit-'));
+    dirs.push(dir);
+    const bmp = Buffer.alloc(64);
+    bmp.write('BM', 0, 'latin1');
+    bmp.writeUInt32LE(40, 14);
+    bmp.writeInt32LE(3000, 18);
+    bmp.writeInt32LE(-2000, 22); // top-down
+    writeFileSync(join(dir, 'scan.bmp'), bmp);
+    const gif = Buffer.from('474946383961' + '2c01' + 'c800', 'hex'); // 300 x 200
+    writeFileSync(join(dir, 'small.gif'), Buffer.concat([gif, Buffer.alloc(32)]));
+    const asked: string[] = [];
+    const empty = { ...fake(1, 1), isEmpty: () => true };
+    const io = {
+      fromBuffer: () => empty,
+      fromPath: () => empty,
+      thumbnail: async (p: string, s: { width: number; height: number }) => {
+        asked.push(`${basename(p)} ${s.width}x${s.height}`);
+        return fake(s.width, s.height);
+      },
+    };
+    expect(await fitForModel(io, join(dir, 'scan.bmp'), join(dir, 'media'))).toMatch(/\.png$/);
+    expect(await fitForModel(io, join(dir, 'small.gif'), join(dir, 'media'))).toMatch(/\.png$/);
+    expect(asked).toEqual(['scan.bmp 1568x1568', 'small.gif 300x300']);
+    expect(await fitForModel({ fromBuffer: () => empty, fromPath: () => empty }, join(dir, 'scan.bmp'), join(dir, 'media'))).toBeNull();
+    expect(headerSize(Buffer.from('not a picture at all, just some text here'))).toBeUndefined();
   });
 });
