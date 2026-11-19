@@ -6511,8 +6511,7 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* 始终允许 and its drop-down (chat/AllowSplit.tsx): one shape, the outer corners on the two ends, the inner edge
-   straight on both parts. Three looks while he picks (html[data-allow-variant]): a (default) one blue shape with a
-   thin line between; b the arrow a plain button of its own beside it; c one shape, the arrow part plain. */
+   straight on both parts; a thin light line between the two (the look he picked of three). */
 .allow-split {
   display: inline-flex;
   align-items: stretch;
@@ -6543,43 +6542,6 @@ section.plugins-part > .plugins-part-title {
 .allow-split > .btn:focus-visible {
   outline-color: var(--spica-on-accent);
   outline-offset: -4px;
-}
-
-html[data-allow-variant='b'] .allow-split {
-  gap: 4px;
-}
-
-html[data-allow-variant='b'] .allow-split-main {
-  border-radius: var(--radius-m);
-}
-
-html[data-allow-variant='b'] .allow-split-more,
-html[data-allow-variant='c'] .allow-split-more {
-  width: 28px;
-  background: var(--spica-control);
-  border-color: var(--spica-border-strong);
-  color: var(--spica-ink);
-}
-
-html[data-allow-variant='b'] .allow-split-more {
-  border-radius: var(--radius-m);
-}
-
-html[data-allow-variant='c'] .allow-split-more {
-  border-left: none;
-}
-
-html[data-allow-variant='b'] .allow-split-more:focus-visible,
-html[data-allow-variant='c'] .allow-split-more:focus-visible {
-  outline-color: var(--spica-accent);
-}
-
-html[data-allow-variant='b'] .allow-split-more:hover:not(:disabled),
-html[data-allow-variant='c'] .allow-split-more:hover:not(:disabled),
-html[data-allow-variant='b'] .allow-split.is-open > .allow-split-more,
-html[data-allow-variant='c'] .allow-split.is-open > .allow-split-more {
-  background: var(--spica-control-hover);
-  filter: none;
 }
 
 /* A text-only button inside a sentence: accent color, no underline. */
