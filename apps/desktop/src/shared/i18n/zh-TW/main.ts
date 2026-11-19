@@ -217,5 +217,7 @@ export const ZH_TW_MAIN: Catalog = {
   填入并提交: '填入並提交',
   下载: '下載',
   点击按钮: '點選按鈕',
+  运行脚本: '執行指令碼',
+  上传文件: '上傳檔案',
   '{field}：{text}': '{field}：{text}',
 };

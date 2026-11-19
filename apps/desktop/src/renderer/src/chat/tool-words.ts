@@ -151,6 +151,24 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return arg(c, 'text') ? { verb: 'Typed', object: quoted(arg(c, 'text')) } : { verb: 'Typed', object: 'on the page' };
     case 'browser_press':
       return { verb: 'Pressed', object: arg(c, 'key') || 'a key' };
+    case 'browser_find':
+      return arg(c, 'query') ? { verb: 'Looked for', object: quoted(arg(c, 'query')) } : { verb: 'Looked for', object: 'elements' };
+    case 'browser_select':
+      return arg(c, 'value') ? { verb: 'Chose', object: quoted(arg(c, 'value')) } : { verb: 'Chose', object: 'an option' };
+    case 'browser_hover':
+      return { verb: 'Hovered', object: arg(c, 'ref') ? `over element ${arg(c, 'ref')}` : 'on the page' };
+    case 'browser_drag':
+      return { verb: 'Dragged', object: arg(c, 'ref') ? `element ${arg(c, 'ref')}` : 'on the page' };
+    case 'browser_file_upload':
+      return { verb: 'Uploaded', object: 'files' };
+    case 'browser_javascript':
+      return { verb: 'Ran', object: 'a script on the page' };
+    case 'browser_console':
+      return { verb: 'Read', object: 'the page console' };
+    case 'browser_network':
+      return { verb: 'Read', object: 'page requests' };
+    case 'browser_batch':
+      return { verb: 'Ran', object: 'browser steps' };
     case 'search_history':
       return arg(c, 'query') ? { verb: 'Searched conversations for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'conversations' };
     case 'read_history':
@@ -244,6 +262,11 @@ export function runningWords(c: ToolCall): string {
     Deleted: 'Deleting',
     Recalled: 'Recalling',
     'Set up': 'Setting up',
+    'Looked for': 'Looking for',
+    Chose: 'Choosing',
+    Hovered: 'Hovering',
+    Dragged: 'Dragging',
+    Uploaded: 'Uploading',
   };
   if (c.name === 'run_command' && !c.summary && w.object === 'a command') return 'Running a command';
   return `${w.verb ? (ing[w.verb] ?? w.verb) : 'Running'} ${w.object}`;
@@ -305,6 +328,24 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'typed', say: () => 'typed on the page' };
     case 'browser_press':
       return { key: 'pressed', say: () => 'pressed keys' };
+    case 'browser_find':
+      return { key: 'found', say: () => 'looked for elements' };
+    case 'browser_select':
+      return { key: 'chose', say: () => 'chose options' };
+    case 'browser_hover':
+      return { key: 'hovered', say: () => 'hovered on the page' };
+    case 'browser_drag':
+      return { key: 'dragged', say: () => 'dragged on the page' };
+    case 'browser_file_upload':
+      return { key: 'uploaded', say: () => 'uploaded files' };
+    case 'browser_javascript':
+      return { key: 'script', say: (n) => (n === 1 ? 'ran a script on the page' : `ran ${n} scripts on pages`) };
+    case 'browser_console':
+      return { key: 'console', say: () => 'read the page console' };
+    case 'browser_network':
+      return { key: 'network', say: () => 'read page requests' };
+    case 'browser_batch':
+      return { key: 'batch', say: (n) => (n === 1 ? 'ran browser steps' : `ran browser steps ${n} times`) };
     case 'python_env':
       return { key: 'python', say: () => 'set up Python' };
     case 'search_history':
