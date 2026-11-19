@@ -57,6 +57,7 @@ export {
   waitAgentsTool,
   recordDecisionTool,
 } from './tools/agent-tools.ts';
+export { updatePlanTool } from './tools/plan-tool.ts';
 export { createRunCommandTool, runCommandTool, type CommandToolOptions } from './tools/command-tool.ts';
 export {
   createWebFetchTool,

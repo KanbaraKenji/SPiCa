@@ -3,11 +3,13 @@ import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { errorText, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { currentPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
+import { PlanStrip } from './PlanStrip';
+import { planProgress } from '@spica/protocol';
 import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, RoundDoneContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
@@ -130,7 +132,7 @@ type Segment =
  * group. Thinking with no call beside it stays its own 思考过程 line. `live`: the answer is being written: thinking
  * still at its very end stays out of the group, its own line saying 正在思考, until the next call comes.
  */
-function segments(blocks: Block[], live = false): Segment[] {
+function segments(blocks: Block[], live = false, planRecord?: string): Segment[] {
   const out: Segment[] = [];
   let run: (ToolStep | ThinkStep)[] = [];
   const flush = () => {
@@ -140,6 +142,8 @@ function segments(blocks: Block[], live = false): Segment[] {
     run = [];
   };
   blocks.forEach((b, i) => {
+    // update_plan calls: the plan stands above the message box; only a finished one stays here, where it was finished.
+    if (b.type === 'plan' && b.callId !== planRecord) return;
     const thinkingNow = live && b.type === 'thinking' && i === blocks.length - 1;
     // remember / forget: their own line (the 已记住 line), not a step in a group.
     if (b.type === 'tool' && !MEMORY_TOOLS.has(b.name)) run.push(b);
@@ -201,7 +205,7 @@ function Response({
   const newest = shown === all.length - 1;
   const view = all[shown]!;
   const blocks = view.blocks;
-  const segs = segments(blocks, live);
+  const segs = segments(blocks, live, finishedPlanIn(blocks));
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
@@ -246,6 +250,8 @@ function Response({
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
+          case 'plan':
+            return <PlanStrip key={`plan-${b.callId}`} steps={b.steps} running={false} record />;
           case 'suggest':
             // Not on an older answer: the next message always follows the newest one.
             return live || !newest ? null : <SuggestCard key={`suggest-${b.callId}`} block={b} onPick={(prompt) => actions.send(prompt, undefined, true)} />;
@@ -443,6 +449,11 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     ro.observe(foot);
     return () => ro.disconnect();
   }, [askId, ref]);
+  // The plan (update_plan): just above the message box while it is going; finished, it stays in the answer that
+  // finished it (Response: finishedPlanIn), each finished plan in its own answer.
+  const plan = currentPlan(transcript);
+  const planDocked = plan && planProgress(plan.steps).done < plan.steps.length;
+  const planStrip = planDocked ? <PlanStrip key="plan" steps={plan.steps} running={running} oneLine={!!openAsk} /> : null;
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
@@ -627,6 +638,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               <AskCard key={openAsk.callId} block={openAsk} {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
             </div>
           ) : null}
+          {planStrip ? <div className="plan-dock">{planStrip}</div> : null}
           <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
           {demo ? <p className="composer-note">{t('当前为演示数据')}</p> : null}
         </div>

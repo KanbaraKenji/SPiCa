@@ -8,6 +8,8 @@ import type { Tool, ToolContext } from './types.ts';
 import { producedFileCard } from './file-card.ts';
 import { LINE_COUNT_MAX_BYTES, lineDelta, oldText } from './file-changes.ts';
 import { fileChange } from './line-diff.ts';
+import { IMAGE_LIMITS } from '../images.ts';
+import { pagePictures, PICTURE_EXTENSIONS, readPicture } from './read-image.ts';
 
 /**
  * The card for a file a write made: created or modified, with the lines added and removed when they were counted,
@@ -83,8 +85,10 @@ export const readFileTool: Tool = {
     name: 'read_file',
     description:
       'Read a file. Text files come back with line numbers; use offset/limit (1-based) for large files. ' +
-      'Documents (PDF, Word, Excel, PowerPoint, CSV) are converted to text when an extractor is installed: ' +
-      'use pages ("3" or "2-5", slides for PowerPoint) and sheet (name or 1-based index); for tables offset/limit count rows.',
+      'Pictures (PNG, JPEG, GIF, WEBP, BMP) come back as an image to look at. ' +
+      'Documents (PDF, Word, Excel, PowerPoint, CSV, also the older .doc and .xls) are converted to text when an extractor is installed: ' +
+      'use pages ("3" or "2-5", slides for PowerPoint) and sheet (name or 1-based index); for tables offset/limit count rows. ' +
+      `PDF pages with no or very little text (scanned pages) come back as page images, up to ${IMAGE_LIMITS.maxPerMessage} per call.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -102,6 +106,7 @@ export const readFileTool: Tool = {
     const info = await stat(abs).catch(() => undefined);
     if (!info) return { content: `File not found: ${display(ctx, abs)}`, isError: true };
     if (info.isDirectory()) return { content: `${display(ctx, abs)} is a folder; use list_dir.`, isError: true };
+    if (PICTURE_EXTENSIONS.has(extname(abs).toLowerCase())) return readPicture(abs, info, display(ctx, abs), ctx);
     let text: string;
     const offsetIn = input.offset === undefined ? undefined : Math.max(1, Number(input.offset) || 1);
     const limitIn = input.limit === undefined ? undefined : Math.max(1, Number(input.limit) || MAX_READ_LINES);
@@ -115,6 +120,8 @@ export const readFileTool: Tool = {
           ...(offsetIn !== undefined ? { offset: offsetIn } : {}),
           ...(limitIn !== undefined ? { limit: limitIn } : {}),
           maxChars: MAX_READ_CHARS,
+          // scanned PDF pages as pictures; 0 tells the reader the model does not take them
+          pageImages: ctx.imagesAllowed === false ? 0 : IMAGE_LIMITS.maxPerMessage,
         },
         ctx.signal,
       );
@@ -124,10 +131,14 @@ export const readFileTool: Tool = {
         const parts = [got.meta.read.pages && `pages ${got.meta.read.pages}`, got.meta.read.sheet && `sheet ${got.meta.read.sheet}`, got.meta.read.rows && `rows ${got.meta.read.rows}`, got.meta.read.range]
           .filter(Boolean)
           .join(', ');
-        const header = `${display(ctx, abs)} (${got.meta.kind}, ${info.size} bytes, modified ${isoNow(info.mtime)}${parts ? `; read ${parts}` : ''})`;
+        const header = `${display(ctx, abs)} (${extname(abs).slice(1).toLowerCase() || got.meta.kind}, ${info.size} bytes, modified ${isoNow(info.mtime)}${parts ? `; read ${parts}` : ''})`;
         const body = got.text.length > MAX_READ_CHARS ? got.text.slice(0, MAX_READ_CHARS) : got.text;
         // The extractor writes its own continuation hint; add ours only if the core had to cut.
         const note = got.text.length > MAX_READ_CHARS ? '\n[truncated at the read limit; ask for fewer pages, another sheet or a smaller row range]' : '';
+        if (got.pageImages?.length) {
+          const pics = await pagePictures(got.pageImages, basename(abs), ctx);
+          return { content: `${header}\n${body}${note}${pics.note ? `\n${pics.note}` : ''}`, ...(pics.images.length ? { images: pics.images } : {}) };
+        }
         return { content: `${header}\n${body}${note}` };
       }
       text = got;

@@ -9,6 +9,7 @@ import { Session, type RunResult } from './session.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
+import { updatePlanTool } from './tools/plan-tool.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
@@ -22,7 +23,7 @@ import { envBinDir, envPackagesOnDisk, pythonEnvStatus } from './python-env.ts';
 import { createWebFetchTool, createWebSearchTool, type SearchBackend } from './tools/web-tools.ts';
 import { connectMcp, type McpServerConfig, type McpStdioClient } from './mcp/client.ts';
 import { fileTools } from './tools/fs-tools.ts';
-import { ToolRegistry, validateInput, type FileExtractor, type Tool } from './tools/types.ts';
+import { ToolRegistry, validateInput, type FileExtractor, type ImageFitter, type Tool } from './tools/types.ts';
 import { Tracer } from './trace.ts';
 import type { SettingsBridge } from './settings-tools.ts';
 import { PluginSampler } from './sampling.ts';
@@ -184,6 +185,8 @@ export interface RuntimeInternals {
   readonly tracer: Tracer;
   readonly ledger: CostLedger;
   readonly extractors: FileExtractor[];
+  /** The host's image shrinker (Runtime.imageFitter), for read_file. */
+  readonly imageFitter: ImageFitter | undefined;
   provider(id: string): Provider;
   limiter(providerId: string): RateLimiter;
   parentChain(sessionId: string): string[];
@@ -338,6 +341,11 @@ export class Runtime implements RuntimeInternals {
    */
   settingsBridge: SettingsBridge | undefined;
   /**
+   * Makes a picture the core cannot shrink itself (JPEG, WEBP, GIF, BMP over IMAGE_LIMITS) fit: the host's copy in
+   * `dir`, or undefined. Set by the desktop host (it has Chromium's decoders); undefined: such pictures are refused.
+   */
+  imageFitter: ImageFitter | undefined;
+  /**
    * Changes to the settings from Spica's MCP service wait for the user's
    * confirmation. Default off: they apply at once and are shown in the
    * conversations (settings.changed, a note with meta.settingsChange).
@@ -421,6 +429,7 @@ export class Runtime implements RuntimeInternals {
       }),
       createWebFetchTool({ userAgent: `${this.appName.replace(/[^A-Za-z0-9._-]+/g, '-') || 'Spica'}/0.1 (+agent web_fetch)` }),
       ...agentTools,
+      updatePlanTool,
       ...projectTools,
       ...historyTools,
       ...createMemoryTools(this),

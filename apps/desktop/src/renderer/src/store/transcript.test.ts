@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Block, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -285,6 +285,8 @@ describe('file cards', () => {
     const base = { path: 'D:\\a', name: 'a', sizeBytes: 1, modifiedAt: at, extractedAt: at };
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 30, read: { pages: '1-5' }, truncated: true })).toBe('PDF · 30 页 · Read pages 1-5 · Partly read');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 3, read: { pages: '1-3' } })).toBe('PDF · 3 页 · Read');
+    expect(fileCardLine({ ...base, kind: 'other', image: { width: 4000, height: 3000 }, read: {} })).toBe('图片 · 4000×3000');
+    expect(fileCardLine({ ...base, kind: 'other', read: {} })).toBe('文件');
     expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: 'A', rows: 1, cols: 1 }, { name: 'B', rows: 1, cols: 1 }], read: { sheet: 'A, B' } })).toBe('Excel · 2 个表 · Read');
     expect(fileCardLine({ ...base, kind: 'xlsx', sheets: [{ name: '报价', rows: 3, cols: 2 }], read: { sheet: '报价', rows: '1-3' } })).toBe('Excel · 1 个表 · Read 「报价」 rows 1-3');
     expect(fileCardLine({ ...base, kind: 'pdf', pageCount: 2, read: {}, noTextLayer: true })).toBe('PDF · 2 页 · 扫描件，无法读取文字');
@@ -774,5 +776,56 @@ describe('background commands', () => {
     expect(t.fileCards?.['call-1']?.name).toBe('a.txt');
     expect(t.fileCardLists?.['call-1']).toHaveLength(1);
     expect(withJobs({ items: [] }, []).jobs).toBeUndefined();
+  });
+});
+
+describe('currentPlan (update_plan)', () => {
+  const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+  const plan = (callId: string, steps: [string, string][]) => ev({ type: 'tool.start', callId, name: 'update_plan', input: { plan: steps.map(([step, status]) => ({ step, status })) } });
+
+  it('live: the latest call; a refused call leaves the plan before it; not a step in the answer', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, plan('p1', [['读资料', 'in_progress'], ['写纪要', 'pending']]));
+    t = applyEvent(t, plan('p2', [['读资料', 'completed'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.steps.map((s) => s.status)).toEqual(['completed', 'in_progress']);
+    t = applyEvent(t, plan('p3', [['读资料', 'in_progress'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    t = applyEvent(t, plan('p4', [['读资料', 'completed'], ['写纪要', 'completed']]));
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'p4', name: 'update_plan', isError: true, preview: 'no' }));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    const r = t.items.at(-1);
+    expect(r?.kind === 'response' && r.blocks.some((b) => b.type === 'tool')).toBe(false);
+  });
+
+  it('an empty list clears it', () => {
+    let t = applyEvent({ items: [] }, plan('p1', [['读资料', 'pending']]));
+    t = applyEvent(t, plan('p2', []));
+    expect(currentPlan(t)).toBeUndefined();
+  });
+
+  it('each answer that finished a plan keeps it: its last plan, every step done', () => {
+    const p = (callId: string, statuses: string[], failed = false): Block => ({ type: 'plan', callId, steps: statuses.map((status, i) => ({ step: `步骤${i}`, status: status as 'completed' })), ...(failed ? { failed } : {}) });
+    expect(finishedPlanIn([p('a', ['completed', 'in_progress']), p('b', ['completed', 'completed'])])).toBe('b');
+    expect(finishedPlanIn([p('a', ['completed', 'completed']), p('b', ['completed', 'pending'])])).toBeUndefined();
+    expect(finishedPlanIn([p('a', ['completed']), p('b', ['completed', 'pending'], true)])).toBe('a');
+    expect(finishedPlanIn([p('a', ['completed']), p('b', [])])).toBeUndefined();
+    expect(finishedPlanIn([{ type: 'text', text: '好' } as Block])).toBeUndefined();
+  });
+
+  it('read back from the stored conversation as it was live', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    const done = new Promise<void>((resolve) =>
+      b.onEvent((e: CoreEvent) => {
+        live = applyEvent(live, e, 1000);
+        if (e.type === 'run.end') resolve();
+      }),
+    );
+    await b.send(chat.id, '清单没做完');
+    await done;
+    const stored = fromHistory(await b.getMessages(chat.id));
+    expect(currentPlan(stored)?.steps).toEqual(currentPlan(live)?.steps);
+    expect(currentPlan(stored)?.steps.map((s) => s.status)).toEqual(['completed', 'completed', 'pending', 'pending', 'pending']);
   });
 });
