@@ -45,7 +45,8 @@ export function setupComputer(opts: { settings: SettingsStore; hidden: boolean; 
   });
   const get = (): Promise<ComputerAgent> =>
     (agent ??= (async () => {
-      const driver: Driver = kind === 'real' ? await (await import('./driver-win32')).Win32Driver.create() : new FakeDriver({ open: FAKE_OPEN });
+      // escape-watch.js is built next to the main process's own file (main/index.ts); this one is too
+      const driver: Driver = kind === 'real' ? await (await import('./driver-win32')).Win32Driver.create({ escapeWatch: join(__dirname, 'escape-watch.js') }) : new FakeDriver({ open: FAKE_OPEN });
       return new ComputerAgent({
         driver,
         store: {

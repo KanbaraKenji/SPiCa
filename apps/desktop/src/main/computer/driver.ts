@@ -29,6 +29,8 @@ export interface Driver {
   capture(): Promise<Bitmap>;
   /** Sends the steps in order (a click: move, button down, button up). */
   send(steps: readonly InputStep[]): Promise<void>;
+  /** The window in front (the one typing goes to), when there is one. */
+  foreground(): Promise<number | undefined>;
   /** Brings a window to the front; false when the system did not let it. */
   focus(windowId: number): Promise<boolean>;
   /** Starts a program. */

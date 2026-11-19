@@ -36,6 +36,8 @@ export class FakeDriver implements Driver {
   #nextId = 100;
   #nextPid = 1000;
   #escape = new Set<() => void>();
+  /** The window in front: the last one opened or brought to the front. */
+  #front: number | undefined;
 
   constructor(opts: { width?: number; height?: number; open?: string[] } = {}) {
     this.width = opts.width ?? 1920;
@@ -65,6 +67,7 @@ export class FakeDriver implements Driver {
       ...extra,
     };
     this.#addTop(w);
+    this.#front = w.id;
     return { ...w };
   }
 
@@ -125,7 +128,17 @@ export class FakeDriver implements Driver {
     if (i < 0) return false;
     const [w] = this.#windows.splice(i, 1);
     this.#addTop(w!);
+    this.#front = w!.id;
     return true;
+  }
+
+  async foreground(): Promise<number | undefined> {
+    return this.#front;
+  }
+
+  /** A window that stays on top of the others without being in front (Spica's bar). */
+  openOnTop(exe: string, pid: number, rect: WindowInfo['rect']): void {
+    this.#windows.unshift({ id: this.#nextId++, pid, exe, title: '', rect, elevated: false, colour: 0xfafafa });
   }
 
   async launch(exe: string): Promise<void> {

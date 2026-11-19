@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { ComputerAgent, IDLE_MS, type AlwaysApp, type ComputerState } from './agent';
 import { encodePng, fitForModel, maskScreen, MASK_GREY, resize, type Bitmap } from './bitmap';
 import { driverKind } from './driver';
-import { FakeDriver } from './fake-driver';
+import { FAKE_SPICA_PID, FakeDriver } from './fake-driver';
 import { clickSteps, keySteps } from './input';
 import { allows, exeName, ruleFor } from '../../shared/computer-use';
 
@@ -241,6 +241,16 @@ describe('acting', () => {
     expect((await agent.type('s1', { text: '你好' })).text).toBe('Typed 2 characters into 记事本.');
     expect(driver.sent).toEqual([{ kind: 'text', text: '你好' }]);
   });
+  it('Spica’s bar on top of everything is not where typing goes: the program in front is', async () => {
+    const { agent, driver } = await ready([EXCEL, NOTEPAD]);
+    driver.openOnTop('C:\\Program Files\\Spica\\Spica.exe', FAKE_SPICA_PID, { x: 700, y: 8, width: 520, height: 44 });
+    expect((await driver.windows())[0]?.pid).toBe(FAKE_SPICA_PID);
+    expect((await agent.type('s1', { text: 'x' })).text).toBe('Typed 1 characters into 记事本.');
+    // and the bar itself is never clicked
+    const scale = fitForModel(1920, 1080).scale;
+    await expect(agent.click('s1', { coordinate: [Math.round(800 * scale), Math.round(20 * scale)] })).rejects.toThrow(/Spica itself/);
+  });
+
   it('nothing before a screenshot; coordinates outside it are refused', async () => {
     const { agent } = setup([NOTEPAD]);
     await allow(agent, 's1', ['notepad']);

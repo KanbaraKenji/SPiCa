@@ -157,6 +157,35 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Read', object: 'page requests' };
     case 'browser_batch':
       return { verb: 'Ran', object: 'browser steps' };
+    // 操作电脑: programs on this computer (computer_request_access is its approval card, not a step).
+    case 'computer_list_apps':
+      return { verb: 'Listed', object: 'open programs' };
+    case 'computer_open_application':
+      return { verb: 'Opened', object: arg(c, 'app') ? named(arg(c, 'app')) : 'a program' };
+    case 'computer_screenshot':
+      return { verb: 'Took', object: 'a screenshot of the screen' };
+    case 'computer_zoom':
+      return { verb: 'Zoomed', object: 'into the screen' };
+    case 'computer_left_click':
+    case 'computer_right_click':
+    case 'computer_middle_click':
+    case 'computer_double_click':
+    case 'computer_triple_click':
+      return { verb: 'Clicked', object: 'on the screen' };
+    case 'computer_mouse_move':
+      return { verb: 'Moved', object: 'the pointer' };
+    case 'computer_left_click_drag':
+      return { verb: 'Dragged', object: 'on the screen' };
+    case 'computer_scroll':
+      return { verb: 'Scrolled', object: 'on the screen' };
+    case 'computer_type':
+      return arg(c, 'text') ? { verb: 'Typed', ...cut(arg(c, 'text')) } : { verb: 'Typed', object: 'text' };
+    case 'computer_key':
+      return { verb: 'Pressed', object: arg(c, 'text') || 'a key' };
+    case 'computer_wait':
+      return { verb: 'Waited', object: 'for the screen' };
+    case 'computer_batch':
+      return { verb: 'Ran', object: 'steps on the screen' };
     case 'search_history':
       return arg(c, 'query') ? { verb: 'Searched conversations for', object: quoted(arg(c, 'query')) } : { verb: 'Searched', object: 'conversations' };
     case 'read_history':
@@ -325,6 +354,29 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'network', say: () => 'read page requests' };
     case 'browser_batch':
       return { key: 'batch', say: (n) => (n === 1 ? 'ran browser steps' : `ran browser steps ${n} times`) };
+    case 'computer_list_apps':
+      return { key: 'computer-apps', say: () => 'listed open programs' };
+    case 'computer_open_application':
+      return { key: 'computer-open', say: (n) => `opened ${many('a program', n, 'programs')}` };
+    case 'computer_screenshot':
+    case 'computer_zoom':
+      return { key: 'computer-shot', say: (n) => `took ${many('a screenshot', n, 'screenshots')} of the screen` };
+    case 'computer_left_click':
+    case 'computer_right_click':
+    case 'computer_middle_click':
+    case 'computer_double_click':
+    case 'computer_triple_click':
+    case 'computer_mouse_move':
+    case 'computer_left_click_drag':
+    case 'computer_scroll':
+      return { key: 'computer-click', say: (n) => (n === 1 ? 'clicked on the screen' : `clicked on the screen ${n} times`) };
+    case 'computer_type':
+    case 'computer_key':
+      return { key: 'computer-type', say: () => 'typed on the screen' };
+    case 'computer_wait':
+      return { key: 'computer-wait', say: () => 'waited for the screen' };
+    case 'computer_batch':
+      return { key: 'computer-batch', say: (n) => (n === 1 ? 'ran steps on the screen' : `ran steps on the screen ${n} times`) };
     case 'python_env':
       return { key: 'python', say: () => 'set up Python' };
     case 'search_history':

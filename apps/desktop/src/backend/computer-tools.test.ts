@@ -94,6 +94,9 @@ describe('computer tools', () => {
     await until(() => s.pending().length === 0 && gw.requests.length === 2);
     expect(always().map((a) => a.name)).toEqual(['记事本', 'Microsoft Excel']);
     expect(JSON.stringify(gw.requests[1]!.body)).toContain('approved for every conversation');
+    // what the card shows (the worked-out list, the icons) never goes to the model
+    expect(JSON.stringify(gw.requests[1]!.body)).not.toContain('prepared');
+    expect(JSON.stringify(gw.requests[1]!.body)).not.toContain('data:image/png');
 
     // a later request for the same programs: no card
     gw.enqueue(

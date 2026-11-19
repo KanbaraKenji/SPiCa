@@ -358,8 +358,10 @@ export class ComputerAgent {
 
   #frontWindow(windows: readonly WindowInfo[], sessionId: string): WindowInfo | undefined {
     void sessionId;
-    // the taskbar stays on top of everything: the front program is the first window that is not Explorer's taskbar
-    return windows.find((w) => !(exeName(w.exe) === 'explorer.exe' && !w.title));
+    // windows that stay on top (the taskbar, Spica's bar) are not the program in front: the first window that is
+    // neither Explorer's taskbar nor Spica's own
+    const own = this.#driver.ownPids();
+    return windows.find((w) => !own.has(w.pid) && !(exeName(w.exe) === 'explorer.exe' && !w.title));
   }
 
   // ---- acting ----
@@ -446,7 +448,8 @@ export class ComputerAgent {
   /** The program typing and keys go to: the one in front, checked. */
   async #typeTarget(sessionId: string): Promise<WindowInfo> {
     const windows = await this.#driver.windows();
-    const w = this.#frontWindow(windows, sessionId);
+    const id = await this.#driver.foreground();
+    const w = id === undefined ? this.#frontWindow(windows, sessionId) : windows.find((x) => x.id === id);
     const why = await this.#check(sessionId, w, 'type');
     if (why) throw new Error(`nothing was done: the program in front: ${why}`);
     return w!;

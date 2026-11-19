@@ -852,9 +852,9 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.end': {
-      // the approval card: whether it was 始终允许 (its result says so on its first line)
+      // the approval card: 始终允许 when its result says so (the preview may be cut before it: never taken as 允许一次)
       const card = e.name === COMPUTER_ACCESS ? findBlock(items, 'computer', e.callId) : undefined;
-      if (card && !e.isError && card.always === undefined) card.always = /for every conversation/.test(e.preview);
+      if (card && !e.isError && /for every conversation/.test(e.preview)) card.always = true;
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
         tool.state = e.isError ? failedState(e.preview) : 'done';

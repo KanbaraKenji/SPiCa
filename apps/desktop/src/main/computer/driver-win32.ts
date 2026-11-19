@@ -86,14 +86,17 @@ export class Win32Driver implements Driver {
   readonly #api: Win32;
   readonly #names = new Map<string, string>();
   readonly #selfElevated: boolean;
+  /** The built escape-watch.js (next to the main process's index.js; this file is built into a chunk folder). */
+  readonly #escapeWatch: string;
 
-  private constructor(api: Win32) {
+  private constructor(api: Win32, escapeWatch: string) {
     this.#api = api;
+    this.#escapeWatch = escapeWatch;
     this.#selfElevated = this.#elevated(process.pid) === true;
   }
 
-  static async create(): Promise<Win32Driver> {
-    return new Win32Driver(await win32());
+  static async create(opts: { escapeWatch: string }): Promise<Win32Driver> {
+    return new Win32Driver(await win32(), opts.escapeWatch);
   }
 
   screen() {
@@ -201,6 +204,12 @@ export class Win32Driver implements Driver {
     }
   }
 
+  async foreground(): Promise<number | undefined> {
+    const a = this.#api;
+    const h = Number(a.GetForegroundWindow());
+    return h ? Number(a.GetAncestor(h, GA_ROOT)) || h : undefined;
+  }
+
   async focus(windowId: number): Promise<boolean> {
     const a = this.#api;
     const root = a.GetAncestor(windowId, GA_ROOT) || windowId;
@@ -286,7 +295,7 @@ export class Win32Driver implements Driver {
   watchEscape(onEscape: () => void): () => void {
     // the hook runs in its own small process: a hook that answers late is taken away by Windows without a word,
     // and Spica's main process is sometimes busy (escape-watch.ts reinstalls it from time to time as well)
-    const child = utilityProcess.fork(join(__dirname, 'escape-watch.js'), [], { serviceName: 'Spica Escape watch', stdio: 'ignore' });
+    const child = utilityProcess.fork(this.#escapeWatch, [], { serviceName: 'Spica Escape watch', stdio: 'ignore' });
     child.on('message', (m: unknown) => {
       if (m === 'escape') onEscape();
     });

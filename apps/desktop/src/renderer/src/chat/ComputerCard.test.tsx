@@ -77,6 +77,14 @@ describe('the card in the conversation', () => {
     expect(cards(t)).toEqual([{ type: 'computer', callId: 'r1', apps, approved: true, always: true }]);
   });
 
+  it('live: a preview cut before the words 始终允许 leaves what was clicked (never turned into 允许一次)', () => {
+    let t = applyEvent({ items: [] }, ev({ type: 'confirm.request', callId: 'r1', name: 'computer_request_access', input: { prepared }, reason: 'computer_request_access' }));
+    t = applyEvent(t, ev({ type: 'confirm.resolved', callId: 'r1', approved: true }));
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'r1', name: 'computer_request_access', isError: false, preview: '- Microsoft Excel (C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE): approved for ev', durationMs: 5 }));
+    const card = cards(t)[0] as ComputerBlock;
+    expect(card.always).toBeUndefined();
+  });
+
   it('from history: the result says what was allowed; a call that needed no card shows nothing', () => {
     const msg = (seq: number, over: Partial<Message>): Message => ({ id: `m${seq}`, sessionId: 's', seq, role: 'user', kind: 'user', content: [{ type: 'text', text: '' }], createdAt: at, ...over }) as Message;
     const result = [
