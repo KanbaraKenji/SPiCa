@@ -1,5 +1,7 @@
-// The MCP services the person adds in 设置 (not the ones plugins bring): what the settings page sees and sends.
-// Secrets (the values of environment variables) only travel renderer -> main when typed; main sends back a mask.
+// The MCP services the person adds in 设置 (not the ones plugins bring): what the settings page sees and sends. A
+// service is a program on this computer (命令) or a server at a web address (网址, with a 密钥 and 更多请求头).
+// Secrets (environment variables' values, the key, headers' values) only travel renderer -> main when typed; main
+// sends back a mask.
 import type { InstallPreview } from '@spica/protocol';
 import { N_, t } from './i18n';
 
@@ -18,10 +20,19 @@ export interface McpEnvView {
   mask: string;
 }
 
+/** A program on this computer, or a server at a web address. */
+export type McpKind = 'program' | 'url';
+
 /** A saved service as the page sees it. */
 export interface McpServerView {
   /** Its name, also the start of its tools' names (`<name>__<tool>`). */
   name: string;
+  /** A server at a web address (then command and args are empty). */
+  url?: string;
+  /** With url: the key's mask, when one is saved. */
+  key?: string;
+  /** With url: the other request headers, values masked. */
+  headers?: McpEnvView[];
   command: string;
   args: string[];
   env: McpEnvView[];
@@ -48,6 +59,10 @@ export type McpProblemView =
   | { kind: 'timeout'; seconds: number }
   | { kind: 'crash-loop'; count: number; seconds: number }
   | { kind: 'version'; versions: string[] }
+  | { kind: 'unreachable'; status?: number }
+  | { kind: 'needs-key' }
+  | { kind: 'bad-key' }
+  | { kind: 'certificate'; reason: 'untrusted' | 'expired' | 'name' }
   | { kind: 'other' };
 
 /** Programs a missing command usually belongs to (said after it). */
@@ -69,6 +84,14 @@ export function mcpProblemText(p: McpProblemView): string {
       return t('{seconds} 秒内崩溃 {count} 次，已停止重启', { seconds: p.seconds, count: p.count });
     case 'version':
       return t('版本不兼容（服务仅支持 {versions}）', { versions: p.versions.join(t('、')) });
+    case 'unreachable':
+      return p.status ? t('无法打开网址（HTTP {status}），请检查网址', { status: p.status }) : t('无法打开网址，请检查网址和网络');
+    case 'needs-key':
+      return t('需要密钥，请填写「密钥」');
+    case 'bad-key':
+      return t('密钥无效，请检查「密钥」');
+    case 'certificate':
+      return p.reason === 'expired' ? t('证书已过期') : p.reason === 'name' ? t('证书与网址不符，请检查网址') : t('证书不受信任，请在「信任的证书文件」中添加');
     default:
       return t('启动失败');
   }
@@ -104,6 +127,15 @@ export interface McpEnvDraft {
 
 export interface McpServerDraft {
   name: string;
+  kind: McpKind;
+  /** kind 'url': the address. */
+  url: string;
+  /** kind 'url': the key, sent as Authorization: Bearer (empty: none, or the saved one kept when keySaved). */
+  key: string;
+  /** A key is saved: empty keeps it (clearing it is keySaved false). */
+  keySaved?: boolean;
+  /** kind 'url': more request headers (values sealed as environment variables'). */
+  headers: McpEnvDraft[];
   command: string;
   /** One argument a line (a line is one argument as it is: spaces and quotes stay in it). */
   args: string;
@@ -112,10 +144,45 @@ export interface McpServerDraft {
   approval: McpApproval;
 }
 
-export const emptyMcpDraft = (): McpServerDraft => ({ name: '', command: '', args: '', env: [], cwd: '', approval: 'ask' });
+export const emptyMcpDraft = (): McpServerDraft => ({ name: '', kind: 'program', url: '', key: '', headers: [], command: '', args: '', env: [], cwd: '', approval: 'ask' });
 
 export function draftOf(s: McpServerView): McpServerDraft {
-  return { name: s.name, command: s.command, args: s.args.join('\n'), env: s.env.map((e) => ({ name: e.name, saved: true })), cwd: s.cwd ?? '', approval: s.approval };
+  return {
+    name: s.name,
+    kind: s.url ? 'url' : 'program',
+    url: s.url ?? '',
+    key: '',
+    ...(s.key ? { keySaved: true } : {}),
+    headers: (s.headers ?? []).map((h) => ({ name: h.name, saved: true })),
+    command: s.command,
+    args: s.args.join('\n'),
+    env: s.env.map((e) => ({ name: e.name, saved: true })),
+    cwd: s.cwd ?? '',
+    approval: s.approval,
+  };
+}
+
+/** Hosts a plain http:// address may name (this computer); anything else must be https. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
+/** What is wrong with a web address: empty, not one, or http to another computer. */
+export function mcpUrlError(text: string): string | undefined {
+  const s = text.trim();
+  if (!s) return t('必填');
+  let u: URL;
+  try {
+    u = new URL(s);
+  } catch {
+    return t('网址无效');
+  }
+  if (u.protocol === 'https:') return undefined;
+  if (u.protocol === 'http:' && LOCAL_HOSTS.has(u.hostname.toLowerCase())) return undefined;
+  return u.protocol === 'http:' ? t('只支持 https（本机地址可用 http）') : t('网址无效');
+}
+
+/** The key as it is sent: what was typed, without a "Bearer " the person put before it. */
+export function keyOf(text: string): string {
+  return text.trim().replace(/^Bearer\s+/i, '');
 }
 
 /** The arguments of a draft: one a line, empty lines dropped, each as it is. */
@@ -126,7 +193,7 @@ export function draftArgs(d: Pick<McpServerDraft, 'args'>): string[] {
 /** A service's name: letters, digits, _ and - (it becomes the start of its tools' names). */
 export const MCP_NAME = /^[A-Za-z0-9_-]{1,40}$/;
 
-export type McpFieldErrors = Partial<Record<'name' | 'command' | 'env', string>>;
+export type McpFieldErrors = Partial<Record<'name' | 'command' | 'env' | 'url' | 'headers', string>>;
 
 /** What is wrong with the draft, by field; `taken`: the names already in use (other services, plugins' servers). */
 export function mcpDraftErrors(d: McpServerDraft, taken: readonly string[]): McpFieldErrors {
@@ -135,6 +202,20 @@ export function mcpDraftErrors(d: McpServerDraft, taken: readonly string[]): Mcp
   if (!name) errors.name = t('必填');
   else if (!MCP_NAME.test(name)) errors.name = t('只能用字母、数字、_ 和 -');
   else if (taken.some((n) => n.toLowerCase() === name.toLowerCase())) errors.name = t('名称已被使用');
+  if (d.kind === 'url') {
+    const url = mcpUrlError(d.url);
+    if (url) errors.url = url;
+    const seen = new Set<string>();
+    for (const h of d.headers) {
+      const n = h.name.trim();
+      if (!n) continue;
+      if (!/^[A-Za-z0-9!#$%&'*+.^_`|~-]+$/.test(n)) errors.headers ??= t('请求头名称「{name}」无效', { name: n });
+      else if (seen.has(n.toLowerCase())) errors.headers ??= t('请求头「{name}」重复', { name: n });
+      else if (n.toLowerCase() === 'authorization' && (keyOf(d.key) || d.keySaved)) errors.headers ??= t('「Authorization」与「密钥」重复');
+      seen.add(n.toLowerCase());
+    }
+    return errors;
+  }
   if (!d.command.trim()) errors.command = t('必填');
   const seen = new Set<string>();
   for (const e of d.env) {
@@ -157,11 +238,10 @@ export function commandLine(command: string, args: readonly string[]): string {
   return [command, ...args].map(quoteArg).join(' ');
 }
 
-/** What a pasted `mcpServers` block filled: the services found (the first fills the form), and what was skipped. */
+/** What a pasted `mcpServers` block filled: the services found (the first fills the form). */
 export interface McpPasteResult {
-  servers: { name: string; command: string; args: string[]; env: { name: string; value: string }[]; cwd?: string }[];
-  /** Entries that are not a local program (a url), by name. */
-  skipped: string[];
+  /** A program (command, args, env, cwd) or a web address (url, key, headers). */
+  servers: { name: string; command: string; args: string[]; env: { name: string; value: string }[]; cwd?: string; url?: string; key?: string; headers?: { name: string; value: string }[] }[];
 }
 
 /**
@@ -174,18 +254,32 @@ export function parseMcpPaste(text: string): McpPasteResult | null {
   const data = parseJson(body.startsWith('{') ? body : `{${body}}`);
   if (!isObject(data)) return null;
   const map: Record<string, unknown> = isObject(data.mcpServers) ? data.mcpServers : isObject(data.servers) ? data.servers : typeof data.command === 'string' || typeof data.url === 'string' ? { '': data } : data;
-  const out: McpPasteResult = { servers: [], skipped: [] };
+  const out: McpPasteResult = { servers: [] };
   for (const [name, v] of Object.entries(map)) {
     if (!isObject(v)) continue;
-    if (typeof v.command !== 'string') {
-      if (typeof v.url === 'string' || typeof v.httpUrl === 'string') out.skipped.push(name);
+    // a web address: url (Cursor, Claude, VS Code, Cline: also type sse), httpUrl (Gemini CLI), serverUrl (Windsurf)
+    const url = [v.url, v.httpUrl, v.serverUrl].find((u): u is string => typeof u === 'string' && u.trim() !== '');
+    if (url !== undefined && typeof v.command !== 'string') {
+      const headers = isObject(v.headers) ? Object.entries(v.headers).filter((e): e is [string, string] => typeof e[1] === 'string') : [];
+      // Authorization: Bearer … fills 密钥; the others go to 更多请求头
+      const auth = headers.find(([n, value]) => n.toLowerCase() === 'authorization' && /^Bearer\s+\S/i.test(value));
+      out.servers.push({
+        name,
+        command: '',
+        args: [],
+        env: [],
+        url: url.trim(),
+        ...(auth ? { key: keyOf(auth[1]) } : {}),
+        headers: headers.filter((h) => h !== auth).map(([n, value]) => ({ name: n, value })),
+      });
       continue;
     }
+    if (typeof v.command !== 'string') continue;
     const args = Array.isArray(v.args) ? v.args.filter((a): a is string => typeof a === 'string') : [];
     const env = isObject(v.env) ? Object.entries(v.env).filter((e): e is [string, string] => typeof e[1] === 'string').map(([n, value]) => ({ name: n, value })) : [];
     out.servers.push({ name, command: v.command, args, env, ...(typeof v.cwd === 'string' ? { cwd: v.cwd } : {}) });
   }
-  return out.servers.length || out.skipped.length ? out : null;
+  return out.servers.length ? out : null;
 }
 
 function parseJson(text: string): unknown {
