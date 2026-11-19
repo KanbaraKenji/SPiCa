@@ -34,3 +34,10 @@ text is in THIRD-PARTY.txt next to the library. Written at build time by apps/de
 resources/node-libs/papaparse (papaparse 5.7.1)
 Copyright (c) 2015 Matthew Holt
 Licensed under the MIT License (LICENSE next to the library).
+
+The library the installed app calls Windows with for 操作电脑
+--------------------------------------------------------------
+resources/koffi (koffi 3.3.7, with its Windows x64 native part @koromix/koffi-win32-x64)
+Copyright 2026 Niels Martignène
+Licensed under the MIT License (LICENSE.txt next to the library). Copied at build time by
+apps/desktop/scripts/koffi.mjs.
