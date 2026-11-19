@@ -6,7 +6,7 @@ import type { HookContext, RequestDraft, ToolCallDraft } from './hooks.ts';
 import type { ModelRequest, ModelResponse, CallInfo } from './providers/types.ts';
 import { ProviderError } from './providers/types.ts';
 import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCallRecord } from './store/types.ts';
-import { validateInput, type Tool, type ToolContext } from './tools/types.ts';
+import { validateInput, type Tool, type ToolContext, type ToolOutput } from './tools/types.ts';
 import type {
   ContextBreakdown,
   ContextPart,
@@ -328,7 +328,104 @@ export class Session {
   }
 
   pending(): PendingItem[] {
-    return this.#rt.store.listPending(this.id).map((p) => p.item);
+    return [...this.#rt.store.listPending(this.id).map((p) => p.item), ...this.#stepAsks.values()];
+  }
+
+  /** Confirmations a running call's steps wait on (browser_batch): asked on a card right then, not stored. */
+  readonly #stepAsks = new Map<string, PendingItem>();
+
+  /**
+   * ctx.step for one call: each step is judged as a call of its own would be (hooks, the guard, the approval mode),
+   * a confirmation asked right then. Outside content an earlier step brought counts for the later ones (the turn is
+   * acting on it, its links are outside links). A step cannot be the calling tool itself, ask the user, or download.
+   */
+  #stepper(outer: ToolCallDraft, signal: AbortSignal, hctx: HookContext): NonNullable<ToolContext['step']> {
+    let n = 0;
+    const met = { tainted: false, hosts: new Set<string>() };
+    return async (name, input) => {
+      const cfg = this.#record.config;
+      const env = {
+        providerId: cfg.providerId,
+        serverWebSearch: !!cfg.serverWebSearch,
+        role: this.#record.role,
+        ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
+        ...(cfg.templateId ? { templateId: cfg.templateId } : {}),
+      };
+      const visible = this.#rt.tools.list(env, cfg.tools).some((t) => t.spec.name === name);
+      const tool = visible && name !== outer.name ? this.#rt.tools.get(name) : undefined;
+      if (!tool || tool.interaction === 'ask' || tool.previewInstall) return { content: `${name} cannot be a step here; call it on its own.`, isError: true, status: 'unavailable' };
+      const invalid = validateInput(tool.spec.inputSchema, input);
+      if (invalid) return { content: `Invalid input for ${name}: ${invalid}.`, isError: true, status: 'error' };
+      const draft: ToolCallDraft = { callId: `${outer.callId}.${++n}`, name, input, irreversible: !!tool.irreversible };
+      const { decision, input: given } = await this.#rt.hooks.beforeTool(draft, hctx);
+      if (decision.action === 'deny') return { content: `Blocked: ${decision.reason}`, isError: true, status: 'denied' };
+      const args = (given ?? {}) as Record<string, unknown>;
+      const g = this.#guardState();
+      const guard = { ...g, tainted: g.tainted || met.tainted, outsideHosts: new Set([...g.outsideHosts, ...met.hosts]) };
+      const outsideFolder = this.#outsideFolder(tool, args);
+      const cause = this.#guardCause(tool, args, guard) ?? (outsideFolder ? 'outside_folder' : undefined);
+      const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
+      let confirmedBy: 'user' | undefined;
+      if ((decision.action === 'confirm' && !autoApproved) || cause) {
+        const change = tool.previewChange ? await tool.previewChange(args, cfg.cwd).catch(() => undefined) : undefined;
+        const reason = cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation');
+        const irreversible = decision.action === 'confirm' && decision.irreversible === true;
+        const item: PendingItem = {
+          kind: 'confirm',
+          callId: draft.callId,
+          toolName: name,
+          input: args,
+          reason,
+          ...(cause ? { cause } : {}),
+          ...(irreversible ? { irreversible: true } : {}),
+          ...(change ? { change } : {}),
+          createdAt: isoNow(),
+        };
+        this.#stepAsks.set(draft.callId, item);
+        // the window and the conversation list say it waits for the user, as for a call of its own
+        this.#setStatus('awaiting_confirm');
+        const ask =this.#rt.askOutsideSession({ callId: draft.callId, name, input: args, reason, host: this, untilAnswered: true, ...(cause ? { cause } : {}), ...(irreversible ? { irreversible } : {}), ...(change ? { change } : {}) });
+        const stop = () => this.#rt.resolveViewConfirm(draft.callId, false);
+        signal.addEventListener('abort', stop, { once: true });
+        const ok = await ask.answer.finally(() => {
+          signal.removeEventListener('abort', stop);
+          this.#stepAsks.delete(draft.callId);
+        });
+        if (signal.aborted) return { content: 'Aborted: the user interrupted this call.', isError: true, status: 'declined' };
+        this.#setStatus('tool');
+        if (!ok) return { content: 'The user declined this step; it was not done.', isError: true, status: 'declined' };
+        confirmedBy = 'user';
+      } else if (autoApproved) {
+        this.#emit({ type: 'confirm.auto', callId: outer.callId, name, input: args });
+      }
+      const stepDraft = { ...draft, input: args };
+      let out: { content: string; isError: boolean; images?: ToolOutput['images'] };
+      try {
+        const r = await tool.execute(args, {
+          sessionId: this.id,
+          parentChain: this.parentChain,
+          cwd: cfg.cwd,
+          signal,
+          tracer: this.#rt.tracer,
+          extractors: this.#rt.extractors,
+          services: this.#rt.services(this),
+          callId: draft.callId,
+          mediaDir: this.#rt.mediaDir(this.id),
+          ...(confirmedBy ? { confirmedBy } : {}),
+          emit: (body) => this.#emit(body),
+        });
+        out = { content: r.content, isError: !!r.isError, ...(r.images?.length ? { images: r.images } : {}) };
+      } catch (err) {
+        out = signal.aborted ? { content: 'Aborted: the user interrupted this call.', isError: true } : { content: `Tool failed: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      }
+      const after = await this.#rt.hooks.afterTool(stepDraft, { content: out.content, isError: out.isError }, hctx);
+      this.#rt.onToolDone(this, stepDraft, after);
+      if (tool.untrusted && !after.isError) {
+        met.tainted = true;
+        for (const h of hostsIn(after.content)) met.hosts.add(h);
+      }
+      return { content: after.content, isError: after.isError, status: after.isError ? 'error' : 'ok', ...(out.images ? { images: out.images } : {}) };
+    };
   }
 
   /** Resolves when the current run (if any) ends. */
@@ -1197,6 +1294,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       callId: draft.callId,
       mediaDir: this.#rt.mediaDir(this.id),
       ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
+      step: this.#stepper(draft, signal, hctx),
       emit: (body) => {
         if (body.type === 'file.card') cards = { ...cards, fileCard: body.file, ...(body.files ? { fileCards: body.files } : {}) };
         if (body.type === 'suggest.actions') cards = { ...cards, suggestion: { title: body.title, actions: body.actions } };
