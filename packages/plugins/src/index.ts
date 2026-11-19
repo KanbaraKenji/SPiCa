@@ -68,6 +68,8 @@ export {
   type InstalledRecord,
   type ServerStatus,
 } from './manager.ts';
+export { mcpProblem, type McpProblem } from './mcp-problem.ts';
+export { UserMcpServers, type UserMcpApproval, type UserMcpConfig, type UserMcpEvent, type UserMcpOptions, type UserMcpState } from './user-mcp.ts';
 export { packPlugin, unpackPlugin, verifyPackage, sha256 } from './pack.ts';
 export {
   INDEX_FILE,

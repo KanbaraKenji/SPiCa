@@ -8,12 +8,14 @@
 //   browser_* tools                  the built-in browser for agents (they ask the main process; backend/browser-tools.ts)
 //   mcpHttpStart / Stop / State     Spica's MCP service over HTTP for scripts on this machine
 //                                   (设置 › 常规 › 开发者; loopback only, token in a file)
+//   userMcpSet / States / Download  the MCP services the person adds (设置 › 插件 › MCP 服务; @spica/plugins
+//                                   UserMcpServers): the main process keeps the list sealed and hands it over here
 // Models, mail and the workflow folder change through the core's own
 // configure(patch) (no restart).
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
-import { attachBackend as attachPlugins, localizeView, type PluginConfigInput } from '@spica/plugins';
+import { netFetch, serveMcpHttp, type McpHttpServer, type Runtime } from '@spica/core';
+import { attachBackend as attachPlugins, localizeView, runtimeHost, UserMcpServers, type PluginConfigInput, type UserMcpConfig } from '@spica/plugins';
 import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
@@ -35,6 +37,10 @@ export interface DesktopHostOptions {
   userConfig?: Record<string, PluginConfigInput>;
   /** The interface language when the core started (shared/i18n); the words of the plugin page follow it, and setLocale after. */
   locale?: Locale;
+  /** The MCP services the person added, their variables' values opened by the main process (in memory only). */
+  userMcp?: UserMcpConfig[];
+  /** The app's own uv and its Python folder: uvx runs as it when the computer has none. */
+  uv?: { exe: string; root: string };
 }
 
 /** Tried first, so scripts usually find the same address; any free port when it is taken. */
@@ -68,6 +74,21 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
   });
   // Tell the main process when plugins change on their own (a server crashed, ...).
   page.onChange(() => parent?.postMessage({ type: 'plugins.changed' }));
+  // The services the person added: started in the background (a slow one must not hold up the app), each change of
+  // state told to the main process; their log lines go to the monitor as a plugin's do (secrets already taken out).
+  const userMcp = new UserMcpServers({
+    host: runtimeHost(rt),
+    ...(options.uv ? { uv: options.uv } : {}),
+    // an npx package's size before it is downloaded (the registry's metadata, through the app's proxy)
+    fetchJson: async (url) => {
+      const r = await netFetch(url, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8_000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    onEvent: () => parent?.postMessage({ type: 'mcp.changed' }),
+    onLog: (name, line) => parent?.postMessage({ type: 'log', source: 'plugin', plugin: `mcp:${name}`, line }),
+  });
+  void userMcp.set(options.userMcp ?? []).then(() => parent?.postMessage({ type: 'mcp.changed' }));
   // The built-in browser's tools: they ask the main process (host methods browser.*, main/browser/agent.ts).
   const bridge = rt.settingsBridge;
   // files an upload may take: the conversation's folders and what the person gave it (as for writing, write-scope.ts)
@@ -124,6 +145,18 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         return null;
       },
       mcpHttpState: () => httpState(),
+      // the list as saved (the main process seals it): what changed starts, stops or restarts. Not waited for (a
+      // start may take a while): how each goes comes as mcp.changed.
+      userMcpSet: (list: unknown) => {
+        void userMcp.set(Array.isArray(list) ? (list as UserMcpConfig[]) : []);
+        return userMcp.states();
+      },
+      userMcpStates: () => userMcp.states(),
+      // the person agreed to the download a service waits for (not waited for either)
+      userMcpDownload: (name: unknown) => {
+        if (typeof name === 'string') void userMcp.download(name);
+        return userMcp.states();
+      },
       // 设置 › 账号 changed: hooks read it at their next call, plugin servers restart with it.
       // 外观 › 显示 › 语言 changed: the plugin page's words from now on.
       setLocale: (locale: unknown) => {
@@ -143,10 +176,14 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
       },
     },
     // The app's network settings changed (the core calls this): plugin servers restart to use them.
-    networkChanged: () => plugins.networkChanged(),
+    networkChanged: async () => {
+      await plugins.networkChanged();
+      await userMcp.restartAll();
+    },
     close: async () => {
       for (const off of unregisterBrowser) off();
       await stopHttp();
+      await userMcp.close();
       await plugins.close();
     },
   };
