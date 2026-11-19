@@ -25,6 +25,17 @@ export interface ToolContext {
   confirmedBy?: 'user' | 'view';
   /** ISO 8601: when the user message this round answers was written (present_files tells made from read by it). */
   roundStartedAt?: string;
+  /**
+   * Runs another tool of this conversation as one step of this call (browser_batch), judged as a call of its own
+   * would be: hooks, the guard (outside content met by earlier steps counts), the approval mode. A confirmation is
+   * asked on a card right then; the step waits for the answer. Absent where there is no conversation (a plugin view).
+   */
+  step?(name: string, input: Record<string, unknown>): Promise<StepResult>;
+}
+
+/** How a step went: ran (ok / error), was blocked by a hook, declined by the user, or is not a tool here. */
+export interface StepResult extends ToolOutput {
+  status: 'ok' | 'error' | 'denied' | 'declined' | 'unavailable';
 }
 
 export interface ToolOutput {
