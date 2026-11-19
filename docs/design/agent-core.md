@@ -201,6 +201,7 @@
 | `web_search` | 配了搜索接口时 | 接口可插（`SearchBackend`），自带通用的「GET 返回 JSON」适配器；会话用的模型有托管搜索且开着时改用托管搜索 |
 | `present_files` | 所有 | 把做出来的文件交给用户，出文件卡；只读，按文件时间标新建、修改或读取（见下面「做出来的文件出卡」） |
 | `ask_user` | 所有 | 提问卡，运行暂停到用户回答。`question` 是 Markdown，说明里要求一句主问题在前、要补的几项各占一行（「- 」开头的列表，不写编号：卡片自己给选项编号）；`options` 可选，卡片自己加一行让用户自己写，所以说明里要求不加「其他」这种选项；`recommended` 可选，是建议的那个选项（要和某个选项一字不差，对不上就丢掉，`askRecommended`）；`multiSelect` 可选，为 true 时可以选好几项（要有选项才算），回答是选中的几项加自己写的话、一行一项（`askAnswerLines`）；这几项都随等待项和 `ask.request` 一起给出 |
+| `update_plan` | 所有 | 任务清单（照 Codex 的 update_plan）：`explanation` 可选，`plan` 是整份清单，每项 `step` 和 `status`（`pending` / `in_progress` / `completed`），每次发整份、后一次换掉前一次，空清单就是清掉。最多 30 步、同时只能一步 `in_progress`、状态写错，由代码拒（协议包的 `readPlan`）；只读。清单不另存，外壳从对话里存着的调用读回来（见 desktop-shell.md「清单」） |
 | `suggest_actions` | 所有 | 给几个「下一步」按钮，不等用户选；用户点哪个，外壳就把它的 prompt 当用户消息发进来 |
 | `spawn_agent` / `message_agent` / `wait_agents` / `record_decision` | 所有 | 会话树工具，见第 10 节 |
 | `create_project` / `list_projects` / `open_project` | 顶层 | 见第 15 节 |
@@ -278,7 +279,7 @@
   - `regenerate.no_turn`：还没有用户消息。`regenerate.running` / `regenerate.waiting`：在跑、在等确认或回答。
   - `regenerate.not_typed`：那一轮不是用户亲手发的话开头的（回报、转来的信）。
   - `regenerate.not_last`：调用时给的消息不在最后一轮。这一版只给最后一轮；中间轮要让后面的对话作废，接口上留了 `messageId`，以后放开不用改签名。
-  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`（提示写「可能产生改动」：没声明只读、工具已不在，都不等于真的改过）。记忆的 `remember` / `forget` 不算：重新生成时先把旧回答对记忆做的改动撤掉（`memory.revert`，见 `memory.md` 第 5 节），再跑新的一版。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、wait_agents、present_files；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
+  - **这一轮动过手**：这一轮执行过的工具调用里有没声明只读（`Tool.readOnly`）的，就不给，因为重跑等于再做一遍。按工具调用记录的状态算：`denied`（用户拒绝）、`unavailable`（没这个工具）没执行，不算；工具已不在注册表里的按动过算。`write_file` / `edit_file` 是 `regenerate.wrote_files`，`spawn_agent` / `message_agent` 是 `regenerate.spawned`，其余是 `regenerate.acted`（提示写「可能产生改动」：没声明只读、工具已不在，都不等于真的改过）。记忆的 `remember` / `forget` 不算：重新生成时先把旧回答对记忆做的改动撤掉（`memory.revert`，见 `memory.md` 第 5 节），再跑新的一版。内置的只读工具：read_file、list_dir、glob、grep、web_fetch、web_search、search_history、read_history、find_history_files、list_projects、open_project、project_status、list_work_objects、ask_user、suggest_actions、update_plan、wait_agents、present_files；插件的 MCP 工具声明了 `readOnlyHint` 才算只读。
 - **允许的边角**：上一轮出错或被停（哪怕一个字都没回）也能重新生成，等于真正的重试；一个字都没回的那一轮不算一版。这一轮里的插话跟旧版一起收进旧版。新的一版又失败时旧版不恢复，可以再点一次。
 - **跑的是什么**：照常开一次运行，用的是会话**当时**的模型、批准方式和工具表（中途换过模型就用新的），附件用当初存下的内容块。用量、可追溯记录照记，旧版花掉的不退。不调 `onUserMessage`（用户没有新写话，标题、回传都不动）。
 - **事件先后**：`messages.superseded { anchorId, messageIds, version }` → `status thinking` → `session.updated`（running） → 照常的流式和 `message` → 最后的 `status` → `session.updated` → `run.end`。返回值 `{ ok: true, anchorId, version: 新版的号 }`；不行时 `{ ok: false, code, hint }`，什么都没改。
