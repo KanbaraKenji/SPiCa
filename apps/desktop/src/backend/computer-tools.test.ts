@@ -7,7 +7,7 @@ import type { FakeGateway } from '../../../../packages/core/src/testing/fake-gat
 import { makeRuntime, startGateway, tempDir, until } from '../../../../packages/core/src/testing/helpers.ts';
 import { ComputerAgent, type AlwaysApp } from '../main/computer/agent';
 import { FakeDriver } from '../main/computer/fake-driver';
-import { accessText, computerHook, computerTools, KEEP_SCREENSHOTS, type HostCall } from './computer-tools';
+import { accessText, computerHook, computerTools, KEEP_SCREENSHOTS, registerComputer, type HostCall } from './computer-tools';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
@@ -42,6 +42,17 @@ function setup(opts: { enabled?: boolean; images?: boolean } = {}) {
 }
 
 describe('computer tools', () => {
+  it('not there at all unless this run has 操作电脑 (SPICA_COMPUTER): no computer_* tool, no hook', () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const names = () => rt.tools.entries().map((e) => e.tool.spec.name).filter((n) => n.startsWith('computer_'));
+    expect(registerComputer(rt, async () => ({}), { available: false, enabled: () => true })).toEqual([]);
+    expect(names()).toEqual([]);
+    const off = registerComputer(rt, async () => ({}), { available: true, enabled: () => true });
+    expect(names()).toHaveLength(17);
+    for (const f of off) f();
+    expect(names()).toEqual([]);
+  });
+
   it('offered only when switched on, to the top-level conversation, with a model that takes images, not for mail sorting', () => {
     const tools = computerTools(async () => ({}), { enabled: () => true, takesImages: (_p, m) => m !== 'text-only' });
     const t = tools.find((x) => x.spec.name === 'computer_screenshot')!;

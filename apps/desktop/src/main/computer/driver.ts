@@ -48,13 +48,18 @@ export interface Driver {
 }
 
 /**
- * Which driver runs. The real one only on Windows, in an installed copy or a development run asked for with
- * SPICA_COMPUTER=real, and never in a test window (SPICA_HIDDEN), with the demo backend or under the tests.
+ * Whether 操作电脑 is there at all, and on which driver. Until the real driver has been checked on a real machine
+ * it is off everywhere, installed copies too: no computer_* tools for the agent, no 操作电脑 in the settings.
+ *   SPICA_COMPUTER=real  the real driver, on Windows; in a test window (SPICA_HIDDEN), with the demo backend or
+ *                        under the tests the made-up desktop instead, so they never reach the real screen
+ *   SPICA_COMPUTER=fake  the made-up desktop (development runs only: tests and screenshots)
+ *   anything else        off
  */
-export function driverKind(env: Record<string, string | undefined>, opts: { packaged: boolean; platform: string }): 'real' | 'fake' {
-  if (opts.platform !== 'win32') return 'fake';
-  if (env.SPICA_HIDDEN === '1' || env.SPICA_BACKEND === 'fake' || env.VITEST || env.SPICA_COMPUTER === 'fake') return 'fake';
-  return opts.packaged || env.SPICA_COMPUTER === 'real' ? 'real' : 'fake';
+export function computerMode(env: Record<string, string | undefined>, opts: { packaged: boolean; platform: string }): 'off' | 'real' | 'fake' {
+  if (env.SPICA_COMPUTER === 'fake') return opts.packaged ? 'off' : 'fake';
+  if (env.SPICA_COMPUTER !== 'real') return 'off';
+  if (opts.platform !== 'win32' || env.SPICA_HIDDEN === '1' || env.SPICA_BACKEND === 'fake' || env.VITEST) return 'fake';
+  return 'real';
 }
 
 /** The window on top at a point, or undefined (nothing there). */

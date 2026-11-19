@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { DEFAULT_SETTINGS, type ShellSettings } from '../../../shared/settings';
 import { ComputerUse } from './ComputerUse';
+import { General, type GeneralProps } from './General';
 
 afterEach(cleanup);
 
@@ -41,5 +42,26 @@ describe('操作电脑 settings', () => {
     expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [], denied: ['old.exe'] } });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [{ exe: 'C:\\Windows\\System32\\notepad.exe', name: '记事本' }], denied: ['old.exe', 'game.exe'] } }));
+  });
+});
+
+describe('in 设置 › 常规', () => {
+  const props: GeneralProps = {
+    settings: DEFAULT_SETTINGS,
+    onChange: () => undefined,
+    workflows: { run: async () => ({ dir: '', names: [], errors: [] }) as never },
+    pickFolder: async () => null,
+    onBackendRestarted: () => () => undefined,
+    projects: [],
+    exportUsageLog: async () => ({ file: '', records: 0 }) as never,
+    showInFolder: () => undefined,
+  };
+  it('not there unless this run has it (SPICA_COMPUTER); there when it does', () => {
+    render(<General {...props} />);
+    expect(screen.queryByText('操作电脑')).toBeNull();
+    expect(screen.queryByRole('switch', { name: '允许 Agent 操作电脑' })).toBeNull();
+    cleanup();
+    render(<General {...props} computerUse />);
+    expect(screen.getByRole('switch', { name: '允许 Agent 操作电脑' })).toBeTruthy();
   });
 });

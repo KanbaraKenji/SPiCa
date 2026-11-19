@@ -7,7 +7,7 @@
 //    Only the newest few go with each request again (keepImages).
 // Only where the person switched 设置 › 常规 › 操作电脑 on, for the top-level conversation, with a model that takes
 // images, and not for sessions that run with nobody at the window.
-import { keepMedia, validateInput, type Hooks, type Tool, type ToolContext, type ToolOutput } from '@spica/core';
+import { keepMedia, validateInput, type Hooks, type Runtime, type Tool, type ToolContext, type ToolOutput } from '@spica/core';
 import type { ImageBlock } from '@spica/protocol';
 
 export type HostCall = (method: string, params: unknown[]) => Promise<unknown>;
@@ -344,4 +344,16 @@ export function computerTools(host: HostCall, opts: { enabled: () => boolean; ta
     },
   });
   return tools;
+}
+
+/**
+ * The tools and the approval hook, registered with the core; nothing at all when this run does not have 操作电脑
+ * (until the real driver was checked on a real machine: only with SPICA_COMPUTER). Returns how to take them away.
+ */
+export function registerComputer(rt: Pick<Runtime, 'tools' | 'hooks' | 'imagesAllowed'>, host: HostCall, opts: { available: boolean; enabled: () => boolean }): (() => void)[] {
+  if (!opts.available) return [];
+  return [
+    ...computerTools(host, { enabled: opts.enabled, takesImages: (p, m) => rt.imagesAllowed(p, m) }).map((tool) => rt.tools.register(tool, 'desktop')),
+    rt.hooks.register('desktop-computer', computerHook(host)),
+  ];
 }

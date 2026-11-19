@@ -6,7 +6,7 @@ import { app, nativeImage, screen } from 'electron';
 import type { SettingsStore } from '../settings-store';
 import { ComputerAgent } from './agent';
 import { ComputerBar, type BarLook } from './bar';
-import { driverKind, type Driver } from './driver';
+import { computerMode, type Driver } from './driver';
 import { FakeDriver } from './fake-driver';
 
 /** Statuses of a conversation that is still running (main/tray.ts RUNNING): the computer stays held. */
@@ -26,8 +26,10 @@ export interface ComputerSetup {
   barHtml(): Promise<string>;
 }
 
-export function setupComputer(opts: { settings: SettingsStore; hidden: boolean; look: () => Omit<BarLook, 'mark'>; abort: (sessionId: string) => void }): ComputerSetup {
-  const kind = driverKind(process.env, { packaged: app.isPackaged, platform: process.platform });
+/** Null when 操作电脑 is off in this run (driver.ts computerMode: SPICA_COMPUTER not set). */
+export function setupComputer(opts: { settings: SettingsStore; hidden: boolean; look: () => Omit<BarLook, 'mark'>; abort: (sessionId: string) => void }): ComputerSetup | null {
+  const kind = computerMode(process.env, { packaged: app.isPackaged, platform: process.platform });
+  if (kind === 'off') return null;
   let agent: Promise<ComputerAgent> | undefined;
   const mark = (() => {
     const img = nativeImage.createFromPath(join(app.getAppPath(), 'resources', 'branding', 'png', 'spica-icon-32.png'));

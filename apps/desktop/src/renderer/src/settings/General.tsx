@@ -44,6 +44,8 @@ export interface GeneralProps {
   previewPages?: PluginView[];
   /** Whether 开机时启动 works in this copy (an installed one); absent: shown disabled. */
   autostart?: AutostartSupport;
+  /** 操作电脑 is there in this run (until the real driver was checked on a real machine: only with SPICA_COMPUTER). Absent: no such group. */
+  computerUse?: boolean;
   /** 浏览器 › 浏览数据: clears the built-in browser's sign-ins, storage and cache. Absent: no such row. */
   clearBrowsingData?: () => Promise<unknown>;
 }
@@ -484,7 +486,7 @@ export function General(props: GeneralProps) {
       <Startup {...props} />
       <FilePreviews {...props} />
       <Browser {...props} />
-      <ComputerUse settings={props.settings} onChange={props.onChange} {...(props.pickFiles ? { pickFiles: props.pickFiles } : {})} />
+      {props.computerUse ? <ComputerUse settings={props.settings} onChange={props.onChange} {...(props.pickFiles ? { pickFiles: props.pickFiles } : {})} /> : null}
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

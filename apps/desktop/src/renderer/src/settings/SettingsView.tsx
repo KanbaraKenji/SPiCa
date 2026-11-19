@@ -147,6 +147,7 @@ export function SettingsView({ reveal, shell, providers, plugins, version, updat
         {...(previewPages ? { previewPages } : {})}
         {...(clearBrowsingData ? { clearBrowsingData } : {})}
         autostart={shell.autostart}
+        computerUse={shell.computerUse}
       />
     ) : id === 'account' ? (
       <Account settings={settings} onChange={(p) => shell.update(p)} autoAccount={shell.autoAccount} />

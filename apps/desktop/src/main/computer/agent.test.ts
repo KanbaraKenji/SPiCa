@@ -3,7 +3,7 @@ import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { ComputerAgent, IDLE_MS, type AlwaysApp, type ComputerState } from './agent';
 import { encodePng, fitForModel, maskScreen, MASK_GREY, resize, type Bitmap } from './bitmap';
-import { driverKind } from './driver';
+import { computerMode } from './driver';
 import { FAKE_SPICA_PID, FakeDriver } from './fake-driver';
 import { clickSteps, keySteps } from './input';
 import { allows, exeName, ruleFor } from '../../shared/computer-use';
@@ -35,20 +35,23 @@ async function allow(agent: ComputerAgent, sessionId: string, apps: string[], al
   return p;
 }
 
-describe('which driver runs', () => {
+describe('whether it is there, on which driver', () => {
   const win = { platform: 'win32' };
-  it('the made-up desktop in test windows, with the demo backend, under the tests and off Windows', () => {
-    expect(driverKind({ SPICA_HIDDEN: '1', SPICA_COMPUTER: 'real' }, { ...win, packaged: true })).toBe('fake');
-    expect(driverKind({ SPICA_BACKEND: 'fake' }, { ...win, packaged: true })).toBe('fake');
-    expect(driverKind({ VITEST: 'true', SPICA_COMPUTER: 'real' }, { ...win, packaged: true })).toBe('fake');
-    expect(driverKind({}, { platform: 'darwin', packaged: true })).toBe('fake');
-    expect(process.env.VITEST).toBeTruthy();
-    expect(driverKind(process.env, { ...win, packaged: true })).toBe('fake');
+  it('off unless SPICA_COMPUTER asks for it, installed copies too (until the real driver was checked on a real machine)', () => {
+    expect(computerMode({}, { ...win, packaged: true })).toBe('off');
+    expect(computerMode({}, { ...win, packaged: false })).toBe('off');
+    expect(computerMode({ SPICA_COMPUTER: 'yes' }, { ...win, packaged: true })).toBe('off');
+    expect(computerMode({ SPICA_COMPUTER: 'fake' }, { ...win, packaged: true })).toBe('off');
   });
-  it('a development run uses the real one only when asked for', () => {
-    expect(driverKind({}, { ...win, packaged: false })).toBe('fake');
-    expect(driverKind({ SPICA_COMPUTER: 'real' }, { ...win, packaged: false })).toBe('real');
-    expect(driverKind({}, { ...win, packaged: true })).toBe('real');
+  it('real only on Windows, never in a test window, with the demo backend or under the tests', () => {
+    expect(computerMode({ SPICA_COMPUTER: 'real' }, { ...win, packaged: true })).toBe('real');
+    expect(computerMode({ SPICA_COMPUTER: 'real' }, { ...win, packaged: false })).toBe('real');
+    expect(computerMode({ SPICA_COMPUTER: 'real', SPICA_HIDDEN: '1' }, { ...win, packaged: false })).toBe('fake');
+    expect(computerMode({ SPICA_COMPUTER: 'real', SPICA_BACKEND: 'fake' }, { ...win, packaged: false })).toBe('fake');
+    expect(computerMode({ SPICA_COMPUTER: 'real', VITEST: 'true' }, { ...win, packaged: true })).toBe('fake');
+    expect(computerMode({ SPICA_COMPUTER: 'real' }, { platform: 'darwin', packaged: true })).toBe('fake');
+    expect(computerMode({ ...process.env, SPICA_COMPUTER: 'real' }, { ...win, packaged: true })).toBe('fake');
+    expect(computerMode({ SPICA_COMPUTER: 'fake' }, { ...win, packaged: false })).toBe('fake');
   });
 });
 

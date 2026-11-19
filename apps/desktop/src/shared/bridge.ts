@@ -49,6 +49,8 @@ export interface ShellState {
   reopen?: { sessionId: string | null };
   /** Whether 开机时启动 works in this copy (main/autostart.ts); absent from an older main process: shown disabled. */
   autostart?: AutostartSupport;
+  /** 操作电脑 is there in this run (main/computer/driver.ts computerMode); absent: no 操作电脑 in the settings. */
+  computerUse?: boolean;
   /** This start opens on 新对话, not the main conversation (main/autostart.ts startsOnNewChat). */
   startOnNewChat?: boolean;
   /** Windows' languages, most preferred first (app.getPreferredSystemLanguages(); SPICA_SYSTEM_LOCALE in tests): what 语言 跟随系统 follows. */

@@ -20,7 +20,7 @@ import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
 import { browserHook, browserTools } from './browser-tools';
-import { computerHook, computerTools } from './computer-tools';
+import { registerComputer } from './computer-tools';
 import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
@@ -38,6 +38,8 @@ export interface DesktopHostOptions {
   userConfig?: Record<string, PluginConfigInput>;
   /** The interface language when the core started (shared/i18n); the words of the plugin page follow it, and setLocale after. */
   locale?: Locale;
+  /** 操作电脑 is there in this run (main/computer/driver.ts computerMode): without it no computer_* tools at all. */
+  computerAvailable?: boolean;
   /** 设置 › 常规 › 操作电脑 when the core started (computerUse after). */
   computerUse?: boolean;
 }
@@ -88,13 +90,11 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     const path = await bridge.host('images.fit', [src, dir]);
     return typeof path === 'string' ? path : undefined;
   };
-  // 操作电脑's tools: the main process decides what may be seen and touched (main/computer/agent.ts)
+  // 操作电脑's tools: the main process decides what may be seen and touched (main/computer/agent.ts); none at all
+  // unless this run has it (SPICA_COMPUTER, main/computer/driver.ts computerMode)
   let computerOn = options.computerUse === true;
   const unregisterComputer = bridge
-    ? [
-        ...computerTools((method, params) => bridge.host(method, params), { enabled: () => computerOn, takesImages: (p, m) => rt.imagesAllowed(p, m) }).map((tool) => rt.tools.register(tool, 'desktop')),
-        rt.hooks.register('desktop-computer', computerHook((method, params) => bridge.host(method, params))),
-      ]
+    ? registerComputer(rt, (method, params) => bridge.host(method, params), { available: options.computerAvailable === true, enabled: () => computerOn })
     : [];
 
   let http: McpHttpServer | undefined;
