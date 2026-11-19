@@ -56,6 +56,8 @@ export type Block =
       summary?: string;
       /** A plugin tool's name for people. */
       title?: string;
+      /** From an MCP service the person added: its name as written. */
+      server?: string;
     }
   /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
   /** `recommended`: the option the model suggests (marked 建议 on the card); none on older calls. */
@@ -307,8 +309,8 @@ export function historyRef(t: Transcript, ref: number): { sessionId: string; seq
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
 
 /** What tool.start says about a call beyond its name and input: its kind, the model's line on it, a plugin tool's title. */
-function aboutCall(e: { category?: ToolCategory; summary?: string; title?: string }): { category?: ToolCategory; summary?: string; title?: string } {
-  return { ...(e.category ? { category: e.category } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.title ? { title: e.title } : {}) };
+function aboutCall(e: { category?: ToolCategory; summary?: string; title?: string; server?: string }): { category?: ToolCategory; summary?: string; title?: string; server?: string } {
+  return { ...(e.category ? { category: e.category } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.title ? { title: e.title } : {}), ...(e.server ? { server: e.server } : {}) };
 }
 
 /** Tools that read or write a file; their `path` becomes a file card under the answer. */
@@ -627,6 +629,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (about?.category) tool.category = about.category;
           if (about?.summary) tool.summary = about.summary;
           if (about?.title) tool.title = about.title;
+          if (about?.server) tool.server = about.server;
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';

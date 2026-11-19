@@ -6,6 +6,7 @@ import { DesktopChannel } from '../shared/ipc';
 import type { BackendState, DesktopBridge, LocalConnectInfo, NetworkState, PreviewFile, PreviewInfo, ProviderList, SaveCsvResult, ShellState, UsageLogResult, WorkflowsState } from '../shared/bridge';
 import type { ModelRef, ProviderDraft, ProviderKind, ProviderSpendView, TestResult } from '../shared/providers';
 import type { PluginsCommand, PluginsProgress, PluginsResult } from '../shared/plugins';
+import type { McpCommand, McpResult } from '../shared/mcp-servers';
 import type { UpdateState } from '../shared/updates';
 import type { SettingsPatch, ShellSettings } from '../shared/settings';
 import type { PluginView, PluginViewResult } from '../shared/plugin-view';
@@ -133,6 +134,10 @@ const bridge: DesktopBridge = {
     run: (cmd: PluginsCommand) => ipcRenderer.invoke(DesktopChannel.Plugins, cmd) as Promise<PluginsResult>,
     onChanged: (listener) => subscribe<void>(DesktopChannel.PluginsChanged, () => listener()),
     onProgress: (listener) => subscribe<PluginsProgress>(DesktopChannel.PluginsProgress, listener),
+  },
+  mcp: {
+    run: (cmd: McpCommand) => ipcRenderer.invoke(DesktopChannel.Mcp, cmd) as Promise<McpResult>,
+    onChanged: (listener) => subscribe<void>(DesktopChannel.McpChanged, () => listener()),
   },
   workflows: {
     run: (op) => ipcRenderer.invoke(DesktopChannel.Workflows, op) as Promise<WorkflowsState>,

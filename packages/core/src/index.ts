@@ -112,4 +112,5 @@ export { serveMcp, spicaMcpTools, mcpDispatcher, type McpTool, type McpServeOpti
 export { serveMcpHttp, newMcpToken, type McpHttpOptions, type McpHttpServer } from './mcp/http.ts';
 // Images a tool brings back (the desktop's browser screenshot), kept in the conversation's media folder like an MCP tool's.
 export { keepMedia, type KeptMedia } from './mcp/media.ts';
+export { findCommand, windowsLaunch } from './mcp/win-command.ts';
 export { MailPipeline, triageMailTool, parseToolJson, type MailConfig, type MailSource } from './mail.ts';

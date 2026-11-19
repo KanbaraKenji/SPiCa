@@ -1,4 +1,5 @@
 // The window: title bar, left sidebar, main pane (conversation, inbox or a plugin page), right panels; settings as a dialog over it.
+import { mcpApiOf } from './settings/mcp-api';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
@@ -621,6 +622,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }),
     [bridge],
   );
+  // 设置 › 插件 › MCP 服务 (absent from a bridge without it: no such tab)
+  const mcpApi = useMemo(() => (bridge.mcp ? mcpApiOf(bridge.mcp, () => bridge.pickFolder(t('选择工作文件夹'))) : undefined), [bridge]);
   // 收件箱 shows only while a plugin that provides mail is on.
   const [mailSource, setMailSource] = useState(false);
   // 模拟模式 (设置 › 插件): the inbox says its mail is demo data.
@@ -1559,6 +1562,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           shell={shell}
           providers={bridge.providers}
           plugins={pluginsApi}
+          {...(mcpApi ? { mcp: mcpApi } : {})}
           version={version}
           update={update}
           onCheckUpdate={() => void bridge.updates.run('check')}

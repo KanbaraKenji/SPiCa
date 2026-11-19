@@ -86,6 +86,9 @@ describe('a group’s line', () => {
     expect(groupWords([cmd, { call: call('write_file', { path: 'q5.py' }), card: card('created') }, cmd, { call: call('read_file', { path: 'a' }) }, cmd, cmd])).toBe('Ran 4 commands, created a file, read a file');
     expect(groupWords([{ call: call('web_fetch', { url: 'https://a' }) }, { call: call('web_fetch', { url: 'https://b' }) }, { call: call('web_search', { query: 'q' }) }])).toBe('Fetched 2 pages, searched the web');
     expect(groupWords([{ call: call('notes__a') }, { call: call('notes__b') }, { call: call('x') }])).toBe('Used 「Notes」, used a tool');
+    // a service the person added: its name as they wrote it, not capitalised (a plugin's is)
+    expect(groupWords([{ call: { ...call('lab__room_temperature'), server: 'lab' } }])).toBe('Used 「lab」');
+    expect(runningWords({ ...call('lab__room_temperature'), server: 'lab' })).toBe('Running lab · room_temperature');
   });
 });
 
