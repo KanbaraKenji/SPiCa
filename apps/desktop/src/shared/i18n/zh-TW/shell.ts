@@ -190,6 +190,12 @@ export const ZH_TW_SHELL: Catalog = {
   '项目|tab': '專案',
   '{n} 封待确认': '{n} 封待確認',
 
+  // shell/CommandJobs.tsx
+  '展开详情（{n} 个运行中）': '展開詳細資料（{n} 個執行中）',
+  后台命令: '背景命令',
+  运行中: '執行中',
+  停止: '停止',
+
   // shell/ToolHistory.tsx
   已中断: '已中斷',
   已超时: '已逾時',

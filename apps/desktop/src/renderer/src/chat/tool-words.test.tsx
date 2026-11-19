@@ -135,3 +135,25 @@ describe('the innermost level', () => {
     ]);
   });
 });
+
+describe('commands in the background and JavaScript', () => {
+  it('a command run in the background is started, not ran; JavaScript, reading and stopping one', () => {
+    expect(toolLineText(call('run_command', { command: 'npm run dev', run_in_background: true }, { summary: '启动预览服务' }))).toBe('Started 启动预览服务');
+    expect(runningWords(call('run_command', { command: 'npm run dev', run_in_background: true }))).toBe('Starting npm run dev');
+    expect(toolLineText(call('run_javascript', { code: '1 + 1' }))).toBe('Ran JavaScript');
+    expect(toolLineText(call('run_javascript', { code: '1 + 1' }, { summary: '汇总报价' }))).toBe('Ran 汇总报价');
+    expect(toolLineText(call('command_output', { id: 'cmd1' }))).toBe('Checked a background command');
+    expect(toolLineText(call('stop_command', { id: 'cmd1' }))).toBe('Stopped a background command');
+    const started = { call: call('run_command', { command: 'a', run_in_background: true }) };
+    expect(groupWords([started, started, { call: call('command_output', { id: 'cmd1' }) }, { call: call('run_javascript', {}) }])).toBe('Started 2 background commands, checked background commands, ran JavaScript');
+  });
+});
+
+describe('checking code for errors', () => {
+  it('names the file or the project', () => {
+    expect(toolLineText(call('get_diagnostics', { path: 'src/app.ts' }))).toBe('Checked app.ts for errors');
+    expect(toolLineText(call('get_diagnostics', {}))).toBe('Checked the project for errors');
+    expect(runningWords(call('get_diagnostics', {}))).toBe('Checking the project for errors');
+    expect(groupWords([{ call: call('get_diagnostics', {}) }, { call: call('get_diagnostics', { path: 'a.py' }) }])).toBe('Checked for errors');
+  });
+});

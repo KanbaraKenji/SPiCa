@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Block, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Block, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -785,6 +785,24 @@ describe('a failed download for the app’s Python', () => {
     expect(t.installFailure?.reason).toBe('connect');
     t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 5));
     expect(t.installFailure).toBeUndefined();
+  });
+});
+
+describe('background commands', () => {
+  const job = { id: 'cmd1', sessionId: 's', callId: 'call-1', command: 'npm run dev', cwd: 'D:/w', startedAt: '2026-11-18T08:00:00Z', outputPath: 'D:/w/cmd1.log' };
+  it('command.job keeps each job by id, the latest state winning', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, { seq: 1, sessionId: 's', parentChain: [], at: '', type: 'command.job', job } as CoreEvent);
+    expect(t.jobs?.cmd1?.end).toBeUndefined();
+    t = applyEvent(t, { seq: 2, sessionId: 's', parentChain: [], at: '', type: 'command.job', job: { ...job, end: 'user', exitCode: null } } as CoreEvent);
+    expect(t.jobs?.cmd1?.end).toBe('user');
+  });
+  it('the files a job changed become its call’s cards after a restart', () => {
+    const file = { path: 'D:/w/a.txt', name: 'a.txt', kind: 'text', sizeBytes: 1, modifiedAt: '', extractedAt: '', read: {}, origin: 'created' } as const;
+    const t = withJobs({ items: [] }, [{ ...job, end: 'exited', exitCode: 0, files: [file] }]);
+    expect(t.fileCards?.['call-1']?.name).toBe('a.txt');
+    expect(t.fileCardLists?.['call-1']).toHaveLength(1);
+    expect(withJobs({ items: [] }, []).jobs).toBeUndefined();
   });
 });
 
