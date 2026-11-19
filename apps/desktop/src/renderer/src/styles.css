@@ -961,6 +961,19 @@ button.tree-twisty:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* 后台命令: the command quieter after its description, in the code font; 停止 at the row's end, kept within the row's
+   height (its hover reaches past it, as .detail-file's). */
+.detail-job-cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+
+.icon-btn.detail-job-stop {
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px -2px 0;
+}
+
 .detail-file {
   /* Its hover reaches 6px past the column on both sides; its contents keep to the column (the right edge too). */
   width: calc(100% + 12px);

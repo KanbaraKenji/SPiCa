@@ -1067,6 +1067,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         project={project}
         activity={project ? (state.activity[project.id] ?? []) : []}
         hideHeading={panelPages.length > 0}
+        onStopJob={(jobId) => void agent.stopJob(jobId)}
       />
       )}
     </>

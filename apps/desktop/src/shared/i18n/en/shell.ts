@@ -190,6 +190,11 @@ export const EN_SHELL: Catalog = {
   '项目|tab': 'Projects',
   '{n} 封待确认': '{n} to review',
 
+  // shell/CommandJobs.tsx
+  后台命令: 'Background commands',
+  运行中: 'Running',
+  停止: 'Stop',
+
   // shell/ToolHistory.tsx
   已中断: 'Interrupted',
   已超时: 'Timed out',
