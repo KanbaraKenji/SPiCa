@@ -36,7 +36,6 @@ function useSecond(on: boolean): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!on) return;
-    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, [on]);
