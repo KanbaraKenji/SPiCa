@@ -22,8 +22,8 @@ const model = process.env.SPICA_OPENAI_MODEL ?? 'deepseek-flash';
 const root = await mkdtemp(join(tmpdir(), 'spica-allowed-'));
 const work = join(root, 'work');
 const minutes = join(root, 'minutes');
-await mkdir(work);
-await mkdir(minutes);
+const drafts = join(root, 'drafts');
+for (const d of [work, minutes, drafts]) await mkdir(d);
 
 const rt = new Runtime({
   providers: [new OpenAICompatibleProvider({ id: 'openai', baseUrl, apiKey })],
@@ -90,8 +90,18 @@ try {
   const t6 = await turn(`以后往 ${minutes} 写要先问我。`, 'no');
   check('his own words with the folder in full: taken back, no card', t6.cards === 0 && s.allowedWriteFolders().length === 0 && !s.mayWriteIn(minutes));
 
-  const t7 = await turn('在 ../minutes/e.md 里写一行「评审改到周五」。', 'none');
-  check('the next write there: the card again', t7.cards === 1 && t7.reason === 'awaiting_confirm');
+  const t7 = await turn('在 ../minutes/e.md 里写一行「评审改到周五」。', 'once');
+  check('the next write there: the card again', t7.cards === 1);
+
+  // the other way a folder is writable: the user typed it in a message (no card ever)
+  const t8 = await turn(`草稿放在 ${drafts}，在那里新建 x.md，写一行「初稿」。`, 'no');
+  check('a folder the user typed: written without a card', t8.cards === 0 && (await readFile(join(drafts, 'x.md'), 'utf8').catch(() => '')).includes('初稿'));
+
+  const t9 = await turn(`以后往 ${drafts} 写要先问我。`, 'no');
+  check('typed, then his own words: taken back, no card', t9.cards === 0 && !s.mayWriteIn(drafts));
+
+  const t10 = await turn('在 ../drafts/y.md 里写一行「二稿」。', 'none');
+  check('the next write there: the card', t10.cards === 1 && t10.reason === 'awaiting_confirm');
 } finally {
   await rt.close();
   await rm(root, { recursive: true, force: true }).catch(() => {});

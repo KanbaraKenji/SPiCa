@@ -528,7 +528,7 @@ export class FakeBackend implements AgentBackend {
 
   async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
     const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
-    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder) {
+    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
       const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
       set.add(item.outsideFolder);
       this.#writeFolders.set(sessionId, set);
@@ -1486,7 +1486,11 @@ export class FakeBackend implements AgentBackend {
         // A write outside the conversation's folders (core: GuardCause outside_folder): asked in either approval
         // mode, with 工作文件夹以外 and 始终允许此文件夹; once that folder is allowed, the next write there just runs.
         const callId = this.#id('call');
-        const folder = 'D:\\共享资料\\纪要';
+        // 「盘根」: the drive's root, which is never kept (core folderTooWide: the card offers 允许 alone)
+        const root = /盘根/.test(text);
+        const folder = root ? 'D:\\' : 'D:\\共享资料\\纪要';
+        const base = root ? 'D:' : folder;
+        const wide = root ? { folderTooWide: true } : {};
         const newFile = /新建/.test(text);
         // 「用命令」: the same write as a command (approval mode Auto asks for it by the core's fixed rules,
         // command-scope.ts); 「起始文件夹」: a command run in that folder
@@ -1497,8 +1501,8 @@ export class FakeBackend implements AgentBackend {
             ? { command: "Set-Content -Path '周会汇总.md' -Value '样品改用 B 方案'", cwd: folder, description: '在纪要文件夹里写周会汇总' }
             : { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value '样品改用 B 方案'`, description: '把周会汇总写到纪要文件夹' }
           : newFile
-            ? { path: `${folder}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
-            : { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
+            ? { path: `${base}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
+            : { path: `${base}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
         const change = byCommand ? undefined : newFile
           ? { path: String(input.path), created: true, change: { hunks: [{ oldStart: 0, newStart: 1, lines: ['+# 周会汇总', '+', '+- 样品改用 B 方案', '+- 交期延后一周'] }] } }
           : { path: String(input.path), created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } };
@@ -1507,8 +1511,8 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input }]);
         let ok = true;
         if (!allowed) {
-          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, createdAt: isoAt(this.#now()) });
-          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder });
+          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, ...wide, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, ...wide });
           this.#setStatus(sessionId, 'awaiting_confirm', name);
           waiting = { id: callId, name, input, stored: true };
           ok = (await this.#waitFor(run, callId)) === 'yes';
