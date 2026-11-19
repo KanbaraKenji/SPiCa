@@ -36,6 +36,8 @@ const agent: AgentApi = {
   regenerate: call('regenerate'),
   confirm: call('confirm'),
   abort: call('abort'),
+  listCommandJobs: call('listCommandJobs'),
+  stopCommandJob: call('stopCommandJob'),
   exportTraces: call('exportTraces'),
   getTopSession: call('getTopSession'),
   createProject: call('createProject'),

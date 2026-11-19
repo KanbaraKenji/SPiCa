@@ -961,6 +961,18 @@ button.tree-twisty:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* 后台命令: the command in the code font; 停止 (the message box's) at the row's end, kept within the row's height. */
+.detail-job-cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+
+.icon-btn.detail-job-stop {
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px -2px 0;
+}
+
 .detail-file {
   /* Its hover reaches 6px past the column on both sides; its contents keep to the column (the right edge too). */
   width: calc(100% + 12px);
@@ -6991,6 +7003,16 @@ section.plugins-part > .plugins-part-title {
   font-weight: 600;
   line-height: 15px;
   text-align: center;
+}
+
+/* The same count on a title-bar button (the details' while background commands run with them closed). */
+.icon-btn.has-badge {
+  position: relative;
+}
+
+.icon-btn.has-badge .rail-badge {
+  top: 0;
+  right: -2px;
 }
 
 /* Where 插件 is written in the sidebar: a short line in the column, same height. */

@@ -13,6 +13,7 @@ import { spendText } from '../../../shared/spend';
 import { runningWords, toolWords } from '../chat/tool-words';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { N_, t, tc } from '../../../shared/i18n';
+import { CommandJobs } from './CommandJobs';
 
 export type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -50,6 +51,8 @@ export interface DetailPanelProps {
   hideHeading?: boolean;
   /** 工具调用's heading: every call, shown where the preview goes. */
   history?: { open: boolean; toggle(): void };
+  /** 后台命令's 停止. */
+  onStopJob?: (jobId: string) => void;
 }
 
 
@@ -74,7 +77,7 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob }: DetailPanelProps) {
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
   const running = tools.filter((b) => isRunning(b, live));
@@ -208,6 +211,8 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
             ) : null}
           </section>
         ) : null}
+
+        <CommandJobs jobs={transcript.jobs} onStop={onStopJob} />
 
         {/* As Claude's Outputs: the heading folds it (the count beside it while folded); five, then 显示更多. */}
         <section className="detail-section">

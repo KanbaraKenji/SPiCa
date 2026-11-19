@@ -4,6 +4,7 @@
 // It never touches the network or the disk.
 import type {
   AgentRole,
+  CommandJob,
   InstallFailure,
   ContentBlock,
   ContextBreakdown,
@@ -118,7 +119,7 @@ export const FAKE_LONG_COMMAND =
   "Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Sort-Object LastWriteTime | Select-Object -First 50 | ForEach-Object { $_.FullName }; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
 
 /** The kind of each step the demo takes (the core says it on tool.start). */
-const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', present_files: 'present' };
+const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', command_output: 'command', run_javascript: 'command', stop_command: 'command', present_files: 'present' };
 
 /** What the 汇总 answer's command leaves behind: one file it changed, then new ones. */
 export const FAKE_EXPORT_FILES = ['D:\\工作\\样机评审\\报价\\索引.csv', ...['华东精密', '启明电子', '远航塑胶', '恒信五金', '东方模具', '新锐包装', '海联物流'].map((n) => `D:\\工作\\样机评审\\报价\\${n}.csv`)];
@@ -214,6 +215,8 @@ export class FakeBackend implements AgentBackend {
   #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
+  /** Commands running in the background, by id. */
+  #jobs = new Map<string, CommandJob>();
   #globalCost = 0;
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
@@ -540,6 +543,19 @@ export class FakeBackend implements AgentBackend {
 
   async abort(sessionId: string): Promise<void> {
     this.#runs.get(sessionId)?.controller.abort();
+  }
+
+  /** Background commands: the demo conversations run none. */
+  async listCommandJobs(sessionId: string): Promise<CommandJob[]> {
+    return [...this.#jobs.values()].filter((j) => j.sessionId === sessionId);
+  }
+
+  async stopCommandJob(jobId: string): Promise<void> {
+    const j = this.#jobs.get(jobId);
+    if (!j || j.end) return;
+    const done: CommandJob = { ...j, end: 'user', endedAt: new Date().toISOString(), exitCode: null };
+    this.#jobs.set(jobId, done);
+    this.#emit(j.sessionId, { type: 'command.job', job: done });
   }
 
   // Projects: the seed's two, plus any made with createProject.
@@ -1123,6 +1139,30 @@ export class FakeBackend implements AgentBackend {
       // tool answering JSON (fenced, as the core hands outside content to the model) and one failing, a long read,
       // a file written, edited in one place and in several, written over. Names and data are made up. The edits and
       // the overwrite carry the change as the core works it out (tools/line-diff.ts: line numbers, three lines around).
+      // Commands run in the background (run_command with run_in_background): two keep running, as the core shows them.
+      if (/后台命令/.test(text)) {
+        const say = async (words: string) => {
+          await this.#stream(sessionId, 'text', words, signal);
+          blocks.push({ type: 'text', text: words });
+        };
+        const start = async (command: string, description: string, cwd: string, id: string) => {
+          const made = await this.#tool(sessionId, run, 'run_command', { command, description, run_in_background: true }, `running in the background as ${id}; read its output with command_output, stop it with stop_command`, 300);
+          const job: CommandJob = { id, sessionId, callId: (made[0] as { id: string }).id, command, description, cwd, startedAt: isoAt(this.#now()), outputPath: `D:\\工作\\样机评审\\.spica\\${id}.log` };
+          this.#jobs.set(id, job);
+          this.#emit(sessionId, { type: 'command.job', job });
+          blocks.push(...made);
+        };
+        await say('先把预览服务和测试监视放到后台。');
+        await start('npm run dev', '启动预览服务', 'D:\\工作\\样机评审\\site', 'cmd1');
+        await start('npx vitest --watch', '监视测试', 'D:\\工作\\样机评审\\site', 'cmd2');
+        blocks.push(...(await this.#tool(sessionId, run, 'command_output', { id: 'cmd1', wait_seconds: 5 }, 'cmd1 is still running\n  VITE v6.0.0  ready in 412 ms\n  ➜  Local:   http://localhost:5173/', 500)));
+        await say('预览服务已在 http://localhost:5173/ 运行，测试在后台监视文件改动。');
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 2600, 160);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
       if (/工具详情/.test(text)) {
         const at = isoAt(this.#now());
         const card = (path: string, origin: 'created' | 'modified', added: number, removed: number, change?: FileCardMeta['change']): FileCardMeta => ({

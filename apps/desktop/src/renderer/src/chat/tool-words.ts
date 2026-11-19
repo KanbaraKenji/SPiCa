@@ -38,7 +38,7 @@ const named = (s: string): string => t('「{name}」', { name: s });
 export function categoryOf(c: ToolCall): ToolCategory {
   if (c.category) return c.category;
   const n = c.name;
-  if (n === 'run_command') return 'command';
+  if (n === 'run_command' || n === 'run_javascript' || n === 'command_output' || n === 'stop_command') return 'command';
   if (['read_file', 'list_dir', 'glob', 'grep'].includes(n)) return 'read';
   if (n === 'write_file' || n === 'edit_file') return 'write';
   if (n === 'web_fetch' || n === 'web_search') return 'web';
@@ -72,10 +72,22 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
   const n = c.name;
   switch (n) {
     case 'run_command': {
-      if (c.summary) return { verb: 'Ran', ...cut(c.summary, 80) };
+      // run in the background: started, it runs on after the call
+      const verb = (c.input as { run_in_background?: unknown } | undefined)?.run_in_background === true ? 'Started' : 'Ran';
+      if (c.summary) return { verb, ...cut(c.summary, 80) };
       const head = commandHead(arg(c, 'command'));
-      return head ? { verb: 'Ran', ...cut(head) } : { verb: 'Ran', object: 'a command' };
+      return head ? { verb, ...cut(head) } : { verb, object: 'a command' };
     }
+    case 'run_javascript':
+      return c.summary ? { verb: 'Ran', ...cut(c.summary, 80) } : { verb: 'Ran', object: 'JavaScript' };
+    case 'command_output':
+      return { verb: 'Checked', object: 'a background command' };
+    case 'get_diagnostics': {
+      const path = arg(c, 'path');
+      return { verb: 'Checked', object: path && path !== '.' ? `${baseName(path)} for errors` : 'the project for errors', ...(path ? { full: path } : {}) };
+    }
+    case 'stop_command':
+      return { verb: 'Stopped', object: 'a background command' };
     case 'read_file':
       return arg(c, 'path') ? { verb: 'Read', object: baseName(arg(c, 'path')), full: arg(c, 'path') } : { verb: 'Read', object: 'a file' };
     case 'list_dir': {
@@ -274,7 +286,16 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
   const many = (one: string, n: number, plural: string) => (n === 1 ? one : `${n} ${plural}`);
   switch (c.name) {
     case 'run_command':
+      if ((c.input as { run_in_background?: unknown } | undefined)?.run_in_background === true) return { key: 'started-command', say: (n) => `started ${many('a background command', n, 'background commands')}` };
       return { key: 'ran', say: (n) => `ran ${many('a command', n, 'commands')}` };
+    case 'run_javascript':
+      return { key: 'ran-js', say: () => 'ran JavaScript' };
+    case 'command_output':
+      return { key: 'checked-command', say: () => 'checked background commands' };
+    case 'get_diagnostics':
+      return { key: 'checked-errors', say: () => 'checked for errors' };
+    case 'stop_command':
+      return { key: 'stopped-command', say: (n) => `stopped ${many('a background command', n, 'background commands')}` };
     case 'read_file':
       return { key: 'read', say: (n) => `read ${many('a file', n, 'files')}` };
     case 'list_dir':
