@@ -86,6 +86,9 @@ describe('a group’s line', () => {
     expect(groupWords([cmd, { call: call('write_file', { path: 'q5.py' }), card: card('created') }, cmd, { call: call('read_file', { path: 'a' }) }, cmd, cmd])).toBe('Ran 4 commands, created a file, read a file');
     expect(groupWords([{ call: call('web_fetch', { url: 'https://a' }) }, { call: call('web_fetch', { url: 'https://b' }) }, { call: call('web_search', { query: 'q' }) }])).toBe('Fetched 2 pages, searched the web');
     expect(groupWords([{ call: call('notes__a') }, { call: call('notes__b') }, { call: call('x') }])).toBe('Used 「Notes」, used a tool');
+    // a service the person added: its name as they wrote it, not capitalised (a plugin's is)
+    expect(groupWords([{ call: { ...call('lab__room_temperature'), server: 'lab' } }])).toBe('Used 「lab」');
+    expect(runningWords({ ...call('lab__room_temperature'), server: 'lab' })).toBe('Running lab · room_temperature');
   });
 });
 
@@ -130,5 +133,27 @@ describe('the innermost level', () => {
       ['title', '整理报价'],
       ['task', '把四家报价整理成表'],
     ]);
+  });
+});
+
+describe('commands in the background and JavaScript', () => {
+  it('a command run in the background is started, not ran; JavaScript, reading and stopping one', () => {
+    expect(toolLineText(call('run_command', { command: 'npm run dev', run_in_background: true }, { summary: '启动预览服务' }))).toBe('Started 启动预览服务');
+    expect(runningWords(call('run_command', { command: 'npm run dev', run_in_background: true }))).toBe('Starting npm run dev');
+    expect(toolLineText(call('run_javascript', { code: '1 + 1' }))).toBe('Ran JavaScript');
+    expect(toolLineText(call('run_javascript', { code: '1 + 1' }, { summary: '汇总报价' }))).toBe('Ran 汇总报价');
+    expect(toolLineText(call('command_output', { id: 'cmd1' }))).toBe('Checked a background command');
+    expect(toolLineText(call('stop_command', { id: 'cmd1' }))).toBe('Stopped a background command');
+    const started = { call: call('run_command', { command: 'a', run_in_background: true }) };
+    expect(groupWords([started, started, { call: call('command_output', { id: 'cmd1' }) }, { call: call('run_javascript', {}) }])).toBe('Started 2 background commands, checked background commands, ran JavaScript');
+  });
+});
+
+describe('checking code for errors', () => {
+  it('names the file or the project', () => {
+    expect(toolLineText(call('get_diagnostics', { path: 'src/app.ts' }))).toBe('Checked app.ts for errors');
+    expect(toolLineText(call('get_diagnostics', {}))).toBe('Checked the project for errors');
+    expect(runningWords(call('get_diagnostics', {}))).toBe('Checking the project for errors');
+    expect(groupWords([{ call: call('get_diagnostics', {}) }, { call: call('get_diagnostics', { path: 'a.py' }) }])).toBe('Checked for errors');
   });
 });

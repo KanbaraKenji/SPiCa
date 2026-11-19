@@ -439,6 +439,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
       sessionFilesDir: join(dirname(cfg.dbPath), 'sessions'),
       // run_command's \`node\` when the computer has none, and what the model is told it can run (runtimes.ts)
       nodeShimDir: join(dirname(cfg.dbPath), 'node-shim'),
+      // commands run in the background: their records and output, next to the database
+      commandJobsDir: join(dirname(cfg.dbPath), 'command-jobs'),
       ...(cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),
       ...(cfg.python?.uvExe ? { python: pythonOptions(cfg.python, dirname(cfg.dbPath)) } : {}),
       runtimes: probeRuntimes(childEnv('all'), undefined, cfg.nodeLibsDir ? { nodeLibsDir: cfg.nodeLibsDir } : {}),

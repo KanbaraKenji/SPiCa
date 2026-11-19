@@ -96,6 +96,10 @@ import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local
 import { withErrorHint } from './error-hint';
 import { FakePluginService } from './plugins/fake';
 import { deployPluginConfig, PluginConfigError, PluginConfigStore, type DeployPluginConfig } from './plugins/config-store';
+import { McpServerStore } from './mcp/store';
+import { runMcp, type McpBackend, type McpState } from './mcp/service';
+import { FakeMcpBackend, seedDemoMcp } from './mcp/fake';
+import type { McpCommand } from '../shared/mcp-servers';
 import { sourceKey as pluginSourceKey } from '@spica/plugins';
 import { UpdateService } from './update/service';
 import { spawn } from 'node:child_process';
@@ -339,7 +343,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale() },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale(), userMcp: mcpStore.configs(), ...(deployedPython.enabled && existsSync(UV_EXE) ? { uv: { exe: UV_EXE, root: pythonRoot() } } : {}) },
         },
       ],
     },
@@ -412,6 +416,7 @@ const backend: AgentBackend =
         onRestarted: () => sendToWindow(DesktopChannel.BackendRestarted),
         onPluginsChanged: () => sendToWindow(DesktopChannel.PluginsChanged),
         onPluginsProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p),
+        onMcpChanged: () => sendToWindow(DesktopChannel.McpChanged),
         monitor,
         hostMethods: {
           // The core's model-settings tools (a connected script asked). Same store and
@@ -487,6 +492,12 @@ const providers = new ProviderStore(
 );
 // What people fill into plugins' settings forms (user_config); passwords sealed like model keys.
 const pluginConfig = new PluginConfigStore(app.getPath('userData'), {
+  available: () => safeStorage.isEncryptionAvailable(),
+  encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
+  decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
+});
+// 设置 › 插件 › MCP 服务: the services the person adds, their variables' values sealed the same way.
+const mcpStore = new McpServerStore(app.getPath('userData'), {
   available: () => safeStorage.isEncryptionAvailable(),
   encrypt: (plain) => safeStorage.encryptString(plain).toString('base64'),
   decrypt: (sealed) => safeStorage.decryptString(Buffer.from(sealed, 'base64')),
@@ -583,6 +594,8 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'regenerate',
   'confirm',
   'abort',
+  'listCommandJobs',
+  'stopCommandJob',
   'exportTraces',
   'getTopSession',
   'createProject',
@@ -1857,6 +1870,29 @@ const pluginService: PluginService =
         },
       }
     : new FakePluginService(pluginRoot, { many: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'many', config: !app.isPackaged && process.env.SPICA_DEMO_PLUGINS === 'config', onProgress: (p) => sendToWindow(DesktopChannel.PluginsProgress, p), stepMs: 700 });
+// 设置 › 插件 › MCP 服务: the list is kept here (sealed), the services run with the core (desktop-host userMcp*).
+const mcpBackend: McpBackend =
+  backend instanceof ProcessBackend
+    ? {
+        set: (list) => backend.call<McpState[]>('userMcpSet', list),
+        states: () => backend.call<McpState[]>('userMcpStates'),
+        download: (name) => backend.call<McpState[]>('userMcpDownload', name),
+      }
+    : new FakeMcpBackend(() => sendToWindow(DesktopChannel.McpChanged));
+// the demo's samples, saved once sealing works (after ready)
+if (mcpBackend instanceof FakeMcpBackend) {
+  const fake = mcpBackend;
+  void app.whenReady().then(() => {
+    seedDemoMcp(mcpStore);
+    return fake.set(mcpStore.configs());
+  });
+}
+/** Names a service the person adds cannot take: the plugins' servers' (a plugin's name, or name-server). */
+async function takenMcpNames(): Promise<string[]> {
+  const r = await pluginService.run({ op: 'state' }).catch(() => null);
+  return (r?.state.plugins ?? []).flatMap((p) => [p.name, ...p.servers.map((s) => `${p.name}-${s.id}`)]);
+}
+ipcMain.handle(DesktopChannel.Mcp, (_e, cmd: McpCommand) => runMcp(cmd, { store: mcpStore, backend: mcpBackend, taken: takenMcpNames }));
 ipcMain.handle(DesktopChannel.Plugins, async (_e, cmd: PluginsCommand) => {
   const r = await runPlugins(cmd);
   // What the page did (an update installed, sources read) changes how many plugins can update.

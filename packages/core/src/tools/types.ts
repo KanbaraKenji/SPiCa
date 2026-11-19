@@ -81,6 +81,8 @@ export interface Tool {
   category?: import('../types.ts').ToolCategory;
   /** A name for people (a plugin tool's MCP title), shown instead of the tool name. */
   title?: string;
+  /** From an MCP service the person added: its name as written (the window shows it as is). */
+  server?: string;
   /** The input field in which the model says what the step is for (run_command: description); it becomes the summary. */
   summaryParam?: string;
   /**

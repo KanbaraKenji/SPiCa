@@ -216,17 +216,19 @@ function Response({
     {/* One answer's pictures are one group in the viewer. */}
     <ImageGroup>
     <div className="turn-response" {...at}>
+      {/* Each kind keyed apart: a call's group and its 允许 / 拒绝 card share the call's id, and two children with one
+          key leave one of them behind (a 「Running …」 row turning after the round is over). */}
       {segs.map((s, i) => {
         if (s.kind === 'memory') {
           // Only what was changed: a call the core refused leaves no line (the answer says why).
           const card = memoryCards?.[s.block.callId];
-          return card ? <MemoryNote key={s.block.callId} card={card} /> : null;
+          return card ? <MemoryNote key={`memory-${s.block.callId}`} card={card} /> : null;
         }
         if (s.kind === 'tools') {
           // Outside content that carried instructions: one quiet line per kind, under the tools.
           const kinds = [...new Set(s.blocks.map((b) => b.flagged).filter((k): k is NonNullable<typeof k> => Boolean(k)))];
           return (
-            <Fragment key={s.blocks[0]?.callId ?? i}>
+            <Fragment key={`tools-${s.blocks[0]?.callId ?? i}`}>
               <ToolGroup blocks={s.blocks} steps={s.steps} since={live && i === segs.length - 1 ? since : undefined} />
               {kinds.map((k) => (
                 <p key={k} className="turn-note guard-note status-with-icon">
@@ -240,19 +242,19 @@ function Response({
         const b = s.block;
         switch (b.type) {
           case 'text':
-            return <MarkdownText key={i} text={b.text} />;
+            return <MarkdownText key={`text-${i}`} text={b.text} />;
           case 'thinking':
-            return <ThinkingBlock key={i} text={b.text} live={live && i === segs.length - 1} since={live && i === segs.length - 1 ? since : undefined} />;
+            return <ThinkingBlock key={`thinking-${i}`} text={b.text} live={live && i === segs.length - 1} since={live && i === segs.length - 1 ? since : undefined} />;
           case 'ask':
             // Waiting, it stands above the message box (Conversation: openAsks); here once answered or stopped.
-            return b.answer === undefined && !b.cancelled ? null : <AskCard key={b.callId} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
+            return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
-            return <ConfirmCard key={b.callId} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
+            return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
           case 'plan':
-            return <PlanStrip key={b.callId} steps={b.steps} running={false} record />;
+            return <PlanStrip key={`plan-${b.callId}`} steps={b.steps} running={false} record />;
           case 'suggest':
             // Not on an older answer: the next message always follows the newest one.
-            return live || !newest ? null : <SuggestCard key={b.callId} block={b} onPick={(prompt) => actions.send(prompt, undefined, true)} />;
+            return live || !newest ? null : <SuggestCard key={`suggest-${b.callId}`} block={b} onPick={(prompt) => actions.send(prompt, undefined, true)} />;
           default:
             return null;
         }

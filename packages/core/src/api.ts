@@ -79,6 +79,12 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async abort(id) {
       get(id).abort();
     },
+    async listCommandJobs(id) {
+      return rt.commandJobs(id);
+    },
+    async stopCommandJob(jobId) {
+      await rt.stopCommandJob(jobId);
+    },
     async exportTraces(filter) {
       return rt.exportTraces(filter);
     },

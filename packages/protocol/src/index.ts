@@ -673,6 +673,32 @@ export type RunEndReason =
 
 export type CostScopeName = 'call' | 'run' | 'session' | 'global';
 
+/** Why a background command is no longer running: it ended, or who stopped it. */
+export type CommandJobEnd = 'exited' | 'agent' | 'user' | 'conversation_deleted' | 'sub_agent_done' | 'app_quit' | 'app_crashed' | 'failed';
+
+/** A command run in the background (run_command with run_in_background). */
+export interface CommandJob {
+  id: string;
+  sessionId: string;
+  /** The run_command call that started it. */
+  callId: string;
+  command: string;
+  /** The model's one-line description of it. */
+  description?: string;
+  cwd: string;
+  startedAt: string;
+  /** Set when it is no longer running. */
+  endedAt?: string;
+  end?: CommandJobEnd;
+  exitCode?: number | null;
+  /** Where its whole output is written. */
+  outputPath: string;
+  /** Its process id (to stop it after a crash). */
+  pid?: number;
+  /** The files it made or changed in its folder while it ran (set when it ended). */
+  files?: FileCardMeta[];
+}
+
 export type CoreEventBody =
   /** Session state changed. */
   | { type: 'status'; status: SessionStatus; detail?: string }
@@ -691,7 +717,7 @@ export type CoreEventBody =
   /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
   | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
   /** category, summary, title: what the step is, for the window's summaries (see ToolCallInfo). */
-  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string }
+  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string; server?: string }
   /**
    * A file was read (read_file) or made by a call; render a file card. Sent before the tool's `tool.end`.
    * `files`: every card of the call, in order, when it has several (`file` is the first).
@@ -771,6 +797,8 @@ export type CoreEventBody =
   | { type: 'runtime.configured'; changed: string[]; warnings: string[] }
   | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
+  /** A command run in the background (run_command with run_in_background) started, ended or was stopped. */
+  | { type: 'command.job'; job: CommandJob }
   /** A note from a child session was added to this (parent) session. */
   | { type: 'relay'; fromSessionId: string; note: string }
   /** One model call + its tool calls. */
@@ -818,6 +846,8 @@ export interface ToolCallInfo {
   summary?: string;
   /** The tool's name for people, when it has one (a plugin tool's MCP title). */
   title?: string;
+  /** An MCP service the person added (设置 › 插件 › MCP 服务): its name as written, shown as is. */
+  server?: string;
 }
 
 /** The web pages one web_fetch or web_search call used (event source.card): a source card or footnotes. */
@@ -1364,6 +1394,10 @@ export interface AgentApi {
    */
   confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;
+  /** The commands a conversation ran in the background (run_command with run_in_background), oldest first. */
+  listCommandJobs?(sessionId: string): Promise<CommandJob[]>;
+  /** Stop a background command and everything it started. */
+  stopCommandJob?(jobId: string): Promise<void>;
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): Promise<string>;
   // Project commands (M4, in progress): optional until the core implements them.
