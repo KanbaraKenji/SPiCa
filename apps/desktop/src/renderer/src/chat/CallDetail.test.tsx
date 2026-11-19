@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
-import { CallDetail, callEnd, DRAWN_LINES, hunkLines, jsonLaidOut, layJson, lineChange, SHELL_LABEL } from './CallDetail';
+import { CallDetail, callEnd, CommandBox, DRAWN_LINES, hunkLines, jsonLaidOut, layJson, lineChange, SHELL_LABEL } from './CallDetail';
 import { resultBody, type Block } from '../store/transcript';
 
 afterEach(cleanup);
@@ -65,9 +65,16 @@ describe('a call opened', () => {
     expect(document.querySelector('.tool-command-label')?.textContent).toBe(SHELL_LABEL);
     expect(document.querySelector('.tool-command-box > .tool-command-copy')?.getAttribute('aria-label')).toBe('复制');
     expect(document.querySelector('.tool-command .code-head')).toBeNull();
+    expect(document.querySelector('.tool-command.is-code')).toBeNull();
     expect(document.querySelector('.tool-status')?.textContent).toBe('Exit code 2');
     expect(document.querySelector('.tool-output')?.textContent).toBe('ValueError: 第 3 行缺少单价');
     expect(document.querySelector('.tool-output')?.closest('.tool-command, .tool-args')).toBeNull();
+  });
+
+  it('no $ in front (a list of files, a script): marked so no line keeps room for it', () => {
+    render(<CommandBox command={'K:/a/one.png\nK:/a/two.png'} code={{ label: '' }} />);
+    expect(document.querySelector('.tool-command.is-code pre')?.textContent).toBe('K:/a/one.png\nK:/a/two.png');
+    expect(document.querySelector('.tool-prompt')).toBeNull();
   });
 
   it('a plugin tool answering JSON: no fence, laid out and coloured; its arguments as key and value', () => {

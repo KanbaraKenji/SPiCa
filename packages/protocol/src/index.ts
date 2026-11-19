@@ -214,6 +214,54 @@ export function askAnswerLines(chosen: readonly string[]): string {
   return chosen.map((c) => c.trim()).filter(Boolean).join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// The conversation's plan (the update_plan tool): the steps the agent listed for itself and where each stands.
+// The core checks a call by these rules and the window reads the plan back from the stored calls by the same ones.
+// ---------------------------------------------------------------------------
+
+/** The tool's name: the window finds the plan in the conversation by it. */
+export const PLAN_TOOL = 'update_plan';
+
+export type PlanStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface PlanStep {
+  step: string;
+  status: PlanStatus;
+}
+
+const STATUSES: readonly PlanStatus[] = ['pending', 'in_progress', 'completed'];
+
+/** At most this many steps; more are refused. */
+export const PLAN_MAX_STEPS = 30;
+
+/**
+ * An update_plan call's `plan`: its steps, trimmed, empty ones dropped; `error` when it is not a list of steps with a
+ * known status, has more than PLAN_MAX_STEPS, or more than one step in progress. An empty list clears the plan.
+ */
+export function readPlan(value: unknown): { steps: PlanStep[]; error?: string } {
+  if (!Array.isArray(value)) return { steps: [], error: 'plan must be a list of steps.' };
+  const steps: PlanStep[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') return { steps: [], error: 'Each plan item needs a step and a status.' };
+    const r = raw as Record<string, unknown>;
+    const step = typeof r.step === 'string' ? r.step.trim() : '';
+    const status = r.status as PlanStatus;
+    if (!STATUSES.includes(status)) return { steps: [], error: `Unknown status "${String(r.status)}": use pending, in_progress or completed.` };
+    if (step) steps.push({ step, status });
+  }
+  if (steps.length > PLAN_MAX_STEPS) return { steps: [], error: `At most ${PLAN_MAX_STEPS} steps.` };
+  if (steps.filter((s) => s.status === 'in_progress').length > 1) return { steps: [], error: 'Only one step can be in_progress at a time.' };
+  return { steps };
+}
+
+/** How far a plan is: steps done, all of them, and the step being worked on (else the first not done). */
+export function planProgress(steps: readonly PlanStep[]): { done: number; total: number; current?: PlanStep; currentIndex: number } {
+  const done = steps.filter((s) => s.status === 'completed').length;
+  let currentIndex = steps.findIndex((s) => s.status === 'in_progress');
+  if (currentIndex < 0) currentIndex = steps.findIndex((s) => s.status !== 'completed');
+  return { done, total: steps.length, ...(currentIndex >= 0 ? { current: steps[currentIndex] } : {}), currentIndex };
+}
+
 /** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
 /**
  * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to

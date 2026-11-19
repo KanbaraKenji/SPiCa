@@ -56,7 +56,7 @@ export function CommandBox({ command, marks, bare, code }: { command: string; ma
     body = parts;
   }
   return (
-    <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
+    <div className={`tool-command${bare ? ' is-bare' : ''}${code ? ' is-code' : ''}`}>
       {code && !code.label ? null : <p className="tool-command-label">{code ? code.label : SHELL_LABEL}</p>}
       <div className="tool-command-box">
         <pre>
