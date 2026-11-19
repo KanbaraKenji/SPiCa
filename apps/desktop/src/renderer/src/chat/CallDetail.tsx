@@ -35,9 +35,14 @@ export const SHELL_LABEL = typeof navigator !== 'undefined' && /Windows/.test(na
  * it takes no line of its own. `marks` (where the dangerous words are): those words on a red ground in place of the
  * colours. `bare`: no edge of its own (the card it is in is the box).
  */
-export function CommandBox({ command, marks, bare }: { command: string; marks?: [number, number][] | undefined; bare?: boolean }) {
+/**
+ * A command as it will run (PowerShell, with its prompt). `code`: something else shown the same way, under its own
+ * label and without the prompt: a script for a web page (JavaScript), or a list of files (no label, not coloured).
+ */
+export function CommandBox({ command, marks, bare, code }: { command: string; marks?: [number, number][] | undefined; bare?: boolean; code?: { label: string; language?: string } }) {
   const red = marks && marks.length ? marks : null;
-  const coloured = useMemo(() => (red ? null : highlightCode('powershell', command)), [command, red]);
+  const language = code ? code.language : 'powershell';
+  const coloured = useMemo(() => (red || !language ? null : highlightCode(language, command)), [command, red, language]);
   let body: ReactNode = coloured ?? command;
   if (red) {
     const parts: ReactNode[] = [];
@@ -52,11 +57,11 @@ export function CommandBox({ command, marks, bare }: { command: string; marks?: 
   }
   return (
     <div className={bare ? 'tool-command is-bare' : 'tool-command'}>
-      <p className="tool-command-label">{SHELL_LABEL}</p>
+      {code && !code.label ? null : <p className="tool-command-label">{code ? code.label : SHELL_LABEL}</p>}
       <div className="tool-command-box">
         <pre>
           <code>
-            <span className="tool-prompt">$ </span>
+            {code ? null : <span className="tool-prompt">$ </span>}
             {body}
           </code>
         </pre>
