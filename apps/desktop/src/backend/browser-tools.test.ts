@@ -1,8 +1,8 @@
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import type { ToolContext } from '@spica/core';
+import { realPath, type ToolContext } from '@spica/core';
 import { browserHook, browserTools, uploadPaths } from './browser-tools';
 
 const dir = mkdtempSync(join(tmpdir(), 'spica-browser-tools-'));
@@ -214,13 +214,13 @@ describe('browser_file_upload: only files of the conversation or the ones the pe
   afterAll(() => rmSync(elsewhere, { recursive: true, force: true }));
 
   it('resolved from the working folder; outside the roots, missing or a folder: refused', () => {
-    expect(uploadPaths(['report.pdf'], dir, [dir])).toEqual({ paths: [realpathSync(inside)] });
+    expect(uploadPaths(['report.pdf'], dir, [dir])).toEqual({ paths: [realPath(inside)] });
     expect(uploadPaths([outside], dir, [dir])).toMatchObject({ error: expect.stringContaining('outside') });
     expect(uploadPaths(['nope.pdf'], dir, [dir])).toMatchObject({ error: expect.stringContaining('no such file') });
     expect(uploadPaths([elsewhere], dir, [dir, elsewhere])).toMatchObject({ error: expect.stringContaining('no such file') });
     expect(uploadPaths([], dir, [dir])).toMatchObject({ error: expect.stringContaining('paths is required') });
     // given by the person (an attachment's place is one of the roots)
-    expect(uploadPaths([outside], dir, [dir, outside])).toEqual({ paths: [realpathSync(outside)] });
+    expect(uploadPaths([outside], dir, [dir, outside])).toEqual({ paths: [realPath(outside)] });
   });
 
   it('the tool sends the checked real paths; a refused one never reaches the window', async () => {
@@ -229,7 +229,7 @@ describe('browser_file_upload: only files of the conversation or the ones the pe
     expect((await up.execute({ ref: 2, paths: [outside] }, ctx())).isError).toBe(true);
     expect(calls).toEqual([]);
     await up.execute({ ref: 2, paths: ['report.pdf'] }, ctx());
-    expect(calls).toEqual([['browser.upload', ['s1', { ref: 2, paths: [realpathSync(inside)], callId: 'c' }]]]);
+    expect(calls).toEqual([['browser.upload', ['s1', { ref: 2, paths: [realPath(inside)], callId: 'c' }]]]);
   });
 
   it('the hook refuses files from elsewhere before anyone is asked', async () => {
@@ -238,7 +238,7 @@ describe('browser_file_upload: only files of the conversation or the ones the pe
     const hctx = { session: { id: 's1', cwd: dir }, runId: 'r', turn: 1 } as never;
     expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: [outside] }, irreversible: false }, hctx)).toMatchObject({ action: 'deny' });
     expect(asked).toEqual([]);
-    expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: ['report.pdf'] }, irreversible: false }, hctx)).toEqual({ action: 'confirm', reason: 'x', irreversible: true, input: { ref: 2, paths: [realpathSync(inside)] } });
+    expect(await hook.beforeTool!({ callId: 'c', name: 'browser_file_upload', input: { ref: 2, paths: ['report.pdf'] }, irreversible: false }, hctx)).toEqual({ action: 'confirm', reason: 'x', irreversible: true, input: { ref: 2, paths: [realPath(inside)] } });
   });
 
   it('a script and the new acting tools are judged by the main process too', async () => {

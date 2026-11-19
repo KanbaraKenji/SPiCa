@@ -17,6 +17,8 @@
     "smoke:extract:agent": "node --env-file=../../.env.local scripts/smoke-agent.ts"
   },
   "dependencies": {
+    "@embedpdf/pdfium": "2.15.1",
+    "cfb": "1.2.2",
     "fflate": "0.8.3",
     "saxes": "6.0.0",
     "unpdf": "2.1.0"

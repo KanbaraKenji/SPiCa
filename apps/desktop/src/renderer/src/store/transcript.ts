@@ -1059,7 +1059,9 @@ export function fileCardLine(card: FileCardMeta): string {
 
 /** The two halves of fileCardLine: what the file is (PDF · 4 页) and what was read of it (Read pages 1-3). */
 export function fileCardParts(card: FileCardMeta): { kind: string; read: string } {
-  const kind: string[] = [KIND_LABEL[card.kind] ? t(KIND_LABEL[card.kind]) : card.kind];
+  // a picture: 图片 · 1920×1080 (its size as the file is)
+  const kind: string[] = [card.image ? t('图片') : KIND_LABEL[card.kind] ? t(KIND_LABEL[card.kind]) : card.kind];
+  if (card.image) kind.push(`${card.image.width}×${card.image.height}`);
   if (card.pageCount) kind.push(t('{n} 页', { n: card.pageCount }));
   if (card.sheets?.length) kind.push(t('{n} 个表', { n: card.sheets.length }));
   if (card.slideCount) kind.push(t('{n} 页幻灯片', { n: card.slideCount }));
