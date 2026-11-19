@@ -284,6 +284,16 @@ describe('ConfirmCard', () => {
       expect(screen.getByRole('button', { name: '允许' }).className).toBe('btn btn-primary');
       expect(document.querySelector('.allow-split')).toBeNull();
     });
+
+    it('a drive’s root or the home folder (never kept): still outside, but 允许 alone, this once', () => {
+      const onDecide = vi.fn();
+      render(<ConfirmCard block={{ ...block, outsideFolder: 'D:\\', folderTooWide: true }} onDecide={onDecide} />);
+      expect(screen.getByText('工作文件夹以外')).toBeTruthy();
+      expect(document.querySelector('.allow-split')).toBeNull();
+      expect(screen.queryByRole('button', { name: '始终允许' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: '允许' }));
+      expect(onDecide.mock.calls).toEqual([[true]]);
+    });
   });
 
   it('a download for the app’s Python: what, from where, how big, and the total; — where the size is not known, and then no total', () => {

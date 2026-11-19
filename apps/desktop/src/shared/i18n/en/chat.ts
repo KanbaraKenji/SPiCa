@@ -207,6 +207,7 @@ export const EN_CHAT: Catalog = {
   查找对话记录: 'Search conversations',
   读取对话记录: 'Read conversation',
   查找对话中的文件: 'Find files in conversations',
+  已允许的文件夹: 'Allowed folders',
   交付文件: 'Deliver files',
   保存记忆: 'Save memory',
   删除记忆: 'Delete memory',

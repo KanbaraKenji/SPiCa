@@ -1298,7 +1298,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
-            {block.outsideFolder ? (
+            {block.outsideFolder && !block.folderTooWide ? (
               <AllowSplit disabled={sent} folder={block.outsideFolder} onAllow={(always) => decide(true, always)} />
             ) : (
               <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>

@@ -589,6 +589,8 @@ export type PendingItem =
       change?: ChangePreview;
       /** The write goes outside the conversation's folders: the folder it writes in (the card says so, and offers to allow it). */
       outsideFolder?: string;
+      /** `outsideFolder` is a drive's root or the home folder: it is never kept as allowed, so the card offers allowing it this once only. */
+      folderTooWide?: boolean;
       install?: InstallPreview;
       createdAt: string;
     }
@@ -659,7 +661,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */

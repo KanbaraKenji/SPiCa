@@ -36,7 +36,7 @@ import { estimateTokens, isAbortError, newId, truncate, withAppName } from './ut
 import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
 import { closeSync, openSync, readSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
-import { inScope, pathsInText, realPath } from './write-scope.ts';
+import { canonicalPath, inScope, pathsInText, realPath } from './write-scope.ts';
 import { commandOutside, tooWideToAllow } from './command-scope.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
@@ -1225,6 +1225,7 @@ export class Session {
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           ...(change ? { change } : {}),
           ...(outsideFolder ? { outsideFolder } : {}),
+          ...(outsideFolder && tooWideToAllow(outsideFolder) ? { folderTooWide: true } : {}),
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
@@ -1260,6 +1261,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.irreversible ? { irreversible: true } : {}),
             ...(p.item.change ? { change: p.item.change } : {}),
             ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
+            ...(p.item.folderTooWide ? { folderTooWide: true } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
@@ -1626,6 +1628,34 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     if (cfg.writeFolders?.includes(folder) || tooWideToAllow(folder)) return;
     this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
     this.#rt.store.upsertSession(this.#record);
+  }
+
+  /** The folders the user allowed on a card (始终允许), kept with the conversation at the top of the chain. */
+  allowedWriteFolders(): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.allowedWriteFolders() : [...(this.#record.config.writeFolders ?? [])];
+  }
+
+  /**
+   * Takes back folders allowed on a card (the user asked in their own words; allowed_folders): `folder` (compared as
+   * the file system does), or all of them. The next write there asks again. Returns the ones taken back.
+   */
+  revokeWriteFolders(which: { folder: string } | 'all'): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) return parent.revokeWriteFolders(which);
+    const cfg = this.#record.config;
+    const kept = cfg.writeFolders ?? [];
+    const want = which === 'all' ? undefined : canonicalPath(which.folder);
+    const gone = kept.filter((f) => want === undefined || canonicalPath(f) === want);
+    if (!gone.length) return [];
+    this.#record = { ...this.#record, config: { ...cfg, writeFolders: kept.filter((f) => !gone.includes(f)) } };
+    this.#rt.store.upsertSession(this.#record);
+    return gone;
+  }
+
+  /** Whether `folder` may be written in without asking (its working folder, a path the user typed, …). */
+  mayWriteIn(folder: string): boolean {
+    return inScope(folder, this.writeRoots());
   }
 
   /** For a write outside the conversation's folders: the folder it writes in (as it will read on the card). */
