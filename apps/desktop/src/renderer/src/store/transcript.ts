@@ -402,6 +402,16 @@ export function currentPlan(t: Transcript): { callId: string; steps: PlanStep[];
   return undefined;
 }
 
+/** The update_plan call an answer finished the plan with (its last plan has every step done): that list stays there. */
+export function finishedPlanIn(blocks: Block[]): string | undefined {
+  for (let j = blocks.length - 1; j >= 0; j--) {
+    const b = blocks[j];
+    if (b?.type !== 'plan' || b.failed) continue;
+    return b.steps.length && b.steps.every((s) => s.status === 'completed') ? b.callId : undefined;
+  }
+  return undefined;
+}
+
 function asAsk(callId: string, input: unknown): Block {
   const v = (input && typeof input === 'object' ? input : {}) as { question?: unknown; options?: unknown; recommended?: unknown; multiSelect?: unknown };
   const options = Array.isArray(v.options) ? v.options.map(String) : [];

@@ -9354,35 +9354,3 @@ input[type='radio']:disabled {
 .plan-strip.is-record.is-open .plan-chevron {
   rotate: none;
 }
-
-/* mock B: the plan's line at the top of the question card, a line under it. */
-.ask-top {
-  flex: none;
-  margin: -12px -12px 8px;
-  border-bottom: 1px solid var(--spica-border);
-}
-
-.ask-top .plan-strip {
-  border: 0;
-  background: none;
-  box-shadow: none;
-}
-
-/* mock C: the plan joined to the top of the message box. */
-.plan-dock.is-joined {
-  margin-bottom: -1px;
-  position: relative;
-  z-index: 1;
-}
-
-.plan-dock.is-joined + .composer-wrap .composer {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-}
-
-.plan-dock.is-joined .plan-strip {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  box-shadow: none;
-  background: var(--spica-surface);
-}

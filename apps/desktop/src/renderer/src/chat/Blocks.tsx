@@ -935,12 +935,9 @@ export function AskCard({
   block,
   onAnswer,
   place,
-  top,
 }: {
   block: Extract<Block, { type: 'ask' }>;
   onAnswer(answer: string): void;
-  /** mock B: the plan's line at the card's top */
-  top?: ReactNode;
   /** which of the questions waiting this is, of how many (shown only when more than one wait) */
   place?: readonly [number, number];
 }) {
@@ -997,7 +994,6 @@ export function AskCard({
   const mark = multi ? 'checkbox' : 'radio';
   return (
     <section className="card ask-card is-open" aria-label={t('提问')}>
-      {top ? <div className="ask-top">{top}</div> : null}
       <div className="ask-scroll">
         <div className="ask-question">
           {head || place ? (

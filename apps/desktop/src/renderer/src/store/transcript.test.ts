@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Block, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -781,6 +781,15 @@ describe('currentPlan (update_plan)', () => {
     let t = applyEvent({ items: [] }, plan('p1', [['读资料', 'pending']]));
     t = applyEvent(t, plan('p2', []));
     expect(currentPlan(t)).toBeUndefined();
+  });
+
+  it('each answer that finished a plan keeps it: its last plan, every step done', () => {
+    const p = (callId: string, statuses: string[], failed = false): Block => ({ type: 'plan', callId, steps: statuses.map((status, i) => ({ step: `步骤${i}`, status: status as 'completed' })), ...(failed ? { failed } : {}) });
+    expect(finishedPlanIn([p('a', ['completed', 'in_progress']), p('b', ['completed', 'completed'])])).toBe('b');
+    expect(finishedPlanIn([p('a', ['completed', 'completed']), p('b', ['completed', 'pending'])])).toBeUndefined();
+    expect(finishedPlanIn([p('a', ['completed']), p('b', ['completed', 'pending'], true)])).toBe('a');
+    expect(finishedPlanIn([p('a', ['completed']), p('b', [])])).toBeUndefined();
+    expect(finishedPlanIn([{ type: 'text', text: '好' } as Block])).toBeUndefined();
   });
 
   it('read back from the stored conversation as it was live', async () => {

@@ -3,7 +3,7 @@ import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { currentPlan, errorText, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { currentPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
@@ -132,15 +132,6 @@ type Segment =
  * group. Thinking with no call beside it stays its own 思考过程 line. `live`: the answer is being written: thinking
  * still at its very end stays out of the group, its own line saying 正在思考, until the next call comes.
  */
-/** mock only (taken out once a layout is picked): the screenshot script's pick, { planMock: a|b|c, planDone: d1|d2 }. */
-function readPlanMock(): { planMock?: string; planDone?: string } {
-  try {
-    return JSON.parse(localStorage.getItem('spica-plan-mock') ?? '{}') as { planMock?: string; planDone?: string };
-  } catch {
-    return {};
-  }
-}
-
 function segments(blocks: Block[], live = false, planRecord?: string): Segment[] {
   const out: Segment[] = [];
   let run: (ToolStep | ThinkStep)[] = [];
@@ -178,7 +169,6 @@ function Response({
   at,
   regen,
   after,
-  planRecord,
   cwd,
   lists,
   sources,
@@ -199,8 +189,6 @@ function Response({
   regen?: { state: RegenerateState; last: boolean } | undefined;
   /** How many items follow it in the conversation. */
   after: number;
-  /** The update_plan call that finished the plan, when it is in this answer: the finished list stays here. */
-  planRecord?: string | undefined;
 }) {
   // The answers 重新生成 left, oldest first, then this one; the newest shows unless another is picked.
   const all = [...(item.versions ?? []), { blocks: item.blocks, at: item.at }];
@@ -217,7 +205,7 @@ function Response({
   const newest = shown === all.length - 1;
   const view = all[shown]!;
   const blocks = view.blocks;
-  const segs = segments(blocks, live, planRecord);
+  const segs = segments(blocks, live, finishedPlanIn(blocks));
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
@@ -459,15 +447,10 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     ro.observe(foot);
     return () => ro.disconnect();
   }, [askId, ref]);
-  // The plan (update_plan): above the message box while it is going; finished, it goes back into the conversation
-  // where it was finished (mock: the layouts and the finished plan's place, picked by the screenshot script).
+  // The plan (update_plan): just above the message box while it is going; finished, it stays in the answer that
+  // finished it (Response: finishedPlanIn), each finished plan in its own answer.
   const plan = currentPlan(transcript);
-  const mock = readPlanMock();
-  const planLayout = mock.planMock ?? 'a';
-  const planFinished = plan ? planProgress(plan.steps).done === plan.steps.length : false;
-  const userAfterPlan = plan ? items.slice(plan.item + 1).some((it) => it.kind === 'user') : false;
-  const planDocked = plan && (!planFinished || (mock.planDone === 'd1' && !userAfterPlan));
-  const planRecordAt = plan && planFinished && mock.planDone !== 'd1' ? plan.item : -1;
+  const planDocked = plan && planProgress(plan.steps).done < plan.steps.length;
   const planStrip = planDocked ? <PlanStrip key="plan" steps={plan.steps} running={running} oneLine={!!openAsk} /> : null;
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
@@ -606,7 +589,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {noteText(item)}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} planRecord={planRecordAt === i ? plan?.callId : undefined} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (
@@ -648,15 +631,12 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
             </div>
           ) : null}
           <RunNotices notices={notices} />
-          {planStrip && planLayout === 'a' ? <div className="plan-dock">{planStrip}</div> : null}
           {openAsk ? (
             <div className="ask-dock" ref={dock}>
-              <AskCard key={openAsk.callId} block={openAsk} {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} {...(planStrip && planLayout === 'b' ? { top: planStrip } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
+              <AskCard key={openAsk.callId} block={openAsk} {...(openAsks.length > 1 ? { place: [1, openAsks.length] as const } : {})} onAnswer={(a) => actions.answer(openAsk.callId, a)} />
             </div>
-          ) : planStrip && planLayout === 'b' ? (
-            <div className="plan-dock">{planStrip}</div>
           ) : null}
-          {planStrip && planLayout === 'c' ? <div className="plan-dock is-joined">{planStrip}</div> : null}
+          {planStrip ? <div className="plan-dock">{planStrip}</div> : null}
           <Composer running={running} onSend={actions.send} onStop={actions.stop} sessionKey={session?.id ?? ''} {...(composerTools ? { tools: composerTools } : {})} />
           {demo ? <p className="composer-note">{t('当前为演示数据')}</p> : null}
         </div>
