@@ -6875,6 +6875,16 @@ section.plugins-part > .plugins-part-title {
   padding-left: calc(12px + 2ch);
 }
 
+/* No $ in front (a script, a list of files): no room kept for it, every line starts at the edge. */
+.tool-command.is-code pre {
+  padding-left: 10px;
+  text-indent: 0;
+}
+
+.tool-command.is-bare.is-code pre {
+  padding-left: 12px;
+}
+
 /* A dangerous word in a command to be confirmed (Remove-Item, -Recurse, -Force, an overwriting >). */
 .cmd-danger {
   padding: 0 2px;
