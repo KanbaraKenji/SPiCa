@@ -21,6 +21,7 @@ import { Sidebar } from './shell/Sidebar';
 import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type RowActions } from './shell/row-menu';
 import { ContextMenu } from './ui/ContextMenu';
 import { DetailPanel } from './shell/DetailPanel';
+import { runningJobs } from './shell/CommandJobs';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import { ConfirmTarget } from './chat/Blocks';
 import type { ComposerTools } from './chat/Composer';
@@ -953,7 +954,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const lastName = lastTab ? tabName(lastTab) || t('新标签页') : '';
   const previewTip = pane.open ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
-  const infoTip = infoRoom ? t('详情（Ctrl+Alt+B）') : t('窗口太窄，放不下详情');
+  // The details closed while this conversation's background commands run: how many, on their button.
+  const jobsRunning = view === 'chat' && !infoShown && infoRoom ? runningJobs(transcript.jobs) : 0;
+  const infoTip = !infoRoom ? t('窗口太窄，放不下详情') : jobsRunning ? t('展开详情（{n} 个运行中）', { n: jobsRunning }) : t('详情（Ctrl+Alt+B）');
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
   const monitorShown = layout.monitor === 'docked';
   const monitorRoom = monitorOpen === undefined ? false : monitorFits(width, open, wantedWidths);
@@ -1248,7 +1251,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               <button
                 type="button"
                 data-panel-toggle
-                className={infoShown ? 'icon-btn is-on' : 'icon-btn'}
+                className={infoShown ? 'icon-btn is-on' : jobsRunning ? 'icon-btn has-badge' : 'icon-btn'}
                 onClick={() => toggle('info')}
                 aria-label={infoShown ? t('收起详情') : t('展开详情')}
                 aria-pressed={infoShown}
@@ -1256,6 +1259,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 title={infoTip}
               >
                 <Icon name="details" />
+                {jobsRunning ? <span className="rail-badge">{jobsRunning}</span> : null}
               </button>
               {settings.monitor ? (
                 <button

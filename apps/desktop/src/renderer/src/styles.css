@@ -6995,6 +6995,16 @@ section.plugins-part > .plugins-part-title {
   text-align: center;
 }
 
+/* The same count on a title-bar button (the details' while background commands run with them closed). */
+.icon-btn.has-badge {
+  position: relative;
+}
+
+.icon-btn.has-badge .rail-badge {
+  top: 0;
+  right: -2px;
+}
+
 /* Where 插件 is written in the sidebar: a short line in the column, same height. */
 .sidebar.is-rail .rail-sep {
   position: relative;
