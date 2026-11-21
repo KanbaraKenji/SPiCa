@@ -178,6 +178,11 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Read', object: 'an earlier conversation' };
     case 'find_history_files':
       return { verb: 'Listed', object: 'files from conversations' };
+    case 'allowed_folders':
+      if (arg(c, 'action') !== 'revoke') return { verb: 'Listed', object: 'allowed folders' };
+      return arg(c, 'folder') && (c.input as { all?: unknown } | undefined)?.all !== true
+        ? { verb: 'Took back', object: baseName(arg(c, 'folder')), full: arg(c, 'folder') }
+        : { verb: 'Took back', object: 'allowed folders' };
     case 'spawn_agent':
       return { verb: 'Started', object: arg(c, 'title') ? named(arg(c, 'title')) : 'a sub-agent' };
     case 'wait_agents': {
@@ -270,6 +275,7 @@ export function runningWords(c: ToolCall): string {
     Hovered: 'Hovering',
     Dragged: 'Dragging',
     Uploaded: 'Uploading',
+    'Took back': 'Taking back',
   };
   if (c.name === 'run_command' && !c.summary && w.object === 'a command') return 'Running a command';
   return `${w.verb ? (ing[w.verb] ?? w.verb) : 'Running'} ${w.object}`;
@@ -357,6 +363,8 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'read-history', say: (n) => (n === 1 ? 'read an earlier conversation' : `read ${n} earlier conversations`) };
     case 'find_history_files':
       return { key: 'history-files', say: () => 'listed files from conversations' };
+    case 'allowed_folders':
+      return arg(c, 'action') === 'revoke' ? { key: 'took-back', say: () => 'took back allowed folders' } : { key: 'allowed-folders', say: () => 'listed allowed folders' };
     case 'spawn_agent':
       return { key: 'started', say: (n) => `started ${many('a sub-agent', n, 'sub-agents')}` };
     case 'wait_agents':

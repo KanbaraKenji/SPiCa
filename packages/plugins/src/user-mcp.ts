@@ -1,5 +1,5 @@
-// The MCP services the person adds in 设置 (not the ones plugins bring): each a program on this computer, started
-// while its switch is on and kept going by the same supervisor as plugin servers (supervisor.ts). Its tools come in
+// The MCP services the person adds in 设置 (not the ones plugins bring): each a program on this computer or a server
+// at a web address (url, with fixed headers such as a key), started while its switch is on and kept going by the same supervisor as plugin servers (supervisor.ts). Its tools come in
 // under the source `mcp:<name>`. Approval 'ask' (the default): every one of its tools asks before it runs, in any
 // approval mode (a hook's confirm, the card the app already has); 'auto': as other tools (a tool the server marks
 // destructive still asks by default). The host keeps the list, secrets sealed, and hands it over in the clear.
@@ -18,10 +18,15 @@ export type UserMcpApproval = 'ask' | 'auto';
 export interface UserMcpConfig {
   /** Letters, digits, _ and -: its tools are `<name>__<tool>`. */
   name: string;
+  /** A program ('' for a server at a web address). */
   command: string;
   args: string[];
   env: Record<string, string>;
   cwd?: string;
+  /** A server at a web address instead of a program. */
+  url?: string;
+  /** With url: sent with every request (the key as Authorization: Bearer, and others as given). */
+  headers?: Record<string, string>;
   enabled: boolean;
   approval: UserMcpApproval;
 }
@@ -97,6 +102,9 @@ interface Running extends SupervisedRun {
 /** The version without a handshake (MCP 2026-07-28), as the core reports it. */
 const MODERN = '2026-07-28';
 
+/** What must never be shown: its variables' and headers' values. */
+const secretsOf = (c: UserMcpConfig): string[] => [...Object.values(c.env), ...Object.values(c.headers ?? {}), ...Object.values(c.headers ?? {}).map((v) => v.replace(/^Bearer\s+/i, ''))];
+
 const same = (a: UserMcpConfig, b: UserMcpConfig): boolean => JSON.stringify({ ...a, approval: '' }) === JSON.stringify({ ...b, approval: '' });
 
 export class UserMcpServers {
@@ -122,9 +130,9 @@ export class UserMcpServers {
    */
   set(configs: readonly UserMcpConfig[]): Promise<void> {
     return this.#serial(async () => {
-      this.#configs = configs.map((c) => ({ ...c, args: [...c.args], env: { ...c.env } }));
-      // its variables' values are secrets: never in what the core shows or stores
-      this.#o.host.addRedactions?.(this.#configs.flatMap((c) => Object.values(c.env)).filter((v) => v.length >= 6));
+      this.#configs = configs.map((c) => ({ ...c, args: [...c.args], env: { ...c.env }, ...(c.headers ? { headers: { ...c.headers } } : {}) }));
+      // its variables' and headers' values are secrets: never in what the core shows or stores
+      this.#o.host.addRedactions?.(this.#configs.flatMap((c) => secretsOf(c)).filter((v) => v.length >= 6));
       const wanted = new Map(this.#configs.filter((c) => c.enabled).map((c) => [c.name, c]));
       for (const [name, run] of [...this.#runs]) {
         const next = wanted.get(name);
@@ -158,7 +166,9 @@ export class UserMcpServers {
         ...(need ? { download: need } : {}),
         tools: run.handle?.tools ?? [],
         ...(run.lastError ? { lastError: this.#scrub(run, run.lastError) } : {}),
-        ...(run.status === 'failed' && run.download !== 'needed' ? { problem: run.crashLoop ? { kind: 'crash-loop' as const, ...run.crashLoop } : mcpProblem(run.lastError ?? '', run.log, run.config.command) } : {}),
+        ...(run.status === 'failed' && run.download !== 'needed'
+          ? { problem: run.crashLoop ? { kind: 'crash-loop' as const, ...run.crashLoop } : mcpProblem(run.lastError ?? '', run.log, run.config.command, { keyGiven: Object.keys(run.config.headers ?? {}).length > 0 }) }
+          : {}),
         logTail: [...run.log],
         ...(run.handle?.protocolVersion ? { protocolVersion: run.handle.protocolVersion } : {}),
       };
@@ -278,7 +288,7 @@ export class UserMcpServers {
 
   /** Its variables' values taken out of a line it wrote or an error about it. */
   #scrub(run: Running, text: string): string {
-    return scrubSecrets(text, Object.values(run.config.env));
+    return scrubSecrets(text, secretsOf(run.config));
   }
 
   #log(run: Running, raw: string): void {
@@ -313,6 +323,19 @@ export class UserMcpServers {
 
   #launch(run: Running): Omit<McpLaunch, 'onExit'> {
     const c = run.config;
+    if (c.url) {
+      return {
+        name: c.name,
+        command: '',
+        args: [],
+        env: {},
+        cwd: c.cwd || this.#o.defaultCwd || homedir(),
+        url: c.url,
+        ...(c.headers && Object.keys(c.headers).length > 0 ? { headers: { ...c.headers } } : {}),
+        protocol: run.legacy ? 'legacy' : 'auto',
+        stderrLog: (chunk) => this.#log(run, chunk.trimEnd()),
+      };
+    }
     const runner = runnerOf(c.command);
     const download = run.download === 'allowed';
     const how = runner

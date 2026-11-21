@@ -21,6 +21,8 @@ export interface ExtractRequest {
    * 0: the reader's model does not take pictures (said in the text). Absent: none are drawn.
    */
   pageImages?: number;
+  /** PDF: draw only this part of one page (fractions of its width and height, 0-1), in more detail than the whole page. */
+  region?: { left: number; top: number; right: number; bottom: number };
 }
 
 /** A PDF page drawn as a picture: RGBA, 4 bytes per pixel. */
@@ -29,6 +31,8 @@ export interface PageImage {
   width: number;
   height: number;
   rgba: Uint8Array;
+  /** A part of the page (ExtractRequest.region): which part, as the model asked for it ("left,top,right,bottom" in percent). */
+  region?: string;
 }
 
 export interface SheetInfo {

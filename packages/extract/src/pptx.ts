@@ -66,9 +66,40 @@ export async function extractPptx(src: SourceFile, req: ExtractRequest, maxChars
     },
     WHAT,
   );
-  const total = slideParts.length;
+  return renderSlides(
+    slideParts.length,
+    (n) => {
+      const part = slideParts[n - 1]!;
+      const xml = partText(parts, part);
+      let notes: string[] = [];
+      for (const target of relationships(parts, part, WHAT).values()) {
+        if (/notesSlide\d*\.xml$/.test(target)) {
+          const nx = partText(parts, target);
+          // Notes slides repeat the slide number placeholder as text; drop bare numbers.
+          if (nx) notes = slideParagraphs(nx).filter((p) => !/^\d+$/.test(p));
+        }
+      }
+      return { paras: xml ? slideParagraphs(xml) : [], notes };
+    },
+    src.metaBase('pptx'),
+    req,
+    maxChars,
+    signal,
+  );
+}
+
+/** Slides laid out for the model (.pptx and .ppt): one block per slide with its notes, paged by pages="…". */
+export function renderSlides(
+  total: number,
+  slide: (n: number) => { paras: string[]; notes: string[] },
+  metaBase: ReturnType<SourceFile['metaBase']>,
+  req: ExtractRequest,
+  maxChars: number,
+  signal?: AbortSignal,
+  note?: string,
+): ExtractResult {
   const head = `PowerPoint, ${total} slide${total === 1 ? '' : 's'}.`;
-  const base = { ...src.metaBase('pptx'), slideCount: total };
+  const base = { ...metaBase, slideCount: total };
   if (total === 0) return { text: `${head}\nThe presentation has no slides.`, meta: base };
 
   const wanted = req.pages ? parseRanges(req.pages, total, 'slide') : Array.from({ length: total }, (_, i) => i + 1);
@@ -78,17 +109,7 @@ export async function extractPptx(src: SourceFile, req: ExtractRequest, maxChars
   let stoppedAt: number | undefined;
   for (const n of wanted) {
     throwIfAborted(signal);
-    const part = slideParts[n - 1]!;
-    const xml = partText(parts, part);
-    const paras = xml ? slideParagraphs(xml) : [];
-    let notes: string[] = [];
-    for (const target of relationships(parts, part, WHAT).values()) {
-      if (/notesSlide\d*\.xml$/.test(target)) {
-        const nx = partText(parts, target);
-        // Notes slides repeat the slide number placeholder as text; drop bare numbers.
-        if (nx) notes = slideParagraphs(nx).filter((p) => !/^\d+$/.test(p));
-      }
-    }
+    const { paras, notes } = slide(n);
     let block = `=== slide ${n} ===\n${paras.length ? paras.join('\n') : '[no text on this slide]'}\n`;
     if (notes.length) block += `Notes: ${notes.join('\n')}\n`;
     if (!budget.take(block)) {
@@ -99,7 +120,7 @@ export async function extractPptx(src: SourceFile, req: ExtractRequest, maxChars
     shown.push(n);
   }
   const rest = stoppedAt === undefined ? [] : wanted.filter((n) => n >= stoppedAt!);
-  const lines = [head, `Showing slide${shown.length === 1 ? '' : 's'} ${shown.length ? formatRanges(shown) : 'none'} of ${total}.`, '', ...body];
+  const lines = [head, `Showing slide${shown.length === 1 ? '' : 's'} ${shown.length ? formatRanges(shown) : 'none'} of ${total}.`, ...(note ? [note] : []), '', ...body];
   if (rest.length) lines.push(`[Stopped because of the size limit. Not shown: slides ${formatRanges(rest)}. Call read_file again with pages="…".]`);
   const truncated = rest.length > 0;
   return {

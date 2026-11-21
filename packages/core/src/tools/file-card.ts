@@ -18,6 +18,8 @@ const KIND: Record<string, FileCardMeta['kind']> = {
   '.csv': 'csv',
   '.tsv': 'csv',
   '.pptx': 'pptx',
+  '.pptm': 'pptx',
+  '.ppt': 'pptx',
 };
 
 /** Files whose card says they are pictures, with their size. */

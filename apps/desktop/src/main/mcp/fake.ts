@@ -1,15 +1,19 @@
-// The demo backend's MCP services (SPICA_BACKEND=fake: screenshots, a look without the core): three sample services
+// The demo backend's MCP services (SPICA_BACKEND=fake: screenshots, a look without the core): sample services
 // saved on first start (nothing real in them), each in a fixed state; nothing runs. A service added in the demo is
 // 'running' with no tools; 下载 makes a waiting one 'downloading', then 'running'.
-import type { McpServerDraft } from '../../shared/mcp-servers';
+import { emptyMcpDraft, type McpServerDraft } from '../../shared/mcp-servers';
 import type { McpBackend, McpState } from './service';
 import type { McpServerStore } from './store';
 
+const program = (d: Partial<McpServerDraft> & { enabled: boolean }): McpServerDraft & { enabled: boolean } => ({ ...emptyMcpDraft(), ...d });
+
 const SAMPLES: (McpServerDraft & { enabled: boolean })[] = [
-  { name: 'files', command: 'npx', args: '-y\n@example/files-server\nD:\\Shared Files', env: [], cwd: '', approval: 'ask', enabled: true },
-  { name: 'notes', command: 'uvx', args: 'example-notes\n--db\nD:\\Notes\\notes.db', env: [{ name: 'NOTES_TOKEN', value: 'nt-demo-0000-0000-0000-8f2c' }], cwd: '', approval: 'ask', enabled: true },
-  { name: 'docs', command: 'npx', args: '-y\n@example/docs-server', env: [], cwd: '', approval: 'ask', enabled: true },
-  { name: 'weather', command: 'node', args: 'D:\\Tools\\weather\\server.js', env: [{ name: 'WEATHER_KEY', value: 'wk-demo-0000-0000-0000-31ad' }], cwd: 'D:\\Tools\\weather', approval: 'auto', enabled: false },
+  program({ name: 'files', command: 'npx', args: '-y\n@example/files-server\nD:\\Shared Files', enabled: true }),
+  program({ name: 'notes', command: 'uvx', args: 'example-notes\n--db\nD:\\Notes\\notes.db', env: [{ name: 'NOTES_TOKEN', value: 'nt-demo-0000-0000-0000-8f2c' }], enabled: true }),
+  program({ name: 'docs', command: 'npx', args: '-y\n@example/docs-server', enabled: true }),
+  program({ name: 'wiki', kind: 'url', url: 'https://mcp.example.com/wiki', key: 'wk-demo-0000-0000-0000-5c1e', enabled: true }),
+  program({ name: 'tickets', kind: 'url', url: 'https://tickets.example.com/mcp', enabled: true }),
+  program({ name: 'weather', command: 'node', args: 'D:\\Tools\\weather\\server.js', env: [{ name: 'WEATHER_KEY', value: 'wk-demo-0000-0000-0000-31ad' }], cwd: 'D:\\Tools\\weather', approval: 'auto', enabled: false }),
 ];
 
 const STATES: Record<string, Omit<McpState, 'name'>> = {
@@ -22,6 +26,8 @@ const STATES: Record<string, Omit<McpState, 'name'>> = {
     logTail: ['Traceback (most recent call last):', '  File "server.py", line 12, in <module>', '    db = open_database(args.db)', 'FileNotFoundError: D:\\Notes\\notes.db'],
   },
   docs: { status: 'needs-download', tools: [], logTail: [], download: { runner: 'npx', package: '@example/docs-server', python: false, version: '2.1.0', bytes: 1_843_200 } },
+  wiki: { status: 'running', tools: ['wiki__search_pages', 'wiki__read_page'], logTail: [] },
+  tickets: { status: 'failed', tools: [], lastError: 'MCP server "tickets" answered HTTP 401 Unauthorized to initialize', problem: { kind: 'needs-key' }, logTail: ['[spica] server/discover: HTTP 401', '[spica] initialize: HTTP 401'] },
   weather: { status: 'running', tools: ['weather__get_forecast', 'weather__get_alerts'], logTail: [] },
 };
 

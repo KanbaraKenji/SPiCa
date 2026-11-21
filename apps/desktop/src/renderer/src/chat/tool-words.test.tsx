@@ -72,6 +72,14 @@ describe('a call’s line', () => {
     expect(groupWords([{ call: call('recall', { entry: 'a' }) }, { call: call('recall', { entry: 'b' }) }, { call: call('remember') }, { call: call('read_file', { path: 'a' }) }])).toBe('Recalled 2 memories, saved a memory, read a file');
   });
 
+  it('allowed folders: listed, one taken back by name, all taken back; alone, in a group, while it runs', () => {
+    expect(toolLineText(call('allowed_folders', { action: 'list' }))).toBe('Listed allowed folders');
+    expect(toolLineText(call('allowed_folders', { action: 'revoke', folder: 'D:\\共享资料\\纪要' }))).toBe('Took back 纪要');
+    expect(toolLineText(call('allowed_folders', { action: 'revoke', all: true }))).toBe('Took back allowed folders');
+    expect(runningWords(call('allowed_folders', { action: 'revoke', folder: 'D:\\共享资料\\纪要' }))).toBe('Taking back 纪要');
+    expect(groupWords([{ call: call('allowed_folders', { action: 'list' }) }, { call: call('allowed_folders', { action: 'revoke', all: true }) }])).toBe('Listed allowed folders, took back allowed folders');
+  });
+
   it('while it runs', () => {
     expect(runningWords(call('run_command', { command: 'Get-ChildItem' }))).toBe('Running Get-ChildItem');
     expect(runningWords(call('read_file', { path: 'a.docx' }))).toBe('Reading a.docx');

@@ -64,7 +64,7 @@ export type Block =
   | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
   /** An update_plan call: the whole list as it stands after it. `failed`: the core refused it (the plan before it stands). */
   | { type: 'plan'; callId: string; steps: PlanStep[]; failed?: boolean };
@@ -590,7 +590,11 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
           else if (b.name === PLAN_TOOL) r.blocks.push(asPlan(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
-          else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
+          else {
+            // a call to a service the person added carries its name as written (stored with the call)
+            const server = m.meta?.toolInfo?.[b.id]?.server;
+            r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done', ...(server ? { server } : {}) });
+          }
         }
       }
       mark(m);
@@ -755,7 +759,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
     const call = findBlock(t.items, 'tool', p.callId);
     if (call && call.result === undefined) call.state = 'pending';
     if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.install ? { install: p.install } : {}) });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.install ? { install: p.install } : {}) });
     }
   }
 }
@@ -834,7 +838,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'tool.call': {
       if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === PLAN_TOOL) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
-      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
+      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending', ...(e.server ? { server: e.server } : {}) });
       return t;
     }
     case 'tool.start': {
@@ -889,7 +893,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     }
     case 'confirm.request': {
       if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.install ? { install: e.install } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.install ? { install: e.install } : {}) });
       }
       return t;
     }

@@ -53,6 +53,8 @@ const LABELS: Record<string, string> = {
   search_history: N_('查找对话记录'),
   read_history: N_('读取对话记录'),
   find_history_files: N_('查找对话中的文件'),
+  // The folders allowed on a card (始终允许), listed or taken back when the user asks.
+  allowed_folders: N_('已允许的文件夹'),
   // The files a task made, handed over to the user (they show as cards under the answer).
   present_files: N_('交付文件'),
   // The user's memory (shown as the 已记住 line in the conversation).

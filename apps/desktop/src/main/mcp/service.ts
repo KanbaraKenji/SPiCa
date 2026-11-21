@@ -31,6 +31,7 @@ export function mcpListView(saved: readonly SavedMcpServer[], states: readonly M
       const status: McpServerView['status'] = !s.enabled ? 'off' : (st?.status ?? 'starting');
       return {
         name: s.name,
+        ...(s.url ? { url: s.url, headers: (s.headers ?? []).map((h) => ({ name: h.name, mask: McpServerStore.mask(h) })), ...(s.key ? { key: McpServerStore.mask(s.key) } : {}) } : {}),
         command: s.command,
         args: [...s.args],
         env: s.env.map((e) => ({ name: e.name, mask: McpServerStore.mask(e) })),

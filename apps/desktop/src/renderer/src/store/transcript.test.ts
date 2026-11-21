@@ -732,6 +732,33 @@ describe('a call announced but never made', () => {
   });
 });
 
+describe('a call to a service the person added', () => {
+  it('carries the service name as written from the first event (before tool.start: while it waits for 允许)', () => {
+    const ev = (body: object, seq: number) => ({ ...body, seq, at: '', sessionId: 's', parentChain: [] }) as unknown as CoreEvent;
+    const t = applyEvent({ items: [] }, ev({ type: 'tool.call', callId: 'c1', name: 'lab__room_temperature', server: 'lab' }, 1));
+    const r = t.items[0];
+    const block = r?.kind === 'response' ? r.blocks[0] : undefined;
+    expect(block?.type === 'tool' ? block.server : undefined).toBe('lab');
+  });
+
+  it('rebuilt from what is stored while it waits for 允许: the name from the call message', () => {
+    const asst: Message = {
+      id: 'a',
+      seq: 1,
+      sessionId: 's',
+      role: 'assistant',
+      kind: 'assistant',
+      createdAt: '',
+      content: [{ type: 'tool_use', id: 'c1', name: 'lab__room_temperature', input: { room: 'B2' } }],
+      meta: { toolInfo: { c1: { category: 'plugin', server: 'lab' } } },
+    };
+    const pending = [{ kind: 'confirm' as const, callId: 'c1', toolName: 'lab__room_temperature', input: { room: 'B2' }, reason: '「lab」：room_temperature', createdAt: '' }];
+    const r = fromHistory([asst], pending).items[0];
+    const tool = r?.kind === 'response' ? r.blocks.find((b) => b.type === 'tool') : undefined;
+    expect(tool?.type === 'tool' ? tool.server : undefined).toBe('lab');
+  });
+});
+
 describe('a call waiting for 允许, rebuilt from what is stored', () => {
   it('is waiting (as live), not done: the core stores the call before asking, with no result yet', () => {
     const asst: Message = { id: 'a', seq: 1, sessionId: 's', role: 'assistant', kind: 'assistant', createdAt: '', content: [{ type: 'tool_use', id: 'c1', name: 'run_command', input: { command: 'Remove-Item x' } }] };

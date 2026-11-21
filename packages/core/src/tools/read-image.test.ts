@@ -9,7 +9,7 @@ import { Tracer } from '../trace.ts';
 import type { CoreEventBody } from '../types.ts';
 import { readFileTool } from './fs-tools.ts';
 import { producedFileCard } from './file-card.ts';
-import { PAGE_PICTURE_BYTES, pagePictures } from './read-image.ts';
+import { keepOriginal, PAGE_PICTURE_BYTES, pagePictures } from './read-image.ts';
 import type { ToolContext } from './types.ts';
 
 let dir: string;
@@ -146,6 +146,106 @@ describe('read_file on a picture', () => {
   });
 });
 
+describe('read_file with a region', () => {
+  /** 4000 x 2000, each pixel's red and green say where it is (x / 16, y / 8), so a cut part can be checked. */
+  function marked(): Buffer {
+    const w = 4000;
+    const h = 2000;
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const o = (y * w + x) * 4;
+        data[o] = Math.floor(x / 16);
+        data[o + 1] = Math.floor(y / 8);
+        data[o + 3] = 255;
+      }
+    }
+    return encodePng({ width: w, height: h, data });
+  }
+
+  it('says how to look closer when a picture went smaller, and sends the part at full detail', async () => {
+    await writeFile(join(dir, 'sheet.png'), marked());
+    const whole = await readFileTool.execute({ path: 'sheet.png' }, ctx);
+    expect(whole.content).toContain('a smaller copy, 1568x784 px');
+    expect(whole.content).toContain('Small text may not be legible at this size. Call read_file again with region="left,top,right,bottom"');
+    expect(whole.content).toContain('up to 2.6x this detail');
+
+    const part = await readFileTool.execute({ path: 'sheet.png', region: '50,25,75,50' }, ctx);
+    expect(part.isError).toBeFalsy();
+    expect(part.content).toContain('The part (pixels 2000-3000 across and 500-1000 down) follows as an image: 1000x500 px, the picture\'s full detail');
+    expect(part.images![0]).toMatchObject({ width: 1000, height: 500, name: 'sheet.png part' });
+    const img = decodePng(readFileSync(part.images![0]!.path))!;
+    // top left pixel of the part is pixel (2000, 500) of the picture
+    expect([img.data[0], img.data[1]]).toEqual([Math.floor(2000 / 16), Math.floor(500 / 8)]);
+    expect(events.filter((e) => e.type === 'file.card').at(-1)).toMatchObject({ file: { image: { width: 4000, height: 2000 } } });
+  });
+
+  it('shrinks a part still over the limits and says how much detail it keeps', async () => {
+    await writeFile(join(dir, 'sheet.png'), marked());
+    const r = await readFileTool.execute({ path: 'sheet.png', region: '0,0,100,50' }, ctx);
+    expect(r.content).toContain('1568x392 px, 39% of the picture\'s full detail; a smaller region shows more');
+  });
+
+  it('refuses a region it cannot read, and a region on a file that is no picture or PDF', async () => {
+    await writeFile(join(dir, 'sheet.png'), png(40, 20));
+    await writeFile(join(dir, 'notes.txt'), 'x');
+    expect((await readFileTool.execute({ path: 'sheet.png', region: 'top half' }, ctx)).content).toContain('region must be "left,top,right,bottom" in percent');
+    expect((await readFileTool.execute({ path: 'sheet.png', region: '60,0,40,100' }, ctx)).content).toContain('right must be more than left');
+    // a picture that went whole at its own size: a part adds nothing, and the model is told so
+    const small = await readFileTool.execute({ path: 'sheet.png', region: '0,0,50,50' }, ctx);
+    expect(small.content).toContain('a part of it shows nothing more.');
+    const txt = await readFileTool.execute({ path: 'notes.txt', region: '0,0,50,50' }, ctx);
+    expect(txt).toMatchObject({ isError: true, content: 'region is for pictures and PDF pages.' });
+  });
+
+  it('asks the host to cut a part of a JPEG, in the picture\'s pixels', async () => {
+    await writeFile(join(dir, 'photo.jpg'), jpegHeader(4000, 3000));
+    const asked: unknown[] = [];
+    ctx.fitImage = async (_src, out, crop) => {
+      asked.push(crop);
+      const p = join(out, 'part.png');
+      await writeFile(p, png(1000, 750));
+      return p;
+    };
+    const r = await readFileTool.execute({ path: 'photo.jpg', region: '25,25,50,50' }, ctx);
+    expect(asked).toEqual([{ x: 1000, y: 750, width: 1000, height: 750 }]);
+    expect(r.content).toContain('1000x750 px, the picture\'s full detail');
+  });
+
+  it('does not read a picture over the pixel limit, whole or a part, and does not ask the host to', async () => {
+    await writeFile(join(dir, 'huge.jpg'), jpegHeader(10000, 10000));
+    let asked = 0;
+    ctx.fitImage = async () => {
+      asked++;
+      return undefined;
+    };
+    for (const region of [undefined, '0,0,10,10']) {
+      const r = await readFileTool.execute({ path: 'huge.jpg', ...(region ? { region } : {}) }, ctx);
+      expect(r.isError).toBe(true);
+      expect(r.content).toContain('10000x10000 is 100 million pixels, more than the 72 million a picture may have to be read here');
+    }
+    expect(asked).toBe(0);
+  });
+
+  it('says the one sentence when the model does not take images', async () => {
+    await writeFile(join(dir, 'sheet.png'), png(40, 20));
+    ctx.imagesAllowed = false;
+    const r = await readFileTool.execute({ path: 'sheet.png', region: '0,0,50,50' }, ctx);
+    expect(r.images).toBeUndefined();
+    expect(r.content).toContain('The current model does not take images');
+  });
+
+  it('keeps an attached picture that went smaller, and names it for a closer look', async () => {
+    await writeFile(join(dir, 'paste.png'), png(3136, 1000));
+    const said = await keepOriginal(join(dir, 'paste.png'), { width: 1568, height: 500 }, join(dir, 'media'));
+    const kept = /path="([^"]+)"/.exec(said!)![1]!;
+    expect(kept.endsWith('paste.png')).toBe(true);
+    expect(readFileSync(kept).equals(readFileSync(join(dir, 'paste.png')))).toBe(true);
+    expect(said).toContain('[The picture is 3136x1000 px; the copy above is 1568x500 px.');
+    expect(await keepOriginal(join(dir, 'paste.png'), { width: 3136, height: 1000 }, join(dir, 'media'))).toBeUndefined();
+  });
+});
+
 describe('read_file on scanned PDF pages', () => {
   it('asks the reader for page pictures and sends them after the text, with their token count', async () => {
     const seen: unknown[] = [];
@@ -169,6 +269,7 @@ describe('read_file on scanned PDF pages', () => {
     expect(seen).toEqual([10]);
     expect(r.images?.map((i) => i.name)).toEqual(['scan.pdf page 1', 'scan.pdf page 2']);
     expect(r.content).toContain('[2 page pictures follow as images (pages 1, 2), about 4 tokens in all.]');
+    expect(r.content).toContain('Call read_file with pages="1" and region="left,top,right,bottom"');
     ctx.imagesAllowed = false;
     await readFileTool.execute({ path: 'scan.pdf' }, ctx);
     expect(seen.at(-1)).toBe(0);

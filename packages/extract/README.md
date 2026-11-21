@@ -1,7 +1,7 @@
 # @spica/extract
 
 File extractors for Spica's `read_file` tool. They turn PDF, Word (.docx, and .doc
-97-2003), Excel (.xlsx / .xlsm, and .xls 97-2003), PowerPoint (.pptx), CSV / TSV and plain text / Markdown into text a
+97-2003), Excel (.xlsx / .xlsm, and .xls 97-2003), PowerPoint (.pptx, and .ppt 97-2003), CSV / TSV and plain text / Markdown into text a
 model can read, with structure (pages, sheets with row numbers and column letters,
 numbered paragraphs and tables, slides) and the metadata the desktop file card shows
 (`FileCardMeta` in `@spica/protocol`).
@@ -14,7 +14,7 @@ const rt = new Runtime({ providers, defaults, extractors: createExtractors() });
 ```
 
 - No native code at runtime: `unpdf` (pdf.js without worker or canvas), `fflate`, `saxes`, `cfb`
-  (the OLE container of .doc / .xls) and `@embedpdf/pdfium` (PDFium as WebAssembly, for drawing
+  (the OLE container of .doc / .xls / .ppt) and `@embedpdf/pdfium` (PDFium as WebAssembly, for drawing
   scanned pages). A bundled app tells the reader where `pdfium.wasm` is with `setPdfiumWasm(path)`.
 - Large files are read in chunks: `pages` for PDF / slides, `sheet` + `offset` / `limit`
   (rows) for spreadsheets, `offset` / `limit` (blocks or lines) for Word and text. One read
