@@ -40,7 +40,8 @@ export type ToolDecision =
    * mark). It only makes the card more prominent: it never turns a confirmation into none.
    * `keep`: the card may offer 始终允许 for it, kept with the conversation under this key (a user MCP service's
    * tool); a later call with the same key is not asked again in that conversation. Kept only when every confirming
-   * hook gave the same key, and never for a guard's confirmation or an irreversible one.
+   * hook gave the same key, and never for a guard's confirmation or an irreversible call (marked so by a hook, or a
+   * tool declared irreversible, as an MCP tool with destructiveHint).
    */
   | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean; irreversible?: boolean; keep?: string }
   /** Skip confirmation even for irreversible tools. */
@@ -144,7 +145,7 @@ export class HookRegistry {
       }
       if (d.action === 'auto') auto = true;
     }
-    if (confirm) return { decision: { action: 'confirm', ...confirm, ...(keep && !confirm.irreversible ? { keep } : {}) }, input };
+    if (confirm) return { decision: { action: 'confirm', ...confirm, ...(keep && !confirm.irreversible && !call.irreversible ? { keep } : {}) }, input };
     if (call.irreversible && !auto) {
       return { decision: { action: 'confirm', reason: 'irreversible action', byDefault: true }, input };
     }

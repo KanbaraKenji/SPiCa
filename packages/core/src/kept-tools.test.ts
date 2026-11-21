@@ -89,8 +89,7 @@ describe('始终允许 on a tool a hook asks for', () => {
   it('not offered, and not passed, when the guard asks (outside content in the turn) or the call cannot be undone', async () => {
     const { rt, events } = setup();
     const s = rt.createSession();
-    // an irreversible tool: the hook's ask is marked so, the card offers no 始终允许
-    rt.hooks.register('mark', { beforeTool: (c) => (c.name === 'lab__send' ? { action: 'confirm', irreversible: true, keep: 'mcp:x:lab__send' } : undefined) });
+    // a tool declared irreversible (an MCP tool with destructiveHint): the card offers no 始终允许
     expect(await call(s, 'lab__send', 's1')).toBe('awaiting_confirm');
     expect(events.find((e) => e.type === 'confirm.request' && e.callId === 's1')).not.toHaveProperty('keepTool');
     await (await s.confirm('s1', true, { always: true }))!;
@@ -102,6 +101,14 @@ describe('始终允许 on a tool a hook asks for', () => {
     expect((await s.send('read then send').done).reason).toBe('awaiting_confirm');
     expect(s.pending()[0]).toMatchObject({ toolName: 'lab__send', cause: 'untrusted_turn' });
     expect(s.pending()[0]).not.toHaveProperty('keepTool');
+  });
+
+  it('a hook marking the call irreversible: no 始终允许 either', async () => {
+    const { rt, events } = setup();
+    rt.hooks.register('mark', { beforeTool: (c) => (c.name === 'lab__temp' ? { action: 'confirm', irreversible: true, keep: 'mcp:x:lab__temp' } : undefined) });
+    const s = rt.createSession();
+    expect(await call(s, 'lab__temp', 't1')).toBe('awaiting_confirm');
+    expect(events.find((e) => e.type === 'confirm.request')).not.toHaveProperty('keepTool');
   });
 
   it('another hook asking for the same call is never waived by the key', async () => {

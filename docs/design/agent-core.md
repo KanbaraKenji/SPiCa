@@ -183,7 +183,7 @@
 | `afterTool` | 调用和结果 | 改结果文本和是否出错 |
 
 - `beforeTool` 合并：任一 deny 就拦；否则任一 confirm 就要确认（理由取最后一个要求确认的钩子的；任一要求确认的钩子带了 `irreversible`，合并结果就带，挂起项 `PendingItem.irreversible` 和 `confirm.request.irreversible` 照传，插件页面经 `callPluginTool` 发的卡也一样；这个标记只让卡片显示「无法撤销」，批准方式 auto 也不放行这种确认）；不可逆工具默认要确认（`byDefault: true`），除非有来源给 `auto`。会话的批准方式为 auto 时，只放行这种默认确认（第 2 节）。守卫的强制确认在这之后，`auto` 和批准方式都盖不过它（第 9 节）。
-- **工具的「始终允许」**（2026-11-21，MCP 工具的确认卡换成「始终允许」那颗按钮）：钩子的 confirm 可带 `keep`（一个键），表示卡上可以给「始终允许」；合并时只有每个要求确认的钩子给的键都相同才保留，带 `irreversible` 的不保留。设置里加的 MCP 服务（`UserMcpServers`，每次询问）给的键是 `mcp:<服务在哪跑的摘要>:<服务名__工具名>`：摘要取网址或命令加参数，换了地方的同名服务算另一个；只改密钥、环境变量不变。挂起项和 `confirm.request` 带 `keepTool`（这个键；守卫要确认、写到范围以外的卡不带）；`confirm(…, { always: true })` 把键记进这条对话（`SessionConfig.keptTools`，在会话树顶上，子 Agent 共用，重开还在），之后同一个键的钩子确认不再出卡、直接执行（子 Agent 里、`ctx.step` 里一样）；守卫的强制确认照问，别的钩子另外要求确认时也照问。允许后给模型的结果前多一行，说明以后这条对话里它不再问。`allowFolder` 是 `always` 的旧名，只管文件夹。还没有收回的办法（文件夹那种有 `allowed_folders`），开新对话就重新问。
+- **工具的「始终允许」**（2026-11-21，MCP 工具的确认卡换成「始终允许」那颗按钮）：钩子的 confirm 可带 `keep`（一个键），表示卡上可以给「始终允许」；合并时只有每个要求确认的钩子给的键都相同才保留；钩子标了 `irreversible`、或工具本身声明不可逆（MCP 工具带 `destructiveHint`）的不保留，每次照问。设置里加的 MCP 服务（`UserMcpServers`，每次询问）给的键是 `mcp:<服务在哪跑的摘要>:<服务名__工具名>`：摘要取网址或命令加参数，换了地方的同名服务算另一个；只改密钥、环境变量不变。挂起项和 `confirm.request` 带 `keepTool`（这个键；守卫要确认、写到范围以外的卡不带）；`confirm(…, { always: true })` 把键记进这条对话（`SessionConfig.keptTools`，在会话树顶上，子 Agent 共用，重开还在），之后同一个键的钩子确认不再出卡、直接执行（子 Agent 里、`ctx.step` 里一样）；守卫的强制确认照问，别的钩子另外要求确认时也照问。允许后给模型的结果前多一行，说明以后这条对话里它不再问。`allowFolder` 是 `always` 的旧名，只管文件夹。还没有收回的办法（文件夹那种有 `allowed_folders`），开新对话就重新问。
 - 「收到响应后改」不牺牲逐字流出：文本照常流给界面，响应完整后交钩子，改过就发 `message.replaced`。
 - 内核自带钩子：`core:guard` 拒绝只做 sleep 的命令（Start-Sleep、sleep、timeout……），提示改用 `wait_agents`；`core:project` 见第 4 节。插件系统列出钩子来源时会过滤掉 `core:*`。
 
