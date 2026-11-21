@@ -196,6 +196,7 @@ export const EN_SHELL: Catalog = {
   子项目: 'Sub-projects',
   常驻: 'Resident',
   回报: 'Report',
+  '{n} 个已结束': '{n} finished',
   运行中: 'Running',
   停止: 'Stop',
 

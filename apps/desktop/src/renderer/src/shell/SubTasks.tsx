@@ -1,6 +1,6 @@
 // 子任务 in the details (mock-up, project-sub): what the open conversation's manager sent out, as Claude's
 // Background tasks. The ones going first (its ring, how long it has run, 停止), the ones kept for later jobs with
-// them; the ended ones folded under 「N 个已完成」. A click on a row shows that sub-task in the details: what it was
+// them; the ended ones folded under 「N 个已结束」. A click on a row shows that sub-task in the details: what it was
 // asked, the calls it made (each opens as in 工具调用), what it said last; ← 子任务 goes back to the list.
 import { useEffect, useState } from 'react';
 import type { SessionInfo } from '@spica/protocol';
@@ -130,7 +130,7 @@ export function SubTasks({ tasks, onSelect, onStop }: SubTasksProps) {
               <span className="detail-item-icon">
                 <Icon name={endedOpen ? 'chevronDown' : 'chevronRight'} size={14} />
               </span>
-              <span className="detail-item-main">{t('{n} 个已完成', { n: ended.length })}</span>
+              <span className="detail-item-main">{t('{n} 个已结束', { n: ended.length })}</span>
             </button>
           </li>
         ) : null}
@@ -161,7 +161,8 @@ function firstAsk(tr: Transcript): string {
 
 export interface SubTaskDetailProps {
   task: SessionInfo;
-  transcript: Transcript;
+  /** Its record; undefined while it loads (only its name and state are drawn till then, nothing changes shape). */
+  transcript: Transcript | undefined;
   onBack(): void;
   /** Its whole conversation in the main area (to go on talking to it). */
   onOpen(id: string): void;
@@ -170,11 +171,11 @@ export interface SubTaskDetailProps {
 
 export function SubTaskDetail({ task, transcript, onBack, onOpen, onStop }: SubTaskDetailProps) {
   const now = useSecond(isLive(task));
-  const live = Boolean(transcript.run) || isLive(task);
-  const calls = detailTools(transcript);
+  const live = Boolean(transcript?.run) || isLive(task);
+  const calls = transcript ? detailTools(transcript) : [];
   const [open, setOpen] = useState<string | null>(null);
-  const ask = firstAsk(transcript);
-  const said = lastWords(transcript);
+  const ask = transcript ? firstAsk(transcript) : '';
+  const said = transcript ? lastWords(transcript) : '';
   const canStop = onStop && !isEnded(task) && !(task.status === 'idle' && task.resident);
   return (
     <div className="detail-scroll subtask-detail">
@@ -196,6 +197,8 @@ export function SubTaskDetail({ task, transcript, onBack, onOpen, onStop }: SubT
           </button>
         ) : null}
       </div>
+      {transcript ? (
+      <>
       <section className="detail-section">
         <h3 className="detail-title">{t('任务')}</h3>
         <p className="subtask-text">{ask || '—'}</p>
@@ -214,11 +217,11 @@ export function SubTaskDetail({ task, transcript, onBack, onOpen, onStop }: SubT
                 <li key={b.callId} className={isOpen ? 'tool-history-item is-open' : 'tool-history-item'}>
                   <button type="button" className="tool-history-row" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : b.callId)}>
                     <span className="detail-item-icon">{running ? <SpicaStatusIcon name="running" size={14} /> : toolIcon(b)}</span>
-                    <ToolListText t={b} card={transcript.fileCards?.[b.callId]} running={running} />
+                    <ToolListText t={b} card={transcript?.fileCards?.[b.callId]} running={running} />
                   </button>
                   {isOpen ? (
                     <div className="tool-history-body">
-                      <CallDetail block={b} card={transcript.fileCards?.[b.callId]} />
+                      <CallDetail block={b} card={transcript?.fileCards?.[b.callId]} />
                     </div>
                   ) : null}
                 </li>
@@ -241,6 +244,8 @@ export function SubTaskDetail({ task, transcript, onBack, onOpen, onStop }: SubT
           {t('打开对话')}
         </button>
       </section>
+      </>
+      ) : null}
     </div>
   );
 }

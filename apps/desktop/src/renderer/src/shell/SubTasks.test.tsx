@@ -37,7 +37,7 @@ describe('项目 › 子项目', () => {
 });
 
 describe('详情 › 子任务', () => {
-  it('the going ones first (kept-for-later with them, saying 常驻), the ended ones folded under N 个已完成', () => {
+  it('the going ones first (kept-for-later with them, saying 常驻), the ended ones folded under N 个已结束', () => {
     const { going, ended } = tasksInOrder(tasksOf(SUB_IDS.t1));
     expect(going.map((s) => s.title)).toEqual(['追踪样制', '查报价', '查旧料参考']);
     expect(ended.map((s) => s.title)).toEqual(['汇总温升数据', '核对绕线参数', '整理规格书', '比对磁芯规格']);
@@ -45,7 +45,7 @@ describe('详情 › 子任务', () => {
     render(<DetailPanel session={t1} parent={undefined} transcript={empty} globalCostUsd={0} onOpenFile={vi.fn()} onOpenSession={vi.fn()} subTasks={{ tasks: tasksOf(SUB_IDS.t1), transcriptOf: () => empty, load: vi.fn(), stop: vi.fn(), open: vi.fn() }} />);
     expect(screen.getByText('常驻')).toBeTruthy();
     expect(screen.queryByText('整理规格书')).toBeNull();
-    fireEvent.click(screen.getByText('4 个已完成'));
+    fireEvent.click(screen.getByText('4 个已结束'));
     expect(screen.getByText('整理规格书')).toBeTruthy();
     // 停止 only on the ones going (not on the one kept for later, nor the ended ones)
     expect(screen.getAllByRole('button', { name: /^停止 / }).map((b) => b.getAttribute('aria-label'))).toEqual(['停止 查报价', '停止 查旧料参考']);
@@ -62,7 +62,7 @@ describe('详情 › 子任务', () => {
     } as unknown as Transcript;
     const t1 = byId(SUB_IDS.t1);
     render(<DetailPanel session={t1} parent={undefined} transcript={empty} globalCostUsd={0} onOpenFile={vi.fn()} onOpenSession={vi.fn()} subTasks={{ tasks: tasksOf(SUB_IDS.t1), transcriptOf: (id) => (id === SUB_IDS.spec ? spec : empty), load, stop: vi.fn(), open }} />);
-    fireEvent.click(screen.getByText('4 个已完成'));
+    fireEvent.click(screen.getByText('4 个已结束'));
     fireEvent.click(screen.getByText('整理规格书'));
     expect(load).toHaveBeenCalledWith(SUB_IDS.spec);
     expect(screen.getByText('把 T1 规格书整理成一页摘要')).toBeTruthy();

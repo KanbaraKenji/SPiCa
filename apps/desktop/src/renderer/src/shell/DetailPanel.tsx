@@ -60,7 +60,8 @@ export interface DetailPanelProps {
    */
   subTasks?: {
     tasks: SessionInfo[];
-    transcriptOf(id: string): Transcript;
+    /** Its record; undefined while it loads. */
+    transcriptOf(id: string): Transcript | undefined;
     load(id: string): void;
     stop(id: string): void;
     open(id: string): void;

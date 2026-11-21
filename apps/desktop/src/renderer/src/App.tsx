@@ -360,7 +360,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   }, [sessions, state.activeId, locale]);
   // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
   const inboxProjects = useMemo<InboxProject[]>(() => {
-    const out: InboxProject[] = state.projects.filter((p) => p.status === 'active').map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
+    const out: InboxProject[] = state.projects.filter((p) => p.status === 'active' && p.managerSessionId).map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
     for (const s of sessions) {
       if (s.role === 'manager' && s.projectId && !out.some((p) => p.id === s.projectId)) out.push({ id: s.projectId, name: s.title ?? '', managerSessionId: s.id });
     }
@@ -1058,13 +1058,20 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   useEscape(rightMax, () => setRightMax(false));
   const pageProject = view === 'project' ? state.projects.find((p) => p.id === projectPageId) : undefined;
   const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
-  /** Mock-up (project-sub): a project manager's 子任务 in the details (the workers it sent out). */
+  /**
+   * Mock-up (project-sub): in a project, a conversation's 子任务 in the details (the workers it sent out; a sub-task's
+   * own ones in its details). Shown there, a finished one has been seen (its news dot goes).
+   */
   const subTasks =
-    session?.role === 'manager'
+    session && (session.role === 'manager' || project)
       ? {
           tasks: sessions.filter((x) => x.parentId === session.id && x.role === 'worker'),
-          transcriptOf: (sid: string) => agent.transcript(sid),
-          load: (sid: string) => void agent.load(sid),
+          transcriptOf: (sid: string) => state.transcripts[sid],
+          load: (sid: string) => {
+            void agent.load(sid);
+            const news = settings.doneNews ?? [];
+            if (news.includes(sid)) shell.update({ doneNews: news.filter((x) => x !== sid) });
+          },
           stop: (sid: string) => void agent.stop(sid),
           open: openSession,
         }
