@@ -4576,6 +4576,13 @@ button.ctx-row:hover {
   padding: 8px;
 }
 
+/* its words as the rows' names above (size, weight), quieter by colour only: it opens, it is not a field */
+.provider-editor > .provider-more .fold-head {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 500;
+}
+
 .provider-editor > .provider-pointer-note {
   padding: 12px 16px;
 }
