@@ -52,6 +52,7 @@ export function ContextMenu({
   side = 'below',
   minWidth,
   focusChecked = false,
+  align = 'start',
 }: {
   x: number;
   y: number;
@@ -63,6 +64,8 @@ export function ContextMenu({
   minWidth?: number | undefined;
   /** Opening, the focus goes to the ticked item (scrolled into view), not the first. */
   focusChecked?: boolean;
+  /** `end`: the menu's right edge on the anchor's (a button at the right end of a card: the menu stays over the card). */
+  align?: 'start' | 'end';
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -82,7 +85,7 @@ export function ContextMenu({
     // Measured here, once the button is shown (it may appear only with its menu open).
     if (anchor) {
       const a = anchor.getBoundingClientRect();
-      left = a.left;
+      left = align === 'end' ? a.right - r.width : a.left;
       const below = a.bottom + 4;
       const above = a.top - 4 - r.height;
       const fitsBelow = below + r.height <= window.innerHeight - 4;
@@ -93,7 +96,7 @@ export function ContextMenu({
     const first = (focusChecked && el.querySelector<HTMLButtonElement>('button[aria-checked="true"]:not([aria-disabled="true"])')) || el.querySelector<HTMLButtonElement>('button:not([aria-disabled="true"])');
     first?.focus({ preventScroll: true });
     first?.scrollIntoView?.({ block: 'nearest' });
-  }, [x, y, anchor, side, focusChecked]);
+  }, [x, y, anchor, side, focusChecked, align]);
 
   useEffect(() => {
     const close = () => onClose();

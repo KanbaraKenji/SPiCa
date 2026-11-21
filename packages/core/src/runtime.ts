@@ -13,6 +13,7 @@ import { updatePlanTool } from './tools/plan-tool.ts';
 import { MailPipeline, triageMailTool, type MailConfig } from './mail.ts';
 import { projectTools } from './tools/project-tools.ts';
 import { historyTools } from './tools/history-tools.ts';
+import { folderTools } from './tools/folder-tools.ts';
 import { createMemoryTools, MemoryBook, memoryHook } from './memory.ts';
 import { createRunCommandTool } from './tools/command-tool.ts';
 import { CommandJobs, createCommandJobTools } from './tools/background-commands.ts';
@@ -432,6 +433,7 @@ export class Runtime implements RuntimeInternals {
       updatePlanTool,
       ...projectTools,
       ...historyTools,
+      ...folderTools,
       ...createMemoryTools(this),
       triageMailTool,
       ...(opts.python

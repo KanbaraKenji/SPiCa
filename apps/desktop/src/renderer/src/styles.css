@@ -456,7 +456,7 @@ a:hover {
   color: var(--spica-on-accent);
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-accent);
   filter: brightness(1.08);
 }
@@ -467,7 +467,7 @@ a:hover {
   color: #fff;
 }
 
-.btn-danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-danger);
   filter: brightness(1.08);
 }
@@ -6522,51 +6522,38 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-accent-text);
 }
 
-/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the blue main button as on every confirmation,
-   its words in one cell so it is as wide as the wider, a ring after them in the button's own text colour; held, the
-   ring's track steps back and the part gone round is drawn solid (white on the blue: 4.1:1 light, 2.4:1 dark, as the
-   button's words). */
-.hold-allow {
-  touch-action: none;
-  user-select: none;
+/* 始终允许 and its drop-down (chat/AllowSplit.tsx): one shape, the outer corners on the two ends, the inner edge
+   straight on both parts; a thin light line between the two (the look he picked of three). */
+.allow-split {
+  display: inline-flex;
+  align-items: stretch;
 }
 
-.hold-allow-words {
-  display: inline-grid;
+.allow-split > .btn {
+  margin: 0;
 }
 
-.hold-allow-words > span {
-  grid-area: 1 / 1;
-  text-align: center;
+.allow-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
-.hold-allow-words > span[aria-hidden='true'] {
-  visibility: hidden;
+.allow-split-more {
+  width: 24px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-color: color-mix(in srgb, var(--spica-on-accent) 35%, var(--spica-accent));
 }
 
-.hold-allow-ring {
-  flex: none;
-  transform: rotate(-90deg);
+.allow-split.is-open > .allow-split-more {
+  filter: brightness(1.08);
 }
 
-.hold-allow-ring > circle {
-  fill: none;
-  stroke-width: 1.5;
-}
-
-.hold-allow-track {
-  stroke: currentColor;
-}
-
-/* held: the track steps back so the part gone round reads */
-.hold-allow.is-holding .hold-allow-track {
-  stroke: color-mix(in srgb, currentColor 40%, transparent);
-}
-
-.hold-allow-fill {
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
+/* The keyboard ring inside each part (outside it would run over the other part). */
+.allow-split > .btn:focus-visible {
+  outline-color: var(--spica-on-accent);
+  outline-offset: -4px;
 }
 
 /* A text-only button inside a sentence: accent color, no underline. */
