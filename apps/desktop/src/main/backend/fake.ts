@@ -529,9 +529,9 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
-  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
+  async confirm(sessionId: string, callId: string, approved: boolean, options?: { always?: boolean; allowFolder?: boolean }): Promise<void> {
     const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
-    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
+    if (approved && (options?.always || options?.allowFolder) && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
       const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
       set.add(item.outsideFolder);
       this.#writeFolders.set(sessionId, set);

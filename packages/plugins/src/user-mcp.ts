@@ -4,6 +4,7 @@
 // approval mode (a hook's confirm, the card the app already has); 'auto': as other tools (a tool the server marks
 // destructive still asks by default). The host keeps the list, secrets sealed, and hands it over in the clear.
 // npx and uvx services start offline first and download only once the person agreed (runner.ts).
+import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { findCommand } from '@spica/core';
 import { hasBundledPython, missedDownload, npmPackageInfo, packageOf, runnerLaunch, runnerOf, type BundledUv, type DownloadNeed } from './runner.ts';
@@ -306,15 +307,20 @@ export class UserMcpServers {
     }
   }
 
-  /** 每次询问: each of its tools asks first, whatever the approval mode. */
+  /**
+   * 每次询问: each of its tools asks first, whatever the approval mode. The card may offer 始终允许: kept with the
+   * conversation for this tool of this service (`keep`), the service known by where it runs as well as its name, so
+   * one removed and added again elsewhere under the same name asks again.
+   */
   #hook(run: Running): () => void {
     const prefix = `${run.config.name}__`;
+    const where = (c: UserMcpConfig) => createHash('sha256').update(JSON.stringify(c.url ? [c.url] : [c.command, ...c.args])).digest('hex').slice(0, 12);
     return this.#o.host.registerHooks(
       `mcp:${run.config.name}`,
       {
         beforeTool: (call) => {
           if (!call.name.startsWith(prefix) || run.config.approval !== 'ask') return;
-          return { action: 'confirm', reason: `「${run.config.name}」：${call.name.slice(prefix.length)}` };
+          return { action: 'confirm', reason: `「${run.config.name}」：${call.name.slice(prefix.length)}`, keep: `mcp:${where(run.config)}:${call.name}` };
         },
       },
       { priority: 10 },

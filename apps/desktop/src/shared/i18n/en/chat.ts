@@ -79,6 +79,7 @@ export const EN_CHAT: Catalog = {
   工作文件夹以外: 'Outside working folder',
   始终允许: 'Always allow',
   允许一次: 'Allow once',
+  此对话: 'This conversation',
   起始文件夹: 'Runs in',
   已允许: 'Allowed',
   已拒绝: 'Denied',

@@ -368,8 +368,9 @@ export class Session {
       const outsideFolder = this.#outsideFolder(tool, args);
       const cause = this.#guardCause(tool, args, guard) ?? (outsideFolder ? 'outside_folder' : undefined);
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
+      const keptBefore = !cause && decision.action === 'confirm' && !!decision.keep && this.keptTools().includes(decision.keep);
       let confirmedBy: 'user' | undefined;
-      if ((decision.action === 'confirm' && !autoApproved) || cause) {
+      if ((decision.action === 'confirm' && !autoApproved && !keptBefore) || cause) {
         const change = tool.previewChange ? await tool.previewChange(args, cfg.cwd).catch(() => undefined) : undefined;
         const reason = cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation');
         const irreversible = decision.action === 'confirm' && decision.irreversible === true;
@@ -520,7 +521,8 @@ export class Session {
   }
 
   /** Approve or decline an action that needed confirmation. */
-  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+  async confirm(callId: string, approved: boolean, options: { always?: boolean; allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+    const always = options.always === true || options.allowFolder === true;
     const p = this.#findPending(callId, 'confirm');
     this.#emit({ type: 'confirm.resolved', callId, approved });
     const outside = p.item.kind === 'confirm' ? p.item.outsideFolder : undefined;
@@ -533,7 +535,9 @@ export class Session {
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
-    if (outside && options.allowFolder) this.allowWriteFolder(outside);
+    if (outside && always) this.allowWriteFolder(outside);
+    const keptTool = !outside && always && p.item.keepTool ? p.item.keepTool : undefined;
+    if (keptTool) this.keepTool(keptTool);
     // Mark as no longer pending before running so a crash does not re-ask.
     this.#rt.store.deletePending(this.id, callId);
     const tool = this.#rt.tools.get(p.item.toolName);
@@ -546,8 +550,11 @@ export class Session {
     this.#runAbort = undefined;
     // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
     // write that went through as "asking did not work"), and whether the folder was kept
-    const kept = outside && options.allowFolder && !tooWideToAllow(outside);
-    const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
+    const kept = outside && always && !tooWideToAllow(outside);
+    const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n`
+      : keptTool
+        ? `[The user allowed this on a confirmation card: ${p.item.toolName} runs without asking from now on in this conversation.]\n`
+        : '';
     this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
@@ -1240,9 +1247,12 @@ export class Session {
       // outside content in play: the user confirms, whatever hooks or plugin settings say
       const outsideFolder = install ? undefined : this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
       const cause = install ? 'python_install' : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (outsideFolder ? 'outside_folder' : undefined));
-      // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
+      // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's;
+      // a tool the user allowed on a card (始终允许) passes its hook's confirmation, never the guard's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
-      if ((decision.action === 'confirm' && !autoApproved) || cause) {
+      const keptBefore = !cause && decision.action === 'confirm' && !!decision.keep && this.keptTools().includes(decision.keep);
+      const keepTool = !cause && !outsideFolder && decision.action === 'confirm' ? decision.keep : undefined;
+      if ((decision.action === 'confirm' && !autoApproved && !keptBefore) || cause) {
         // what a write would change, for the card (the file is read, nothing written); a failure only leaves it out
         const change = tool.previewChange ? await tool.previewChange((input ?? {}) as Record<string, unknown>, this.#record.config.cwd).catch(() => undefined) : undefined;
         const item: PendingItem = {
@@ -1256,6 +1266,7 @@ export class Session {
           ...(change ? { change } : {}),
           ...(outsideFolder ? { outsideFolder } : {}),
           ...(outsideFolder && tooWideToAllow(outsideFolder) ? { folderTooWide: true } : {}),
+          ...(keepTool ? { keepTool } : {}),
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
@@ -1292,6 +1303,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.change ? { change: p.item.change } : {}),
             ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
             ...(p.item.folderTooWide ? { folderTooWide: true } : {}),
+            ...(p.item.keepTool ? { keepTool: p.item.keepTool } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
@@ -1699,6 +1711,25 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     // a drive's root or the home folder is allowed this once only, never kept (it would let everything through)
     if (cfg.writeFolders?.includes(folder) || tooWideToAllow(folder)) return;
     this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
+    this.#rt.store.upsertSession(this.#record);
+  }
+
+  /** The tools the user allowed on a card (始终允许), by key: kept with the conversation at the top of the chain. */
+  keptTools(): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.keptTools() : [...(this.#record.config.keptTools ?? [])];
+  }
+
+  /** 始终允许 on a tool's card: that tool runs without asking from now on in this conversation (its sub-agents too). */
+  keepTool(key: string): void {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) {
+      parent.keepTool(key);
+      return;
+    }
+    const cfg = this.#record.config;
+    if (cfg.keptTools?.includes(key)) return;
+    this.#record = { ...this.#record, config: { ...cfg, keptTools: [...(cfg.keptTools ?? []), key] } };
     this.#rt.store.upsertSession(this.#record);
   }
 
