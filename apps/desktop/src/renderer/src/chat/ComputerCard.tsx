@@ -3,49 +3,13 @@
 // name, 只看 / 只能点 / 高风险, and where it is). Answered: one line, as an answered question card (the mark, 已始终允许
 // N 个程序), as wide as its words; pressing it shows the programs under it.
 import { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { N_, t } from '../../../shared/i18n';
 import type { ComputerBlock, ComputerCardApp } from '../store/computer-card';
-import { ContextMenu } from '../ui/ContextMenu';
+import { AllowSplit } from './AllowSplit';
 import { Icon } from '../ui/Icon';
 
 const CARD_STOPPED = N_('已中断');
-
-/**
- * 始终允许, with 允许一次 in the menu beside it. A stand-in until the confirmation card's own button is chosen (its
- * redo is decided elsewhere); it takes the same props as the card's 允许 (HoldToAllow), so it can be swapped for it.
- */
-export function AllowChoice({ disabled, onAllow }: { disabled: boolean; onAllow(always: boolean): void }) {
-  // the pair of buttons while the menu is open (it sits under them)
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  const open = anchor !== null;
-  return (
-    <span className="allow-choice">
-      <button type="button" className="btn btn-primary" disabled={disabled} onClick={() => onAllow(true)}>
-        {t('始终允许')}
-      </button>
-      <button
-        type="button"
-        className="btn btn-primary allow-choice-more"
-        disabled={disabled}
-        aria-label={t('其他允许方式')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={(e) => setAnchor(open ? null : e.currentTarget.parentElement)}
-      >
-        <Icon name="chevronDown" size={14} />
-      </button>
-      {/* on the page itself: inside the conversation a fixed menu would be placed from the card, not the window */}
-      {anchor
-        ? createPortal(
-            <ContextMenu x={0} y={0} anchor={anchor} minWidth={anchor.offsetWidth} items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]} onClose={() => setAnchor(null)} />,
-            document.body,
-          )
-        : null}
-    </span>
-  );
-}
 
 /** What a program may do, after its name: 只看, 只能点 (grey), 高风险 (red, as 无法撤销). */
 function Tag({ app }: { app: ComputerCardApp }) {
@@ -104,7 +68,7 @@ export function ComputerCard({ block, onDecide }: { block: ComputerBlock; onDeci
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
-            <AllowChoice disabled={sent} onAllow={(always) => decide(true, always)} />
+            <AllowSplit disabled={sent} onAllow={(always) => decide(true, always)} />
           </div>
         </header>
         <AppList apps={block.apps} />

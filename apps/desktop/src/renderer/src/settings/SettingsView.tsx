@@ -9,6 +9,7 @@ import { useShell } from '../store/shell';
 import { Appearance } from './Appearance';
 import { Models, type ProvidersApi } from './Models';
 import { Plugins, type PluginsApi, type PluginsTab, type SettingsPages } from './Plugins';
+import type { McpApi } from './McpServers';
 import { About } from './About';
 import { Account } from './Account';
 import { General, type GeneralProps, type WorkflowsApi } from './General';
@@ -83,6 +84,8 @@ export interface SettingsViewProps {
   localConnect?: GeneralProps['localConnect'];
   previewPages?: GeneralProps['previewPages'];
   clearBrowsingData?: GeneralProps['clearBrowsingData'];
+  /** The MCP services the person adds (插件 › MCP 服务); absent: no such tab. */
+  mcp?: McpApi;
   /** The plugins' own settings pages, shown in their detail under 插件. */
   pluginPages?: SettingsPages;
   /** 记忆 (absent when the core keeps none: no section). The switch is a shell setting. */
@@ -91,7 +94,7 @@ export interface SettingsViewProps {
   usage?: UsageApi;
 }
 
-export function SettingsView({ reveal, shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage }: SettingsViewProps) {
+export function SettingsView({ reveal, shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage, mcp }: SettingsViewProps) {
   const { settings } = useShell(shell);
   const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
   const box = useRef<HTMLDivElement>(null);
@@ -167,6 +170,7 @@ export function SettingsView({ reveal, shell, providers, plugins, version, updat
         api={plugins}
         pages={pluginPages}
         mail={{ prefs: settings.mail, onChange: (patch) => shell.update({ mail: { ...settings.mail, ...patch } }), ...(mailModel ? { model: mailModel } : {}) }}
+        {...(mcp ? { mcp } : {})}
         {...(pluginsTab ? { tab: pluginsTab } : {})}
         {...(onPluginsTab ? { onTab: onPluginsTab } : {})}
         {...(focusPlugin ? { focus: focusPlugin } : {})}

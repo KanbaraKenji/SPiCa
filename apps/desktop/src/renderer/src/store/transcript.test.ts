@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, cwdNoteText, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Block, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -732,6 +732,33 @@ describe('a call announced but never made', () => {
   });
 });
 
+describe('a call to a service the person added', () => {
+  it('carries the service name as written from the first event (before tool.start: while it waits for 允许)', () => {
+    const ev = (body: object, seq: number) => ({ ...body, seq, at: '', sessionId: 's', parentChain: [] }) as unknown as CoreEvent;
+    const t = applyEvent({ items: [] }, ev({ type: 'tool.call', callId: 'c1', name: 'lab__room_temperature', server: 'lab' }, 1));
+    const r = t.items[0];
+    const block = r?.kind === 'response' ? r.blocks[0] : undefined;
+    expect(block?.type === 'tool' ? block.server : undefined).toBe('lab');
+  });
+
+  it('rebuilt from what is stored while it waits for 允许: the name from the call message', () => {
+    const asst: Message = {
+      id: 'a',
+      seq: 1,
+      sessionId: 's',
+      role: 'assistant',
+      kind: 'assistant',
+      createdAt: '',
+      content: [{ type: 'tool_use', id: 'c1', name: 'lab__room_temperature', input: { room: 'B2' } }],
+      meta: { toolInfo: { c1: { category: 'plugin', server: 'lab' } } },
+    };
+    const pending = [{ kind: 'confirm' as const, callId: 'c1', toolName: 'lab__room_temperature', input: { room: 'B2' }, reason: '「lab」：room_temperature', createdAt: '' }];
+    const r = fromHistory([asst], pending).items[0];
+    const tool = r?.kind === 'response' ? r.blocks.find((b) => b.type === 'tool') : undefined;
+    expect(tool?.type === 'tool' ? tool.server : undefined).toBe('lab');
+  });
+});
+
 describe('a call waiting for 允许, rebuilt from what is stored', () => {
   it('is waiting (as live), not done: the core stores the call before asking, with no result yet', () => {
     const asst: Message = { id: 'a', seq: 1, sessionId: 's', role: 'assistant', kind: 'assistant', createdAt: '', content: [{ type: 'tool_use', id: 'c1', name: 'run_command', input: { command: 'Remove-Item x' } }] };
@@ -758,5 +785,74 @@ describe('a failed download for the app’s Python', () => {
     expect(t.installFailure?.reason).toBe('connect');
     t = applyEvent(t, ev({ type: 'status', status: 'thinking' }, 5));
     expect(t.installFailure).toBeUndefined();
+  });
+});
+
+describe('background commands', () => {
+  const job = { id: 'cmd1', sessionId: 's', callId: 'call-1', command: 'npm run dev', cwd: 'D:/w', startedAt: '2026-11-18T08:00:00Z', outputPath: 'D:/w/cmd1.log' };
+  it('command.job keeps each job by id, the latest state winning', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, { seq: 1, sessionId: 's', parentChain: [], at: '', type: 'command.job', job } as CoreEvent);
+    expect(t.jobs?.cmd1?.end).toBeUndefined();
+    t = applyEvent(t, { seq: 2, sessionId: 's', parentChain: [], at: '', type: 'command.job', job: { ...job, end: 'user', exitCode: null } } as CoreEvent);
+    expect(t.jobs?.cmd1?.end).toBe('user');
+  });
+  it('the files a job changed become its call’s cards after a restart', () => {
+    const file = { path: 'D:/w/a.txt', name: 'a.txt', kind: 'text', sizeBytes: 1, modifiedAt: '', extractedAt: '', read: {}, origin: 'created' } as const;
+    const t = withJobs({ items: [] }, [{ ...job, end: 'exited', exitCode: 0, files: [file] }]);
+    expect(t.fileCards?.['call-1']?.name).toBe('a.txt');
+    expect(t.fileCardLists?.['call-1']).toHaveLength(1);
+    expect(withJobs({ items: [] }, []).jobs).toBeUndefined();
+  });
+});
+
+describe('currentPlan (update_plan)', () => {
+  const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+  const plan = (callId: string, steps: [string, string][]) => ev({ type: 'tool.start', callId, name: 'update_plan', input: { plan: steps.map(([step, status]) => ({ step, status })) } });
+
+  it('live: the latest call; a refused call leaves the plan before it; not a step in the answer', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, plan('p1', [['读资料', 'in_progress'], ['写纪要', 'pending']]));
+    t = applyEvent(t, plan('p2', [['读资料', 'completed'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.steps.map((s) => s.status)).toEqual(['completed', 'in_progress']);
+    t = applyEvent(t, plan('p3', [['读资料', 'in_progress'], ['写纪要', 'in_progress']]));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    t = applyEvent(t, plan('p4', [['读资料', 'completed'], ['写纪要', 'completed']]));
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'p4', name: 'update_plan', isError: true, preview: 'no' }));
+    expect(currentPlan(t)?.callId).toBe('p2');
+    const r = t.items.at(-1);
+    expect(r?.kind === 'response' && r.blocks.some((b) => b.type === 'tool')).toBe(false);
+  });
+
+  it('an empty list clears it', () => {
+    let t = applyEvent({ items: [] }, plan('p1', [['读资料', 'pending']]));
+    t = applyEvent(t, plan('p2', []));
+    expect(currentPlan(t)).toBeUndefined();
+  });
+
+  it('each answer that finished a plan keeps it: its last plan, every step done', () => {
+    const p = (callId: string, statuses: string[], failed = false): Block => ({ type: 'plan', callId, steps: statuses.map((status, i) => ({ step: `步骤${i}`, status: status as 'completed' })), ...(failed ? { failed } : {}) });
+    expect(finishedPlanIn([p('a', ['completed', 'in_progress']), p('b', ['completed', 'completed'])])).toBe('b');
+    expect(finishedPlanIn([p('a', ['completed', 'completed']), p('b', ['completed', 'pending'])])).toBeUndefined();
+    expect(finishedPlanIn([p('a', ['completed']), p('b', ['completed', 'pending'], true)])).toBe('a');
+    expect(finishedPlanIn([p('a', ['completed']), p('b', [])])).toBeUndefined();
+    expect(finishedPlanIn([{ type: 'text', text: '好' } as Block])).toBeUndefined();
+  });
+
+  it('read back from the stored conversation as it was live', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    let live: Transcript = { items: [] };
+    const done = new Promise<void>((resolve) =>
+      b.onEvent((e: CoreEvent) => {
+        live = applyEvent(live, e, 1000);
+        if (e.type === 'run.end') resolve();
+      }),
+    );
+    await b.send(chat.id, '清单没做完');
+    await done;
+    const stored = fromHistory(await b.getMessages(chat.id));
+    expect(currentPlan(stored)?.steps).toEqual(currentPlan(live)?.steps);
+    expect(currentPlan(stored)?.steps.map((s) => s.status)).toEqual(['completed', 'completed', 'pending', 'pending', 'pending']);
   });
 });

@@ -456,7 +456,7 @@ a:hover {
   color: var(--spica-on-accent);
 }
 
-.btn-primary:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-accent);
   filter: brightness(1.08);
 }
@@ -467,7 +467,7 @@ a:hover {
   color: #fff;
 }
 
-.btn-danger:hover:not(:disabled) {
+.btn-danger:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--spica-danger);
   filter: brightness(1.08);
 }
@@ -959,6 +959,18 @@ button.tree-twisty:hover {
   flex: none;
   color: var(--spica-faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* 后台命令: the command in the code font; 停止 (the message box's) at the row's end, kept within the row's height. */
+.detail-job-cmd {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+
+.icon-btn.detail-job-stop {
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px -2px 0;
 }
 
 .detail-file {
@@ -4564,6 +4576,13 @@ button.ctx-row:hover {
   padding: 8px;
 }
 
+/* its words as the rows' names above (size, weight), quieter by colour only: it opens, it is not a field */
+.provider-editor > .provider-more .fold-head {
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 500;
+}
+
 .provider-editor > .provider-pointer-note {
   padding: 12px 16px;
 }
@@ -6510,51 +6529,38 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-accent-text);
 }
 
-/* 允许 that can be held for 始终允许 (chat/Blocks.tsx HoldToAllow): the blue main button as on every confirmation,
-   its words in one cell so it is as wide as the wider, a ring after them in the button's own text colour; held, the
-   ring's track steps back and the part gone round is drawn solid (white on the blue: 4.1:1 light, 2.4:1 dark, as the
-   button's words). */
-.hold-allow {
-  touch-action: none;
-  user-select: none;
+/* 始终允许 and its drop-down (chat/AllowSplit.tsx): one shape, the outer corners on the two ends, the inner edge
+   straight on both parts; a thin light line between the two (the look he picked of three). */
+.allow-split {
+  display: inline-flex;
+  align-items: stretch;
 }
 
-.hold-allow-words {
-  display: inline-grid;
+.allow-split > .btn {
+  margin: 0;
 }
 
-.hold-allow-words > span {
-  grid-area: 1 / 1;
-  text-align: center;
+.allow-split-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
-.hold-allow-words > span[aria-hidden='true'] {
-  visibility: hidden;
+.allow-split-more {
+  width: 24px;
+  padding: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left-color: color-mix(in srgb, var(--spica-on-accent) 35%, var(--spica-accent));
 }
 
-.hold-allow-ring {
-  flex: none;
-  transform: rotate(-90deg);
+.allow-split.is-open > .allow-split-more {
+  filter: brightness(1.08);
 }
 
-.hold-allow-ring > circle {
-  fill: none;
-  stroke-width: 1.5;
-}
-
-.hold-allow-track {
-  stroke: currentColor;
-}
-
-/* held: the track steps back so the part gone round reads */
-.hold-allow.is-holding .hold-allow-track {
-  stroke: color-mix(in srgb, currentColor 40%, transparent);
-}
-
-.hold-allow-fill {
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
+/* The keyboard ring inside each part (outside it would run over the other part). */
+.allow-split > .btn:focus-visible {
+  outline-color: var(--spica-on-accent);
+  outline-offset: -4px;
 }
 
 /* A text-only button inside a sentence: accent color, no underline. */
@@ -6858,23 +6864,6 @@ section.plugins-part > .plugins-part-title {
   color: var(--spica-muted);
 }
 
-/* 始终允许 with the menu of 允许一次 beside it (a stand-in for the card's own button, still to be chosen). */
-.allow-choice {
-  display: inline-flex;
-  gap: 1px;
-}
-
-.allow-choice > .btn:first-child {
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-.allow-choice-more.btn {
-  padding: 0 6px;
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-}
-
 /* Answered: one line as an answered question card's (the mark, the words), as wide as they are, with the way to
    the programs at its end; open, the programs under it as on the waiting card. */
 .card.computer-card.is-line {
@@ -6988,6 +6977,16 @@ section.plugins-part > .plugins-part-title {
   padding-left: calc(12px + 2ch);
 }
 
+/* No $ in front (a script, a list of files): no room kept for it, every line starts at the edge. */
+.tool-command.is-code pre {
+  padding-left: 10px;
+  text-indent: 0;
+}
+
+.tool-command.is-bare.is-code pre {
+  padding-left: 12px;
+}
+
 /* A dangerous word in a command to be confirmed (Remove-Item, -Recurse, -Force, an overwriting >). */
 .cmd-danger {
   padding: 0 2px;
@@ -7094,6 +7093,16 @@ section.plugins-part > .plugins-part-title {
   font-weight: 600;
   line-height: 15px;
   text-align: center;
+}
+
+/* The same count on a title-bar button (the details' while background commands run with them closed). */
+.icon-btn.has-badge {
+  position: relative;
+}
+
+.icon-btn.has-badge .rail-badge {
+  top: 0;
+  right: -2px;
 }
 
 /* Where 插件 is written in the sidebar: a short line in the column, same height. */
@@ -9333,4 +9342,213 @@ input[type='radio']:disabled {
 .preview-media.is-audio audio {
   width: 100%;
   max-width: 560px;
+}
+/* Settings › MCP 服务 (settings/McpServers.tsx): the list and a service's page as 插件's; commands in the code font. */
+.mcp-mono {
+  font-family: var(--font-mono);
+}
+
+.mcp-log {
+  margin-top: 8px;
+}
+
+.tool-command.mcp-log pre,
+.tool-command.mcp-command pre {
+  padding-left: 10px;
+  padding-right: 10px;
+  text-indent: 0;
+}
+
+.plugin-facts.mcp-facts {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.mcp-approval {
+  margin-top: 16px;
+}
+
+.mcp-facts dd.mcp-mono {
+  overflow-wrap: anywhere;
+}
+
+/* 参数: one a line, as wide as 环境变量's rows. */
+.provider-editor .form-row > .field-control > .mcp-args {
+  width: 100%;
+  white-space: pre;
+  overflow-x: auto;
+  max-width: 420px;
+  height: auto;
+  min-height: calc(var(--control-h) * 2);
+  padding-top: 6px;
+  padding-bottom: 6px;
+  resize: vertical;
+}
+
+/* 工作文件夹: the box, then the folder button beside it. */
+.provider-editor .form-row > .field-control.mcp-with-button {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-paste-note {
+  margin: 6px 0 0;
+}
+
+.mcp-editor > .mcp-paste {
+  margin-top: 12px;
+}
+
+/* Before saving: the whole command, then where it runs and its variables. An argument wraps only when it is
+   longer than the line (each is kept whole otherwise, so where one ends is plain). */
+.mcp-arg {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.mcp-confirm-facts {
+  margin-top: 10px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+}
+
+/* 插件 › MCP 服务: 添加 MCP 服务 at the end of the tab row. */
+.plugins-bar .plugins-bar-end {
+  margin-left: auto;
+}
+
+/* The conversation's plan (chat/PlanStrip, update_plan): in the input area just above the message box, as wide as
+   it (as the question card, .ask-dock): one line (the step's mark, how far, the step being worked on, the arrow);
+   opened, all the steps above that line, so the line stays where it was clicked. */
+.plan-dock {
+  flex: none;
+  width: calc(100% - 28px);
+  max-width: 760px;
+  margin: 0 auto 8px;
+  translate: var(--centre-shift, 0px) 0;
+}
+
+.plan-strip {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-l);
+  border: 1px solid var(--spica-border-strong);
+  background: var(--spica-raised);
+  box-shadow: var(--spica-input-shadow);
+}
+
+.plan-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-line:hover {
+  background: var(--spica-hover);
+}
+
+.plan-strip.is-open > .plan-line {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.plan-mark {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: var(--lh-body);
+}
+
+.plan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1.5px solid var(--spica-muted);
+}
+
+.plan-dot.is-current {
+  border-color: var(--spica-accent);
+}
+
+.plan-count {
+  flex: none;
+  color: var(--spica-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-current {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.plan-chevron {
+  flex: none;
+  color: var(--spica-muted);
+  rotate: 180deg;
+}
+
+.plan-strip.is-open .plan-chevron {
+  rotate: none;
+}
+
+.plan-steps {
+  margin: 0;
+  padding: 8px 12px 4px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
+  border-bottom: 1px solid var(--spica-border);
+}
+
+.plan-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.plan-step.is-completed .plan-step-text {
+  color: var(--spica-muted);
+}
+
+/* Finished, back in the conversation where it was finished: as wide as what it says, like an answered question. */
+.plan-strip.is-record {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 560px;
+  box-shadow: none;
+  background: var(--spica-surface);
+  border-color: var(--spica-border);
+}
+
+.plan-strip.is-record .plan-chevron {
+  rotate: -90deg;
+}
+
+.plan-strip.is-record.is-open .plan-chevron {
+  rotate: none;
 }

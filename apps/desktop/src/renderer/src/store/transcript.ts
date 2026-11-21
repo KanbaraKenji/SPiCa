@@ -1,9 +1,9 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, CommandJob, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
-import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
+import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
 import { COMPUTER_ACCESS, computerCard, settleComputer, type ComputerBlock } from './computer-card';
@@ -57,16 +57,20 @@ export type Block =
       summary?: string;
       /** A plugin tool's name for people. */
       title?: string;
+      /** From an MCP service the person added: its name as written. */
+      server?: string;
     }
   /** `cancelled`: the question was dropped unanswered (the run was stopped): nothing to answer any more. */
   /** `recommended`: the option the model suggests (marked 建议 on the card); none on older calls. */
   | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
   /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
   | ComputerBlock
-  | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] };
+  | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
+  /** An update_plan call: the whole list as it stands after it. `failed`: the core refused it (the plan before it stands). */
+  | { type: 'plan'; callId: string; steps: PlanStep[]; failed?: boolean };
 
 /** A note from a sub-agent (its report, what the user said there, or a decision made there). */
 export interface ChildNote {
@@ -272,6 +276,8 @@ export interface Transcript {
   queued?: { id: string; text: string }[];
   /** File details the core reported (file.card), by call id: the call's first card. */
   fileCards?: Record<string, FileCardMeta>;
+  /** Commands this conversation ran in the background (run_command with run_in_background), by id. */
+  jobs?: Record<string, CommandJob>;
   /** Every card of a call that reported several (a command, present_files, a plugin tool), in order, by call id. */
   fileCardLists?: Record<string, FileCardMeta[]>;
   /** What the history tools found (history.card), by call id: the table under the tool row, and where [name](history:n) links go. */
@@ -308,8 +314,8 @@ export function historyRef(t: Transcript, ref: number): { sessionId: string; seq
 export const EMPTY_TRANSCRIPT: Transcript = { items: [] };
 
 /** What tool.start says about a call beyond its name and input: its kind, the model's line on it, a plugin tool's title. */
-function aboutCall(e: { category?: ToolCategory; summary?: string; title?: string }): { category?: ToolCategory; summary?: string; title?: string } {
-  return { ...(e.category ? { category: e.category } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.title ? { title: e.title } : {}) };
+function aboutCall(e: { category?: ToolCategory; summary?: string; title?: string; server?: string }): { category?: ToolCategory; summary?: string; title?: string; server?: string } {
+  return { ...(e.category ? { category: e.category } : {}), ...(e.summary ? { summary: e.summary } : {}), ...(e.title ? { title: e.title } : {}), ...(e.server ? { server: e.server } : {}) };
 }
 
 /** Tools that read or write a file; their `path` becomes a file card under the answer. */
@@ -379,6 +385,38 @@ function asSuggest(callId: string, input: unknown): Block {
         .map((a) => ({ label: String(a.label), prompt: typeof a.prompt === 'string' ? a.prompt : String(a.label) }))
     : [];
   return { type: 'suggest', callId, title: typeof v.title === 'string' ? v.title : '', actions };
+}
+
+function asPlan(callId: string, input: unknown): Block {
+  const { steps, error } = readPlan((input && typeof input === 'object' ? (input as { plan?: unknown }) : {}).plan);
+  return { type: 'plan', callId, steps, ...(error ? { failed: true } : {}) };
+}
+
+/**
+ * The conversation's plan: the steps of the latest update_plan call the core took (in the answers as they stand, not
+ * replaced versions); `item`: the index of the item that holds it. None before the first call, or once cleared.
+ */
+export function currentPlan(t: Transcript): { callId: string; steps: PlanStep[]; item: number } | undefined {
+  for (let i = t.items.length - 1; i >= 0; i--) {
+    const it = t.items[i];
+    if (it?.kind !== 'response') continue;
+    for (let j = it.blocks.length - 1; j >= 0; j--) {
+      const b = it.blocks[j];
+      if (b?.type !== 'plan' || b.failed) continue;
+      return b.steps.length ? { callId: b.callId, steps: b.steps, item: i } : undefined;
+    }
+  }
+  return undefined;
+}
+
+/** The update_plan call an answer finished the plan with (its last plan has every step done): that list stays there. */
+export function finishedPlanIn(blocks: Block[]): string | undefined {
+  for (let j = blocks.length - 1; j >= 0; j--) {
+    const b = blocks[j];
+    if (b?.type !== 'plan' || b.failed) continue;
+    return b.steps.length && b.steps.every((s) => s.status === 'completed') ? b.callId : undefined;
+  }
+  return undefined;
 }
 
 function asAsk(callId: string, input: unknown): Block {
@@ -454,6 +492,8 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
     else removeBlock(items, computer);
     if (stopped) markInterrupted(items, callId);
   }
+  const plan = findBlock(items, 'plan', callId);
+  if (plan && isError) plan.failed = true;
   const ask = findBlock(items, 'ask', callId);
   if (ask && ask.answer === undefined) {
     if (isError) {
@@ -563,9 +603,14 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           r.blocks.push({ type: 'thinking', text: b.text });
         } else if (b.type === 'tool_use') {
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
+          else if (b.name === PLAN_TOOL) r.blocks.push(asPlan(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
           else if (b.name === COMPUTER_ACCESS) r.blocks.push(computerCard(b.id, b.input));
-          else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
+          else {
+            // a call to a service the person added carries its name as written (stored with the call)
+            const server = m.meta?.toolInfo?.[b.id]?.server;
+            r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done', ...(server ? { server } : {}) });
+          }
         }
       }
       mark(m);
@@ -606,6 +651,7 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (about?.category) tool.category = about.category;
           if (about?.summary) tool.summary = about.summary;
           if (about?.title) tool.title = about.title;
+          if (about?.server) tool.server = about.server;
           tool.result = resultBody(b.content);
           tool.preview = tool.result.slice(0, 160);
           tool.state = b.isError ? failedState(b.content) : 'done';
@@ -735,7 +781,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
       if (was) replaceBlock(t.items, was, card);
       else lastResponse(t.items, `pending-${p.callId}`).blocks.push(card);
     } else if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.install ? { install: p.install } : {}) });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.install ? { install: p.install } : {}) });
     }
   }
 }
@@ -812,14 +858,18 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       return t;
     }
     case 'tool.call': {
-      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === COMPUTER_ACCESS) return t;
+      if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === PLAN_TOOL || e.name === COMPUTER_ACCESS) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
-      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
+      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending', ...(e.server ? { server: e.server } : {}) });
       return t;
     }
     case 'tool.start': {
       if (e.name === SUGGEST_TOOL) {
         if (!findBlock(items, 'suggest', e.callId)) lastResponse(items, respId).blocks.push(asSuggest(e.callId, e.input));
+        return t;
+      }
+      if (e.name === PLAN_TOOL) {
+        if (!findBlock(items, 'plan', e.callId)) lastResponse(items, respId).blocks.push(asPlan(e.callId, e.input));
         return t;
       }
       if (e.name === ASK_TOOL || e.name === COMPUTER_ACCESS) return t;
@@ -855,6 +905,8 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       // the approval card: 始终允许 when its result says so (the preview may be cut before it: never taken as 允许一次)
       const card = e.name === COMPUTER_ACCESS ? findBlock(items, 'computer', e.callId) : undefined;
       if (card && !e.isError && /for every conversation/.test(e.preview)) card.always = true;
+      const plan = findBlock(items, 'plan', e.callId);
+      if (plan && e.isError) plan.failed = true;
       const tool = findBlock(items, 'tool', e.callId);
       if (tool) {
         tool.state = e.isError ? failedState(e.preview) : 'done';
@@ -870,7 +922,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         return t;
       }
       if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.install ? { install: e.install } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.install ? { install: e.install } : {}) });
       }
       return t;
     }
@@ -987,9 +1039,30 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (provider && provider !== 'all') t.errorProvider = provider;
       return t;
     }
+    case 'command.job': {
+      t.jobs = { ...(t.jobs ?? {}), [e.job.id]: e.job };
+      return t;
+    }
     default:
       return t;
   }
+}
+
+/**
+ * The conversation's background commands as the core listed them; the files each changed (known when it ended)
+ * become its run_command call's cards, as they do live (file.card), so they are there after a restart too.
+ */
+export function withJobs(t: Transcript, jobs: readonly CommandJob[]): Transcript {
+  if (!jobs.length) return t;
+  const next: Transcript = { ...t, jobs: { ...(t.jobs ?? {}) } };
+  for (const j of jobs) {
+    next.jobs![j.id] = j;
+    if (j.files?.length && !next.fileCards?.[j.callId]) {
+      next.fileCards = { ...(next.fileCards ?? {}), [j.callId]: j.files[0]! };
+      next.fileCardLists = { ...(next.fileCardLists ?? {}), [j.callId]: j.files };
+    }
+  }
+  return next;
 }
 
 /**

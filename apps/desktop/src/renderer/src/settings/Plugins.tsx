@@ -3,7 +3,8 @@
 // beside the name, a row of what can be done to it (更新到 / 回退到 / 删除, and while it updates, how far it
 // is), then whether it may use the models, mail sorting and what it has, and its own settings pages (views with placement
 // settings) under tabs. 市场: the plugin sources (检查更新 for each and for all, 添加来源 for a folder, .zip or
-// web address, 移除), then what they offer and is not installed, each with 安装.
+// web address, 移除), then what they offer and is not installed, each with 安装. MCP 服务: the services the person
+// adds by hand (settings/McpServers.tsx); a service's page and the form take the page as a plugin's does.
 // A plugin turned on or off stays where it is in the list while the page is
 // open; it moves to its group the next time the page opens (the counts are only
 // in the filter, as things are now). Mock mode and the plugin folder are at the bottom.
@@ -51,6 +52,7 @@ import { letterBadge } from '../ui/badge';
 import { PluginConfig } from './PluginConfig';
 import { formatClock } from '../chat/format';
 import { N_, t, tc } from '../../../shared/i18n';
+import { McpServers, type McpApi, type McpView } from './McpServers';
 
 export interface PluginsApi {
   run(cmd: PluginsCommand): Promise<PluginsResult>;
@@ -495,12 +497,13 @@ function PackageDetail({ a, busy, running, install, onShow, back, note }: { a: P
 /** What 模拟模式 does, on hover beside it. */
 export const MOCK_TIP = N_('插件改用演示数据，不连接真实系统。');
 
-/** 已安装: the plugins here, with their switches, updates and own pages. 市场: the sources and what they offer. */
-export type PluginsTab = 'installed' | 'market';
+/** 已安装: the plugins here, with their switches, updates and own pages. 市场: the sources and what they offer. MCP 服务: the services added by hand. */
+export type PluginsTab = 'installed' | 'market' | 'mcp';
 
 const TABS: [PluginsTab, string][] = [
   ['installed', N_('已安装')],
   ['market', N_('市场')],
+  ['mcp', N_('MCP 服务')],
 ];
 
 /** 「上次读取 14:05 · 3 个插件」, 「连接失败」: how a source went the last time it was read. */
@@ -533,9 +536,11 @@ export interface PluginsProps {
   onTab?: (tab: PluginsTab) => void;
   /** A plugin to show (搜索设置 went to it): picked under 已安装. */
   focus?: string;
+  /** The MCP services the person adds (the tab MCP 服务); absent: no such tab. */
+  mcp?: McpApi;
 }
 
-export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: PluginsProps) {
+export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus, mcp }: PluginsProps) {
   const [state, setState] = useState<PluginsState | null>(null);
   const [busy, setBusy] = useState(false);
   // 'info': a notice (no sources to check), shown plain like 正在检查更新….
@@ -545,12 +550,16 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
   const [confirm, setConfirm] = useState<{ kind: 'uninstall' | 'rollback' | 'clearConfig'; p: PluginView } | { kind: 'removeSource'; s: PluginSourceView } | null>(null);
   const [ownTab, setOwnTab] = useKeptDraft('plugins.tab', 'installed');
   const search = useContext(SettingsSearchContext);
-  const tab: PluginsTab = tabProp ?? (ownTab === 'market' ? 'market' : 'installed');
+  const asked: PluginsTab = tabProp ?? (ownTab === 'market' ? 'market' : ownTab === 'mcp' ? 'mcp' : 'installed');
+  const tab: PluginsTab = asked === 'mcp' && !mcp ? 'installed' : asked;
+  // MCP 服务: its list, a service's page or the form (the last two in place of the whole page, ← back)
+  const [mcpView, setMcpView] = useState<McpView>({ at: 'list' });
   const pickTab = (t: PluginsTab) => {
     setOwnTab(t);
     onTab?.(t);
     setNote(null);
     setShowDetail(false);
+    setMcpView({ at: 'list' });
   };
   // The search on the top row: the installed plugins under 已安装, what the sources offer under 市场.
   const [query, setQuery] = useKeptDraft('plugins.query', '');
@@ -792,7 +801,9 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
           ])
         : null}
 
-      {detailShown && current ? (
+      {tab === 'mcp' && mcp && mcpView.at !== 'list' ? (
+        <McpServers api={mcp} view={mcpView} onView={setMcpView} />
+      ) : detailShown && current ? (
         <PluginDetail
           key={current.name}
           p={current}
@@ -830,13 +841,20 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
           {/* One row on top (as Claude's): 已安装 / 市场, the search, then what acts on every source. */}
           <div className="plugins-bar">
             <div className="tabs plugins-tabs" role="tablist" aria-label={tc('tabs', '插件')}>
-              {TABS.map(([id, label]) => (
+              {TABS.filter(([id]) => id !== 'mcp' || mcp).map(([id, label]) => (
                 <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'tab is-on' : 'tab'} onClick={() => pickTab(id)}>
                   {t(label)}
                   {id === 'installed' && plugins.length ? <span className="tab-count">{plugins.length}</span> : null}
                 </button>
               ))}
             </div>
+            {tab === 'mcp' ? (
+              <button type="button" className="btn btn-small plugins-bar-end" onClick={() => setMcpView({ at: 'edit', name: null })}>
+                <Icon name="plus" size={14} />
+                {t('添加 MCP 服务')}
+              </button>
+            ) : (
+              <>
             <input className="input plugins-search" value={query} placeholder={t('搜索插件')} aria-label={t('搜索插件')} spellCheck={false} onChange={(e) => setQuery(e.target.value)} />
             {installedTab ? (
               <button
@@ -870,6 +888,8 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
               <Icon name="plus" size={14} />
               {t('添加来源')}
             </button>
+              </>
+            )}
           </div>
           {filterMenu ? (
             <ContextMenu
@@ -908,7 +928,9 @@ export function Plugins({ api, mail, pages, tab: tabProp, onTab, focus }: Plugin
 
           {resultLine}
 
-          {installedTab ? (
+          {tab === 'mcp' && mcp ? (
+            <McpServers api={mcp} view={mcpView} onView={setMcpView} />
+          ) : installedTab ? (
             <>
               {mail && mailSources.length > 1 ? (
                 <div className="settings-group plugin-mail-shared">

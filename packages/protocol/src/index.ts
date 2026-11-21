@@ -214,6 +214,54 @@ export function askAnswerLines(chosen: readonly string[]): string {
   return chosen.map((c) => c.trim()).filter(Boolean).join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// The conversation's plan (the update_plan tool): the steps the agent listed for itself and where each stands.
+// The core checks a call by these rules and the window reads the plan back from the stored calls by the same ones.
+// ---------------------------------------------------------------------------
+
+/** The tool's name: the window finds the plan in the conversation by it. */
+export const PLAN_TOOL = 'update_plan';
+
+export type PlanStatus = 'pending' | 'in_progress' | 'completed';
+
+export interface PlanStep {
+  step: string;
+  status: PlanStatus;
+}
+
+const STATUSES: readonly PlanStatus[] = ['pending', 'in_progress', 'completed'];
+
+/** At most this many steps; more are refused. */
+export const PLAN_MAX_STEPS = 30;
+
+/**
+ * An update_plan call's `plan`: its steps, trimmed, empty ones dropped; `error` when it is not a list of steps with a
+ * known status, has more than PLAN_MAX_STEPS, or more than one step in progress. An empty list clears the plan.
+ */
+export function readPlan(value: unknown): { steps: PlanStep[]; error?: string } {
+  if (!Array.isArray(value)) return { steps: [], error: 'plan must be a list of steps.' };
+  const steps: PlanStep[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') return { steps: [], error: 'Each plan item needs a step and a status.' };
+    const r = raw as Record<string, unknown>;
+    const step = typeof r.step === 'string' ? r.step.trim() : '';
+    const status = r.status as PlanStatus;
+    if (!STATUSES.includes(status)) return { steps: [], error: `Unknown status "${String(r.status)}": use pending, in_progress or completed.` };
+    if (step) steps.push({ step, status });
+  }
+  if (steps.length > PLAN_MAX_STEPS) return { steps: [], error: `At most ${PLAN_MAX_STEPS} steps.` };
+  if (steps.filter((s) => s.status === 'in_progress').length > 1) return { steps: [], error: 'Only one step can be in_progress at a time.' };
+  return { steps };
+}
+
+/** How far a plan is: steps done, all of them, and the step being worked on (else the first not done). */
+export function planProgress(steps: readonly PlanStep[]): { done: number; total: number; current?: PlanStep; currentIndex: number } {
+  const done = steps.filter((s) => s.status === 'completed').length;
+  let currentIndex = steps.findIndex((s) => s.status === 'in_progress');
+  if (currentIndex < 0) currentIndex = steps.findIndex((s) => s.status !== 'completed');
+  return { done, total: steps.length, ...(currentIndex >= 0 ? { current: steps[currentIndex] } : {}), currentIndex };
+}
+
 /** The words the UI shows for each RegenerateCode (the core puts the same text in `hint`). */
 /**
  * What message_agent's result says (after the fetch-time line) when it was not sent because the conversation reached its limit of messages to
@@ -589,6 +637,8 @@ export type PendingItem =
       change?: ChangePreview;
       /** The write goes outside the conversation's folders: the folder it writes in (the card says so, and offers to allow it). */
       outsideFolder?: string;
+      /** `outsideFolder` is a drive's root or the home folder: it is never kept as allowed, so the card offers allowing it this once only. */
+      folderTooWide?: boolean;
       install?: InstallPreview;
       createdAt: string;
     }
@@ -625,6 +675,32 @@ export type RunEndReason =
 
 export type CostScopeName = 'call' | 'run' | 'session' | 'global';
 
+/** Why a background command is no longer running: it ended, or who stopped it. */
+export type CommandJobEnd = 'exited' | 'agent' | 'user' | 'conversation_deleted' | 'sub_agent_done' | 'app_quit' | 'app_crashed' | 'failed';
+
+/** A command run in the background (run_command with run_in_background). */
+export interface CommandJob {
+  id: string;
+  sessionId: string;
+  /** The run_command call that started it. */
+  callId: string;
+  command: string;
+  /** The model's one-line description of it. */
+  description?: string;
+  cwd: string;
+  startedAt: string;
+  /** Set when it is no longer running. */
+  endedAt?: string;
+  end?: CommandJobEnd;
+  exitCode?: number | null;
+  /** Where its whole output is written. */
+  outputPath: string;
+  /** Its process id (to stop it after a crash). */
+  pid?: number;
+  /** The files it made or changed in its folder while it ran (set when it ended). */
+  files?: FileCardMeta[];
+}
+
 export type CoreEventBody =
   /** Session state changed. */
   | { type: 'status'; status: SessionStatus; detail?: string }
@@ -634,8 +710,8 @@ export type CoreEventBody =
   | { type: 'text.delta'; delta: string }
   /** Streaming reasoning text (when the model exposes it). */
   | { type: 'thinking.delta'; delta: string }
-  /** A model has started writing a tool call (arguments still streaming). */
-  | { type: 'tool.call'; callId: string; name: string }
+  /** A model has started writing a tool call (arguments still streaming). `server`: as in ToolCallInfo. */
+  | { type: 'tool.call'; callId: string; name: string; server?: string }
   /** A complete message was appended to the session. */
   | { type: 'message'; message: Message }
   /** A plugin hook changed a message after it had been streamed. */
@@ -643,7 +719,7 @@ export type CoreEventBody =
   /** regenerate: these messages (the answer to `anchorId`) are now old answer `version`; a new answer follows. */
   | { type: 'messages.superseded'; anchorId: string; messageIds: string[]; version: number }
   /** category, summary, title: what the step is, for the window's summaries (see ToolCallInfo). */
-  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string }
+  | { type: 'tool.start'; callId: string; name: string; input: unknown; category?: ToolCategory; summary?: string; title?: string; server?: string }
   /**
    * A file was read (read_file) or made by a call; render a file card. Sent before the tool's `tool.end`.
    * `files`: every card of the call, in order, when it has several (`file` is the first).
@@ -659,7 +735,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; install?: InstallPreview }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -723,6 +799,8 @@ export type CoreEventBody =
   | { type: 'runtime.configured'; changed: string[]; warnings: string[] }
   | { type: 'session.renamed'; title: string | null }
   | { type: 'child.report'; childId: string; summary: string }
+  /** A command run in the background (run_command with run_in_background) started, ended or was stopped. */
+  | { type: 'command.job'; job: CommandJob }
   /** A note from a child session was added to this (parent) session. */
   | { type: 'relay'; fromSessionId: string; note: string }
   /** One model call + its tool calls. */
@@ -770,6 +848,8 @@ export interface ToolCallInfo {
   summary?: string;
   /** The tool's name for people, when it has one (a plugin tool's MCP title). */
   title?: string;
+  /** An MCP service the person added (设置 › 插件 › MCP 服务): its name as written, shown as is. */
+  server?: string;
 }
 
 /** The web pages one web_fetch or web_search call used (event source.card): a source card or footnotes. */
@@ -1318,6 +1398,10 @@ export interface AgentApi {
    */
   confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;
+  /** The commands a conversation ran in the background (run_command with run_in_background), oldest first. */
+  listCommandJobs?(sessionId: string): Promise<CommandJob[]>;
+  /** Stop a background command and everything it started. */
+  stopCommandJob?(jobId: string): Promise<void>;
   /** Traceable records as JSON Lines. */
   exportTraces(filter?: { sessionId?: string }): Promise<string>;
   // Project commands (M4, in progress): optional until the core implements them.

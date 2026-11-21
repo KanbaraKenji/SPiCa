@@ -34,11 +34,13 @@ import type {
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
-import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
-import { closeSync, openSync, readSync } from 'node:fs';
+import { IMAGE_LIMITS, imageTokens, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
+import { fit as fitPicture, keepOriginal } from './tools/read-image.ts';
+import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
-import { inScope, pathsInText, realPath } from './write-scope.ts';
+import { canonicalPath, inScope, pathsInText, realPath, within } from './write-scope.ts';
 import { commandOutside, tooWideToAllow } from './command-scope.ts';
+import { absolutePathsIn } from './tools/javascript-tool.ts';
 import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.ts';
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
@@ -543,7 +545,11 @@ export class Session {
       ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0), options.always ? { always: true } : {})
       : { content: `Unknown tool: ${p.item.toolName}`, isError: true };
     this.#runAbort = undefined;
-    this.#resolveCall(p, res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
+    // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
+    // write that went through as "asking did not work"), and whether the folder was kept
+    const kept = outside && options.allowFolder && !tooWideToAllow(outside);
+    const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
+    this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
 
@@ -611,7 +617,8 @@ export class Session {
           attachments.push({ path, name, block: null, code: 'image.too_many', error: `more than ${IMAGE_LIMITS.maxPerMessage} images in one message` });
           continue;
         }
-        const prepared = prepareImage(full, this.#rt.mediaDir(this.id));
+        const dir = this.#rt.mediaDir(this.id);
+        const prepared = await fitPicture(full, { sessionId: this.id, mediaDir: dir, ...this.#imageContext() });
         if (!prepared.ok) {
           attachments.push({ path, name, block: null, code: prepared.code, error: prepared.message.slice(0, 300) });
           content.push({ type: 'text', text: `[The user attached the image ${name}, but it could not be used: ${prepared.message.slice(0, 200)}]` });
@@ -620,6 +627,9 @@ export class Session {
         const { path: stored, mediaType, width, height, bytes, resized } = prepared.image;
         attachments.push({ path, name, block: content.length + 1, image: { path: stored, mediaType, width, height, bytes, resized } });
         content.push({ type: 'image', path: stored, mediaType, width, height, bytes, name });
+        // a smaller copy went: the original stays with the conversation, for a closer look at a part
+        const closer = resized ? await keepOriginal(full, { width, height }, dir) : undefined;
+        if (closer) content.push({ type: 'text', text: closer });
         continue;
       }
       if (!tool) {
@@ -1030,7 +1040,9 @@ export class Session {
           } else if (ev.type === 'thinking') {
             this.#emit({ type: 'thinking.delta', delta: ev.delta });
           } else if (ev.type === 'tool_call') {
-            this.#emit({ type: 'tool.call', callId: ev.id, name: ev.name });
+            // a service the person added: its name as written, from the first line on (before tool.start)
+            const server = this.#rt.tools.get(ev.name)?.server;
+            this.#emit({ type: 'tool.call', callId: ev.id, name: ev.name, ...(server ? { server } : {}) });
           } else {
             response = ev.response;
           }
@@ -1105,7 +1117,13 @@ export class Session {
           role: 'assistant',
           kind: 'assistant',
           content: response.content,
-          meta: { model: response.model, stopReason: response.stopReason, ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}) },
+          meta: {
+            model: response.model,
+            stopReason: response.stopReason,
+            ...(response.rawStopReason ? { rawStopReason: response.rawStopReason } : {}),
+            // calls to a service the person added: its name as written, for the window while a call waits for 允许
+            ...this.#serverInfo(response.content),
+          },
           ...(response.providerExtras ? { providerExtras: response.providerExtras } : {}),
         },
         { seq: partial.seq, persisted: partial.saved },
@@ -1241,6 +1259,7 @@ export class Session {
           ...(decision.action === 'confirm' && decision.irreversible ? { irreversible: true } : {}),
           ...(change ? { change } : {}),
           ...(outsideFolder ? { outsideFolder } : {}),
+          ...(outsideFolder && tooWideToAllow(outsideFolder) ? { folderTooWide: true } : {}),
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
@@ -1276,6 +1295,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.irreversible ? { irreversible: true } : {}),
             ...(p.item.change ? { change: p.item.change } : {}),
             ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
+            ...(p.item.folderTooWide ? { folderTooWide: true } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
@@ -1561,11 +1581,18 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
   }
 
   /** What kind of step a call is, and the model's one-line description of it when it gave one (run_command). */
+  /** toolInfo for the calls of a message that go to a service the person added (none: nothing). */
+  #serverInfo(content: readonly ContentBlock[]): { toolInfo?: NonNullable<MessageMeta['toolInfo']> } {
+    const info: NonNullable<MessageMeta['toolInfo']> = {};
+    for (const b of content) if (b.type === 'tool_use' && this.#rt.tools.get(b.name)?.server) info[b.id] = this.#toolInfo(b.name, b.input);
+    return Object.keys(info).length > 0 ? { toolInfo: info } : {};
+  }
+
   #toolInfo(name: string, input: unknown): ToolCallInfo {
     const tool = this.#rt.tools.get(name);
     const said = tool?.summaryParam ? (input as Record<string, unknown> | null)?.[tool.summaryParam] : undefined;
     const summary = typeof said === 'string' ? said.trim().slice(0, 200) : '';
-    return { category: this.#rt.tools.categoryOf(name), ...(summary ? { summary } : {}), ...(tool?.title ? { title: tool.title } : {}) };
+    return { category: this.#rt.tools.categoryOf(name), ...(summary ? { summary } : {}), ...(tool?.title ? { title: tool.title } : {}), ...(tool?.server ? { server: tool.server } : {}) };
   }
 
   /** Whether an earlier assistant message (not `exceptId`) called this tool. */
@@ -1657,13 +1684,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     const roots = [cfg.cwd, ...(cfg.writeFolders ?? [])];
     const project = cfg.projectId ? this.#rt.store.getProject(cfg.projectId) : undefined;
     if (project?.folder) roots.push(project.folder);
-    for (const m of this.#messages) {
-      if (m.role !== 'user' || (m.kind !== 'user' && m.kind !== 'steer') || (m.meta?.author ?? 'user') !== 'user') continue;
-      // the user's own words (the first block; attached files' text follows it), not a suggestion the model wrote
-      const first = m.content[0];
-      if (first?.type === 'text' && !m.meta?.suggested) roots.push(...pathsInText(first.text));
-      for (const a of m.meta?.attachments ?? []) roots.push(isAbsolute(a.path) ? a.path : resolvePath(cfg.cwd, a.path));
-    }
+    roots.push(...this.#givenPaths().map((g) => g.path));
     const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
     if (parent) roots.push(...parent.writeRoots());
     return roots;
@@ -1687,6 +1708,79 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     this.#rt.store.upsertSession(this.#record);
   }
 
+  /**
+   * The paths the user gave in their own messages (typed in their words, attached), with when; without those inside a
+   * folder they later had taken back (allowed_folders) up to then: a path given after that counts again.
+   */
+  #givenPaths(): { path: string; seq: number }[] {
+    const cfg = this.#record.config;
+    const out: { path: string; seq: number }[] = [];
+    for (const m of this.#messages) {
+      if (m.role !== 'user' || (m.kind !== 'user' && m.kind !== 'steer') || (m.meta?.author ?? 'user') !== 'user') continue;
+      // the user's own words (the first block; attached files' text follows it), not a suggestion the model wrote
+      const first = m.content[0];
+      if (first?.type === 'text' && !m.meta?.suggested) for (const p of pathsInText(first.text)) out.push({ path: p, seq: m.seq });
+      for (const a of m.meta?.attachments ?? []) out.push({ path: isAbsolute(a.path) ? a.path : resolvePath(cfg.cwd, a.path), seq: m.seq });
+    }
+    const revoked = this.#revokedFolders().map((r) => ({ folder: canonicalPath(r.folder), upTo: r.upTo }));
+    if (!revoked.length) return out;
+    // the positions are the top conversation's; in a sub-agent (the user rarely writes there) any taken back counts
+    const top = !this.#record.parentId;
+    return out.filter((g) => {
+      const p = canonicalPath(g.path);
+      return !revoked.some((r) => (!top || g.seq <= r.upTo) && within(p, r.folder));
+    });
+  }
+
+  /** Folders taken back with allowed_folders, up to which message (kept with the conversation at the top of the chain). */
+  #revokedFolders(): { folder: string; upTo: number }[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.#revokedFolders() : (this.#record.config.revokedFolders ?? []);
+  }
+
+  /** The folders the user allowed on a card (始终允许), kept with the conversation at the top of the chain. */
+  allowedWriteFolders(): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.allowedWriteFolders() : [...(this.#record.config.writeFolders ?? [])];
+  }
+
+  /** The paths the user gave in their own messages that still count (typed, attached), as given. */
+  givenWritePaths(): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return [...new Set([...this.#givenPaths().map((g) => g.path), ...(parent ? parent.givenWritePaths() : [])])];
+  }
+
+  /**
+   * Takes back what lets the conversation write somewhere without asking, when the user asks in their own words
+   * (allowed_folders): a folder allowed on a card, and the paths inside it the user gave in their messages up to
+   * now (asking for it they often name it again); `folder` compared as the file system does, or `all` of both. The
+   * next write there asks again; a path the user gives after this counts again. Returns what was taken back.
+   */
+  revokeWriteFolders(which: { folder: string } | 'all'): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) return parent.revokeWriteFolders(which);
+    const cfg = this.#record.config;
+    const kept = cfg.writeFolders ?? [];
+    const want = which === 'all' ? undefined : canonicalPath(which.folder);
+    const cards = kept.filter((f) => want === undefined || canonicalPath(f) === want);
+    const given = this.givenWritePaths().filter((p) => want === undefined || within(canonicalPath(p), want));
+    const gone = [...new Set([...cards, ...given])];
+    if (!gone.length) return [];
+    const upTo = this.#messages.reduce((n, m) => Math.max(n, m.seq), 0);
+    const marks = which === 'all' ? given.map((p) => ({ folder: realPath(p), upTo })) : given.length ? [{ folder: realPath(which.folder), upTo }] : [];
+    this.#record = {
+      ...this.#record,
+      config: { ...cfg, writeFolders: kept.filter((f) => !cards.includes(f)), ...(marks.length ? { revokedFolders: [...(cfg.revokedFolders ?? []), ...marks] } : {}) },
+    };
+    this.#rt.store.upsertSession(this.#record);
+    return gone;
+  }
+
+  /** Whether `folder` may be written in without asking (its working folder, a path the user typed, …). */
+  mayWriteIn(folder: string): boolean {
+    return inScope(folder, this.writeRoots());
+  }
+
   /** For a write outside the conversation's folders: the folder it writes in (as it will read on the card). */
   #outsideFolder(tool: Tool, input: Record<string, unknown>): string | undefined {
     // a command, in Auto (Manual asks for every command): the fixed rules of command-scope.ts on its text
@@ -1695,6 +1789,23 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       const named = typeof input.cwd === 'string' && input.cwd.trim() !== '';
       const cwd = named ? (isAbsolute(input.cwd as string) ? resolvePath(input.cwd as string) : resolvePath(base, input.cwd as string)) : base;
       return commandOutside(input.command, cwd, this.writeRoots(), named)?.folder;
+    }
+    // JavaScript, in Auto: the folder it runs in, then any absolute path written in the code outside the folders
+    if (tool.spec.name === 'run_javascript' && this.#record.config.approvalMode === 'auto') {
+      const roots = this.writeRoots();
+      if (typeof input.cwd === 'string' && input.cwd.trim() !== '') {
+        const base = this.#record.config.cwd;
+        const cwd = isAbsolute(input.cwd) ? resolvePath(input.cwd) : resolvePath(base, input.cwd);
+        const out = commandOutside('', cwd, roots, true)?.folder;
+        if (out) return out;
+      }
+      for (const p of typeof input.code === 'string' ? absolutePathsIn(input.code) : []) {
+        const target = resolvePath(p);
+        if (inScope(target, roots)) continue;
+        // a folder it names, or the folder of a file it names (as the card shows it and 始终允许 keeps it)
+        return isDirectory(target) ? realPath(target) : dirname(realPath(target));
+      }
+      return undefined;
     }
     const p = tool.writePath?.(input);
     if (!p?.trim()) return undefined;
@@ -1980,4 +2091,13 @@ function keepRecentImages(messages: Message[], keepOf: (tool: string) => Tool['k
     out[i] = { ...m, content };
   }
   return out;
+}
+
+/** Whether a path is a folder that exists. */
+function isDirectory(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
 }

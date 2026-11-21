@@ -21,6 +21,14 @@ export interface McpLaunch {
   concurrency?: number;
   /** Stopping the server also ends the processes it started (Windows). */
   endTree?: boolean;
+  /** How long the first answer may take (a program that downloads itself first). Default: timeoutMs. */
+  startTimeoutMs?: number;
+  /** 'auto': ask with server/discover (MCP 2026-07-28) first, the initialize handshake otherwise. Default: the handshake only. */
+  protocol?: 'legacy' | 'auto';
+  /** A server at a web address instead of a program (command, args, env, cwd unused). */
+  url?: string;
+  /** With url: sent with every request (a key). */
+  headers?: Record<string, string>;
   /** Server stderr, for the plugin log  */
   stderrLog?: (chunk: string) => void;
   /** The process ended; `expected` is true after disconnect(). */
@@ -38,6 +46,8 @@ export interface McpExit {
 export interface McpHandle {
   /** Tool names as the model sees them. */
   tools: string[];
+  /** The MCP version it speaks (absent from older cores). */
+  protocolVersion?: string;
   /** Resolves when the server process has exited. */
   disconnect(): Promise<void>;
 }
@@ -92,7 +102,7 @@ export interface RuntimeLike {
     list(env: { providerId: string; serverWebSearch: boolean }): Tool[];
   };
   unregisterSource(source: string): unknown;
-  connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; disconnect: () => void | Promise<void> }>;
+  connectMcp?(config: McpLaunch, opts?: { source?: string }): Promise<{ tools: string[]; protocolVersion?: string; disconnect: () => void | Promise<void> }>;
   mail?: { addSource(src: MailSourceSpec): () => void };
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
@@ -106,7 +116,7 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     async connectMcp(config, source) {
       if (!rt.connectMcp) throw new Error('当前版本不支持启动 MCP server。');
       const h = await rt.connectMcp(config, { source });
-      return { tools: h.tools, disconnect: async () => void (await h.disconnect()) };
+      return { tools: h.tools, ...(h.protocolVersion ? { protocolVersion: h.protocolVersion } : {}), disconnect: async () => void (await h.disconnect()) };
     },
     async unregisterSource(source) {
       const r = rt.unregisterSource(source) as { stopped?: Promise<void> } | undefined;

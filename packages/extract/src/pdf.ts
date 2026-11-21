@@ -1,7 +1,7 @@
 // PDF: text layer via pdf.js (the unpdf build: no worker, no canvas, no native code); pages with little or no text
 // (scanned) drawn as pictures by PDFium when the reader asks (pdf-render.ts).
 import { getDocumentProxy } from 'unpdf';
-import { openDrawer, type PageDrawer } from './pdf-render.ts';
+import { openDrawer, RENDER_LONG_SIDE, type PageDrawer } from './pdf-render.ts';
 import type { SourceFile } from './source.ts';
 import { ExtractError, type ExtractRequest, type ExtractResult, type PageImage } from './types.ts';
 import { Budget, formatRanges, parseRanges, throwIfAborted } from './util.ts';
@@ -106,12 +106,49 @@ async function drawPages(bytes: Uint8Array, pages: number[], signal?: AbortSigna
   return { images, ...(images.length === 0 ? { failed: 'PDFium could not draw these pages' } : {}) };
 }
 
+const pct = (f: number) => `${Math.round(f * 1000) / 10}`;
+
+/** read_file with a region: that part of one page drawn as a picture, in more detail than the whole page. */
+async function pagePart(src: SourceFile, req: ExtractRequest, wanted: number[], total: number, head: string, signal?: AbortSignal): Promise<ExtractResult> {
+  const r = req.region!;
+  const meta = { ...src.metaBase('pdf'), pageCount: total };
+  if (wanted.length !== 1) throw new ExtractError(`A region is drawn from one page: give pages="N" as well${total === 1 ? '' : ` (1-${total})`}.`);
+  const n = wanted[0]!;
+  const where = `left ${pct(r.left)}%, top ${pct(r.top)}%, right ${pct(r.right)}%, bottom ${pct(r.bottom)}% of page ${n}`;
+  const read = { pages: String(n), range: `region ${[r.left, r.top, r.right, r.bottom].map(pct).join(',')}` };
+  if (req.pageImages === 0) return { text: `${head}
+The current model does not take images, so the part (${where}) cannot be shown.`, meta: { ...meta, read } };
+  throwIfAborted(signal);
+  let drawer: PageDrawer;
+  try {
+    drawer = await openDrawer(new Uint8Array(src.bytes));
+  } catch (err) {
+    throw new ExtractError(`The page could not be drawn: ${err instanceof Error ? err.message : String(err)}.`);
+  }
+  let part: ReturnType<PageDrawer['drawRegion']>;
+  try {
+    part = drawer.drawRegion(n, r);
+  } catch (err) {
+    throw new ExtractError(`The page could not be drawn: ${err instanceof Error ? err.message : String(err)}.`);
+  } finally {
+    drawer.close();
+  }
+  const whole = part.whole ?? { width: part.width, height: part.height };
+  const zoom = Math.max(whole.width, whole.height) / RENDER_LONG_SIDE;
+  const text = [
+    head,
+    `The part ${where} follows as a picture: ${part.width}x${part.height} px, drawn at ${zoom.toFixed(1)}x the detail of the whole-page picture (the whole page would be ${whole.width}x${whole.height} px at this scale).`,
+  ].join('\n');
+  return { text, meta: { ...meta, read }, pageImages: [{ page: n, width: part.width, height: part.height, rgba: part.rgba, region: [r.left, r.top, r.right, r.bottom].map(pct).join(',') }] };
+}
+
 export async function extractPdf(src: SourceFile, req: ExtractRequest, maxChars: number, signal?: AbortSignal): Promise<ExtractResult> {
   const pdf = await openPdf(src.bytes);
   try {
     const total = pdf.numPages;
     const wanted = req.pages ? parseRanges(req.pages, total, 'page') : Array.from({ length: total }, (_, i) => i + 1);
     const head = `PDF, ${total} page${total === 1 ? '' : 's'}.`;
+    if (req.region) return await pagePart(src, req, wanted, total, head, signal);
     const budget = new Budget(maxChars - head.length - 600);
     const drawing = req.pageImages !== undefined;
     const shown: number[] = [];

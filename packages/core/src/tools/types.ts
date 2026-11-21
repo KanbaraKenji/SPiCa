@@ -46,8 +46,19 @@ export interface StepResult extends ToolOutput {
   status: 'ok' | 'error' | 'denied' | 'declined' | 'unavailable';
 }
 
-/** A copy of the picture at `src` within IMAGE_LIMITS, written in `dir`: its path, or undefined when it cannot be made. */
-export type ImageFitter = (src: string, dir: string) => Promise<string | undefined>;
+/**
+ * A copy of the picture at `src` within IMAGE_LIMITS, written in `dir`: its path, or undefined when it cannot be made.
+ * With `crop` (pixels of the picture), a copy of that part only, made smaller only when the part is over the limits.
+ */
+export type ImageFitter = (src: string, dir: string, crop?: PixelRect) => Promise<string | undefined>;
+
+/** A rectangle in whole pixels of a picture. */
+export interface PixelRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface ToolOutput {
   content: string;
@@ -72,6 +83,8 @@ export interface Tool {
   category?: import('../types.ts').ToolCategory;
   /** A name for people (a plugin tool's MCP title), shown instead of the tool name. */
   title?: string;
+  /** From an MCP service the person added: its name as written (the window shows it as is). */
+  server?: string;
   /** The input field in which the model says what the step is for (run_command: description); it becomes the summary. */
   summaryParam?: string;
   /**
@@ -134,6 +147,8 @@ export interface ExtractRequest {
   maxChars: number;
   /** PDF: pages with no or very little text may come back as pictures (ExtractResult.pageImages), at most this many. */
   pageImages?: number;
+  /** PDF: draw only this part of one page (fractions of its width and height, 0-1), in more detail than the whole page. */
+  region?: { left: number; top: number; right: number; bottom: number };
 }
 
 /** A PDF page drawn as a picture (a scanned page): RGBA pixels, 4 bytes each. */
@@ -142,6 +157,8 @@ export interface PageImage {
   width: number;
   height: number;
   rgba: Uint8Array;
+  /** A part of the page (ExtractRequest.region): which part, as the model asked for it ("left,top,right,bottom" in percent). */
+  region?: string;
 }
 
 /** A formatted extraction: the core adds only the fetch-time line and a header. */

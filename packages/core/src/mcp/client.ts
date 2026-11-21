@@ -1,5 +1,7 @@
-// Minimal MCP client over stdio (newline-delimited JSON-RPC 2.0):
-// initialize → notifications/initialized → tools/list → tools/call.
+// Minimal MCP client over stdio (newline-delimited JSON-RPC 2.0), or, with `url`, at a web address (http-wire.ts):
+// initialize → notifications/initialized → tools/list → tools/call; with protocol 'auto', server/discover first
+// (MCP 2026-07-28: no handshake, each request carries the version in _meta) and initialize only when the server
+// does not know it. On Windows a .cmd or .bat (the npx and uvx shims) is started through cmd.exe (win-command.ts).
 // Tool calls ask for progress (MCP 2025-06-18 progress utility): a report
 // restarts the wait, up to an overall limit; a call that times out or is
 // stopped is cancelled at the server (notifications/cancelled).
@@ -16,12 +18,25 @@ import type { ImageBlock } from '../types.ts';
 import { keepMedia, type KeptMedia } from './media.ts';
 import { childEnv } from '../util.ts';
 import { descendants, endTree, listProcesses } from './process-tree.ts';
+import { windowsLaunch } from './win-command.ts';
+import { headerValue, McpHttpWire, type JsonRpcMessage } from './http-wire.ts';
+
+/** A message from the server as the client reads it. */
+type ServerMessage = { id?: number; result?: unknown; error?: { code?: number; message?: string }; method?: string; params?: Record<string, unknown> };
 
 export interface McpServerConfig {
   /** Short name; tools appear as `<name>__<tool>`. */
   name: string;
+  /** The program to start (ignored with `url`). */
   command: string;
   args?: string[];
+  /**
+   * A server at a web address instead of a program (Streamable HTTP, and the deprecated HTTP+SSE for older
+   * servers): requests go through the app's proxy and certificates. command, args, env and cwd are not used.
+   */
+  url?: string;
+  /** With `url`: sent with every request (a key in Authorization and the like). Never logged. */
+  headers?: Record<string, string>;
   /**
    * Extra variables for the server (passed as given, after the network
    * settings: the app's proxy and trusted certificates, see networkChildEnv).
@@ -35,6 +50,19 @@ export interface McpServerConfig {
    */
   inheritEnv?: 'all' | string[];
   cwd?: string;
+  /**
+   * Which MCP version to speak. 'legacy' (default): the initialize handshake (2025-06-18). 'auto': ask first with
+   * server/discover in the 2026-07-28 way and keep to it when the server knows it; any other answer, or none
+   * within discoverTimeoutMs, and the client falls back to initialize (the spec's stdio backward compatibility).
+   */
+  protocol?: 'legacy' | 'auto';
+  /** How long 'auto' waits for the answer to server/discover before it takes the server for an older one. Default 5 s. */
+  discoverTimeoutMs?: number;
+  /**
+   * How long the first answer (initialize or server/discover) may take, instead of timeoutMs: a program that
+   * downloads itself first (npx, uvx the first time) answers only once that is done.
+   */
+  startTimeoutMs?: number;
   /**
    * How long a request may go without an answer. Default 60 s. A tool call
    * carries a progress token, and each progress notification for it starts
@@ -97,8 +125,12 @@ export interface McpProgress {
 
 export interface McpRequestOptions {
   signal?: AbortSignal;
+  /** This request's own wait for an answer (instead of config.timeoutMs). */
+  timeoutMs?: number;
   /** Ask the server for progress (adds _meta.progressToken); each report restarts the wait. */
   onProgress?(p: McpProgress): void;
+  /** At a web address: this request's own headers (2026-07-28 Mcp-Param-*). */
+  headers?: Record<string, string>;
 }
 
 interface Pending {
@@ -112,6 +144,23 @@ interface Pending {
 }
 
 const PROTOCOL_VERSION = '2025-06-18';
+/** The version without a handshake (MCP 2026-07-28). */
+export const MODERN_PROTOCOL = '2026-07-28';
+const DEFAULT_DISCOVER_MS = 5_000;
+const CLIENT_INFO = { name: 'spica', version: '0.1.0' };
+
+type InitResult = { protocolVersion?: string; serverInfo?: { name?: string; version?: string } } | undefined;
+
+/** An MCP error answer, its JSON-RPC code and data kept. */
+export class McpRpcError extends Error {
+  readonly code: number | undefined;
+  readonly data: unknown;
+  constructor(code: number | undefined, message: string, data?: unknown) {
+    super(`MCP error ${code ?? ''}: ${message}`);
+    this.code = code;
+    this.data = data;
+  }
+}
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MAX_CALL_MS = 60 * 60_000;
 /** Node fires a longer setTimeout after 1 ms, so a huge limit is held to this (about 24 days). */
@@ -120,6 +169,10 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 export class McpStdioClient {
   readonly config: McpServerConfig;
   #child: ChildProcessWithoutNullStreams | undefined;
+  /** At a web address: the connection (instead of #child). */
+  #http: McpHttpWire | undefined;
+  /** At a web address: the Mcp-Param-* headers a tool's arguments go into (2026-07-28 x-mcp-header), by tool. */
+  readonly #paramHeaders = new Map<string, { property: string; header: string }[]>();
   #nextId = 1;
   #pending = new Map<number, Pending>();
   #buffer = '';
@@ -136,6 +189,8 @@ export class McpStdioClient {
   readonly #queue: { start: () => void; fail: (e: Error) => void }[] = [];
   #inFlight = 0;
   serverInfo: { name?: string; version?: string } = {};
+  /** The version in use once connected: MODERN_PROTOCOL, or the one the handshake agreed. */
+  protocolVersion: string | undefined;
 
   /** Tool calls waiting for their turn right now (for showing "waiting"). */
   get waiting(): number {
@@ -147,7 +202,7 @@ export class McpStdioClient {
   }
 
   get running(): boolean {
-    return !!this.#child && !this.#closed;
+    return (!!this.#child || !!this.#http) && !this.#closed;
   }
 
   /** The server's process id, once started. */
@@ -157,11 +212,15 @@ export class McpStdioClient {
 
   async connect(): Promise<void> {
     const c = this.config;
-    const child = spawn(c.command, c.args ?? [], {
+    if (c.url) return this.#connectHttp(c.url);
+    // the app's proxy and certificates, so the server connects like the app; its own env wins
+    const env = { ...withNetworkEnv(childEnv(c.inheritEnv)), ...(c.env ?? {}) };
+    const launch = windowsLaunch(c.command, c.args ?? [], env, c.cwd);
+    const child = spawn(launch.command, launch.args, {
       cwd: c.cwd,
-      // the app's proxy and certificates, so the server connects like the app; its own env wins
-      env: { ...withNetworkEnv(childEnv(c.inheritEnv)), ...(c.env ?? {}) },
+      env,
       windowsHide: true,
+      ...(launch.windowsVerbatimArguments ? { windowsVerbatimArguments: true } : {}),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.#child = child;
@@ -187,13 +246,137 @@ export class McpStdioClient {
       }
     });
     child.on('error', (err) => this.#fail(new Error(`could not start MCP server "${c.name}": ${err.message}`)));
-    const init = (await this.request('initialize', {
-      protocolVersion: PROTOCOL_VERSION,
-      capabilities: c.onSampling ? { sampling: {} } : {},
-      clientInfo: { name: 'spica', version: '0.1.0' },
-    })) as { serverInfo?: { name?: string; version?: string } };
-    this.serverInfo = init.serverInfo ?? {};
+    if (c.protocol === 'auto') return this.#probe();
+    this.#settle(await this.#initialize());
+  }
+
+  /** At a web address: no process; the first request is the probe (as for stdio, server/discover then initialize). */
+  async #connectHttp(url: string): Promise<void> {
+    const c = this.config;
+    this.#startedAt = Date.now();
+    this.#http = new McpHttpWire({
+      name: c.name,
+      url,
+      ...(c.headers ? { headers: c.headers } : {}),
+      onMessage: (msg) => this.#onMessage(msg as ServerMessage),
+      onRequestError: (id, err) => {
+        if (typeof id === 'number') this.#pending.get(id)?.reject(err);
+      },
+      onLost: (err) => {
+        if (this.#closed) return;
+        this.#fail(err);
+        try {
+          c.onExit?.({ code: null, stderrTail: err.message, expected: this.#closing });
+        } catch {
+          // ignore listener errors
+        }
+      },
+      log: (line) => this.#log(line),
+    });
+    if (c.protocol === 'auto') return this.#probe();
+    this.#settle(await this.#initialize());
+  }
+
+  #initialize(): Promise<InitResult> {
+    const wait = this.config.startTimeoutMs;
+    return this.request('initialize', { protocolVersion: PROTOCOL_VERSION, capabilities: this.#capabilities(), clientInfo: CLIENT_INFO }, wait ? { timeoutMs: wait } : {}) as Promise<InitResult>;
+  }
+
+  /** The handshake answered: its version and server, then notifications/initialized. */
+  #settle(init: InitResult): void {
+    this.serverInfo = init?.serverInfo ?? {};
+    this.protocolVersion = typeof init?.protocolVersion === 'string' ? init.protocolVersion : PROTOCOL_VERSION;
+    if (this.#http) this.#http.version = this.protocolVersion;
     this.notify('notifications/initialized', {});
+  }
+
+  #capabilities(): Record<string, unknown> {
+    return this.config.onSampling ? { sampling: {} } : {};
+  }
+
+  /** What every request carries in _meta in MODERN_PROTOCOL. */
+  #modernMeta(): Record<string, unknown> {
+    return {
+      'io.modelcontextprotocol/protocolVersion': MODERN_PROTOCOL,
+      'io.modelcontextprotocol/clientInfo': CLIENT_INFO,
+      'io.modelcontextprotocol/clientCapabilities': this.#capabilities(),
+    };
+  }
+
+  /**
+   * protocol 'auto' (MCP 2026-07-28, stdio backward compatibility): server/discover first. A server that offers
+   * MODERN_PROTOCOL is spoken to that way, no handshake. Any other error means an older server: initialize. No
+   * answer within discoverTimeoutMs: initialize is sent too, the discover still waited for (a program that is slow
+   * to start, a first npx or uvx run, answers late), and whichever succeeds first decides. A newer server without
+   * MODERN_PROTOCOL is an error: the spec says not to fall back then. A server that quits before answering at all
+   * fails with `diedOnProbe` set, so its owner can start it again with the handshake only.
+   */
+  #probe(): Promise<void> {
+    const c = this.config;
+    const versionsError = (list: string): Error => new Error(`MCP server "${c.name}" supports only ${list}; Spica speaks ${MODERN_PROTOCOL} and ${PROTOCOL_VERSION}`);
+    return new Promise<void>((resolve, reject) => {
+      let done = false;
+      let discover: 'pending' | 'older' = 'pending';
+      let init: 'none' | 'pending' | Error = 'none';
+      let answered = false;
+      const finish = (f: () => void): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        f();
+      };
+      // it started and then quit before answering anything (a program that never started is not that)
+      const fail = (err: unknown): void =>
+        finish(() => reject(!answered && !this.running && this.#child?.pid !== undefined ? Object.assign(err instanceof Error ? err : new Error(String(err)), { diedOnProbe: true }) : err));
+      const startInit = (): void => {
+        if (init !== 'none') return;
+        init = 'pending';
+        this.#initialize().then(
+          (r) => finish(() => {
+            this.#settle(r);
+            resolve();
+          }),
+          (err: Error) => {
+            init = err;
+            // the discover may still answer (a newer server refuses initialize)
+            if (discover !== 'pending' || !this.running) fail(err);
+          },
+        );
+      };
+      const timer = setTimeout(startInit, c.discoverTimeoutMs ?? DEFAULT_DISCOVER_MS);
+      this.request('server/discover', { _meta: this.#modernMeta() }, c.startTimeoutMs ? { timeoutMs: c.startTimeoutMs } : {}).then(
+        (raw) => {
+          answered = true;
+          const r = raw as { supportedVersions?: unknown; _meta?: Record<string, unknown> } | undefined;
+          const versions = Array.isArray(r?.supportedVersions) ? r.supportedVersions.filter((v): v is string => typeof v === 'string') : [];
+          if (versions.includes(MODERN_PROTOCOL)) {
+            return finish(() => {
+              this.protocolVersion = MODERN_PROTOCOL;
+              const info = r?._meta?.['io.modelcontextprotocol/serverInfo'];
+              this.serverInfo = info && typeof info === 'object' ? (info as { name?: string; version?: string }) : {};
+              resolve();
+            });
+          }
+          if (versions.length > 0) return fail(versionsError(versions.join(', ')));
+          // an answer that names no versions is not a newer server: taken for an older one
+          older();
+        },
+        (err: unknown) => {
+          if (err instanceof McpRpcError) answered = true;
+          if (err instanceof McpRpcError && err.code === -32022) {
+            const supported = (err.data as { supported?: unknown } | undefined)?.supported;
+            return fail(Object.assign(versionsError(Array.isArray(supported) ? supported.join(', ') : 'other versions'), { cause: err }));
+          }
+          if (!this.running) return fail(err);
+          older();
+        },
+      );
+      const older = (): void => {
+        discover = 'older';
+        if (init === 'none') startInit();
+        else if (init instanceof Error) fail(init);
+      };
+    });
   }
 
   async listTools(): Promise<McpToolInfo[]> {
@@ -204,7 +387,32 @@ export class McpStdioClient {
       tools.push(...(page.tools ?? []));
       cursor = page.nextCursor;
     } while (cursor);
-    return tools;
+    if (!this.#http) return tools;
+    // 2026-07-28: arguments a tool marks x-mcp-header also go in a header; a tool whose marks are not valid is left out
+    return tools.filter((t) => {
+      const props = (t.inputSchema as { properties?: Record<string, Record<string, unknown>> } | undefined)?.properties ?? {};
+      const marks = Object.entries(props).filter(([, s]) => s && typeof s === 'object' && 'x-mcp-header' in s);
+      const ok = marks.every(([, s]) => typeof s['x-mcp-header'] === 'string' && /^[A-Za-z0-9-]+$/.test(s['x-mcp-header']));
+      if (!ok) {
+        this.#log(`[spica] tool "${t.name}" has an x-mcp-header that is not a header name; left out`);
+        return false;
+      }
+      if (marks.length > 0) this.#paramHeaders.set(t.name, marks.map(([property, s]) => ({ property, header: s['x-mcp-header'] as string })));
+      return true;
+    });
+  }
+
+  /** The Mcp-Param-* headers for a call (2026-07-28): strings as they are, integers and booleans in words. */
+  #callHeaders(name: string, args: unknown): Record<string, string> | undefined {
+    const marks = this.#paramHeaders.get(name);
+    if (!marks || !args || typeof args !== 'object') return undefined;
+    const out: Record<string, string> = {};
+    for (const { property, header } of marks) {
+      const v = (args as Record<string, unknown>)[property];
+      if (v === null || v === undefined) continue;
+      out[`mcp-param-${header.toLowerCase()}`] = headerValue(typeof v === 'string' ? v : String(v));
+    }
+    return out;
   }
 
   /**
@@ -222,9 +430,16 @@ export class McpStdioClient {
     const done = await this.#takeTurn(signal);
     let answer: unknown;
     try {
-      answer = await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), onProgress: onProgress ?? (() => {}) });
+      const headers = this.#callHeaders(name, args);
+      answer = await this.request('tools/call', { name, arguments: args ?? {} }, { ...(signal ? { signal } : {}), ...(headers ? { headers } : {}), onProgress: onProgress ?? (() => {}) });
     } finally {
       done();
+    }
+    if ((answer as { resultType?: unknown } | undefined)?.resultType === 'input_required') {
+      // MCP 2026-07-28: the server needs something (a form for the person, a model's answer) before it can go on;
+      // Spica does not answer those yet
+      const asks = Object.values((answer as { inputRequests?: Record<string, { method?: string }> }).inputRequests ?? {}).map((q) => q?.method ?? '?');
+      return { content: `The MCP server asked for more input before it can finish (${asks.join(', ') || 'input_required'}); Spica cannot answer that yet.`, isError: true };
     }
     const result = answer as {
       content?: { type: string; text?: string; uri?: string; data?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
@@ -309,17 +524,22 @@ export class McpStdioClient {
    * An answer that arrives after that is ignored.
    */
   request(method: string, params: unknown, opts: McpRequestOptions = {}): Promise<unknown> {
-    if (!this.#child || this.#closed) return Promise.reject(new Error(`MCP server "${this.config.name}" is not running`));
+    if (!this.running) return Promise.reject(new Error(`MCP server "${this.config.name}" is not running`));
     const id = this.#nextId++;
     const name = this.config.name;
-    const idleMs = Math.min(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMER_MS);
+    const idleMs = Math.min(opts.timeoutMs ?? this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS, MAX_TIMER_MS);
     const overallMs = Math.min(Math.max(this.config.maxCallMs ?? DEFAULT_MAX_CALL_MS, idleMs), MAX_TIMER_MS);
     const { signal, onProgress } = opts;
     // The token is the request id: unique among running requests, as the spec requires.
-    const sent =
+    let sent =
       onProgress && params && typeof params === 'object'
         ? { ...params, _meta: { ...((params as { _meta?: object })._meta ?? {}), progressToken: id } }
         : params;
+    // MODERN_PROTOCOL: every request says the version, who asks and what it can do
+    if (this.protocolVersion === MODERN_PROTOCOL) {
+      const p = sent && typeof sent === 'object' ? (sent as { _meta?: object }) : {};
+      sent = { ...p, _meta: { ...this.#modernMeta(), ...(p._meta ?? {}) } };
+    }
     return new Promise((resolve, reject) => {
       if (signal?.aborted) return reject(Object.assign(new Error('aborted'), { name: 'AbortError' })); // never sent
       const onAbort = (): void => end(Object.assign(new Error('aborted'), { name: 'AbortError' }), 'user interrupted');
@@ -331,7 +551,11 @@ export class McpStdioClient {
         clearTimeout(p.overall);
         this.#pending.delete(id);
         signal?.removeEventListener('abort', onAbort);
-        if (cancel && method !== 'initialize') this.notify('notifications/cancelled', { requestId: id, reason: cancel });
+        // never for initialize (the spec forbids it), nor for the server/discover probe (an older server never knew it)
+        // at a web address its stream is closed too; the 2026-07-28 version cancels only that way
+        if (cancel) this.#http?.cancel(id);
+        const told = !this.#http || this.protocolVersion !== MODERN_PROTOCOL;
+        if (cancel && told && method !== 'initialize' && method !== 'server/discover') this.notify('notifications/cancelled', { requestId: id, reason: cancel });
         if (err) reject(err);
         else resolve(value);
       };
@@ -372,13 +596,20 @@ export class McpStdioClient {
       };
       this.#pending.set(id, pending);
       signal?.addEventListener('abort', onAbort, { once: true });
-      this.#child!.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params: sent })}\n`);
+      const msg = { jsonrpc: '2.0' as const, id, method, params: sent };
+      if (this.#http) this.#http.send(msg, opts.headers);
+      else this.#child!.stdin.write(`${JSON.stringify(msg)}\n`);
     });
   }
 
   notify(method: string, params: unknown): void {
-    if (!this.#child || this.#closed) return;
-    this.#child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
+    if (!this.running) return;
+    if (this.#http) {
+      // 2026-07-28 has no notifications from the client at a web address
+      if (this.protocolVersion !== MODERN_PROTOCOL) this.#http.send({ jsonrpc: '2.0', method, params });
+      return;
+    }
+    this.#child!.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method, params })}\n`);
   }
 
   /**
@@ -391,6 +622,10 @@ export class McpStdioClient {
    */
   close(graceMs = 3000): Promise<void> {
     this.#closing = true;
+    if (this.#http) {
+      if (!this.#closed) this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
+      return (this.#stopped ??= this.#http.close());
+    }
     const child = this.#child;
     if (!this.#closed) this.#fail(new Error(`MCP server "${this.config.name}" was disconnected`));
     // a server that has already ended (crashed) is not looked into: its restart must not wait
@@ -465,12 +700,19 @@ export class McpStdioClient {
       const line = this.#buffer.slice(0, nl).trim();
       this.#buffer = this.#buffer.slice(nl + 1);
       if (!line) continue;
-      let msg: { id?: number; result?: unknown; error?: { code?: number; message?: string }; method?: string; params?: Record<string, unknown> };
+      let msg: ServerMessage;
       try {
-        msg = JSON.parse(line) as typeof msg;
+        msg = JSON.parse(line) as ServerMessage;
       } catch {
         continue; // servers sometimes print logs to stdout; ignore non-JSON lines
       }
+      if (msg && typeof msg === 'object') this.#onMessage(msg);
+    }
+  }
+
+  /** One message from the server: an answer, a notification, or a request of its own. */
+  #onMessage(msg: ServerMessage): void {
+    {
       if (msg.id === undefined || msg.method) {
         // Server-initiated request or notification
         if (msg.method === 'notifications/cancelled') {
@@ -492,19 +734,20 @@ export class McpStdioClient {
         } else if (msg.id !== undefined && msg.method) {
           this.#write({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'not supported by this client' } });
         }
-        continue;
+        return;
       }
       const p = this.#pending.get(msg.id);
-      if (!p) continue; // late: the request already timed out or was stopped
-      if (msg.error) p.reject(new Error(`MCP error ${msg.error.code ?? ''}: ${msg.error.message ?? 'unknown'}`));
+      if (!p) return; // late: the request already timed out or was stopped
+      if (msg.error) p.reject(new McpRpcError(msg.error.code, msg.error.message ?? 'unknown', (msg.error as { data?: unknown }).data));
       else p.resolve(msg.result);
     }
   }
 
   #write(msg: unknown): void {
-    if (!this.#child || this.#closed) return;
+    if (!this.running) return;
+    if (this.#http) return this.#http.send(msg as JsonRpcMessage);
     try {
-      this.#child.stdin.write(`${JSON.stringify(msg)}\n`);
+      this.#child!.stdin.write(`${JSON.stringify(msg)}\n`);
     } catch {
       // the server is gone
     }
@@ -620,8 +863,9 @@ export async function connectMcp(
   try {
     await client.connect();
     const infos = await client.listTools();
-    const tools = mcpTools(client, infos, tracer);
     const source = opts.source ?? `mcp:${config.name}`;
+    // a service the person added (source mcp:<name>, not a plugin's): the window names it as they wrote it
+    const tools = mcpTools(client, infos, tracer).map((t) => (source === `mcp:${config.name}` ? { ...t, server: config.name } : t));
     // Keep each tool's own remover: the source may also own other tools
     // (a plugin's skills, other servers) that must survive this server.
     const removers = tools.map((t) => registry.register(t, source));

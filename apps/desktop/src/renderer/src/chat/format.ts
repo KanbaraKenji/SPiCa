@@ -11,6 +11,10 @@ const LABELS: Record<string, string> = {
   grep: N_('搜索内容'),
   run_command: N_('运行命令'),
   python_env: N_('配置 Python'),
+  run_javascript: N_('运行 JavaScript'),
+  command_output: N_('查看后台命令'),
+  stop_command: N_('停止后台命令'),
+  get_diagnostics: N_('检查代码错误'),
   web_fetch: N_('打开网页'),
   web_search: N_('网页搜索'),
   browser_open: N_('在内置浏览器打开网页'),
@@ -49,6 +53,8 @@ const LABELS: Record<string, string> = {
   search_history: N_('查找对话记录'),
   read_history: N_('读取对话记录'),
   find_history_files: N_('查找对话中的文件'),
+  // The folders allowed on a card (始终允许), listed or taken back when the user asks.
+  allowed_folders: N_('已允许的文件夹'),
   // The files a task made, handed over to the user (they show as cards under the answer).
   present_files: N_('交付文件'),
   // The user's memory (shown as the 已记住 line in the conversation).

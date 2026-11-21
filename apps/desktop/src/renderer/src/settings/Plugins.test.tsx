@@ -2,10 +2,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
-import { Plugins, pluginBadge, sourceLine, type PluginsApi, type SettingsPages } from './Plugins';
+import { Plugins, pluginBadge, sourceLine, type PluginsApi, type PluginsTab, type SettingsPages } from './Plugins';
 import type { PluginView as PageView } from '../../../shared/plugin-view';
 import { DEMO_READ_AT, FakePluginService } from '../../../main/plugins/fake';
 import { dropAllDrafts } from './drafts';
+import { demoMcpApi } from './demo-mcp';
 import { DEFAULT_SETTINGS } from '../../../shared/settings';
 import type { PluginsCommand, PluginsProgress, PluginsState, PluginView } from '../../../shared/plugins';
 
@@ -329,7 +330,7 @@ describe('Plugins', () => {
   it('市场: one installed as it is says so and goes to 已安装; one with a newer version offers 更新到', async () => {
     // The tab kept by the caller, as the settings dialog keeps it.
     function Kept() {
-      const [tab, setTab] = useState<'installed' | 'market'>('market');
+      const [tab, setTab] = useState<PluginsTab>('market');
       return <Plugins api={api()} tab={tab} onTab={setTab} />;
     }
     render(<Kept />);
@@ -753,5 +754,22 @@ describe('a plugin’s settings form · clear, search, tab names', () => {
     expect(pageTabLabel('设定', false)).toBe('设定');
     expect(pageTabLabel('测试连接', true)).toBe('测试连接');
     expect(pageTabLabel('', false)).toBe('设定');
+  });
+});
+
+describe('插件 › MCP 服务', () => {
+  it('a third tab only with the services api: 添加 MCP 服务 on its row opens the form in place of the page, ← back to the list', async () => {
+    render(<Plugins api={api()} />);
+    expect(screen.queryByRole('tab', { name: 'MCP 服务' })).toBeNull();
+    cleanup();
+    render(<Plugins api={api()} mcp={demoMcpApi()} />);
+    fireEvent.click(await screen.findByRole('tab', { name: 'MCP 服务' }));
+    expect(screen.queryByRole('textbox', { name: '搜索插件' })).toBeNull();
+    expect(await screen.findByRole('button', { name: /^files/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '添加 MCP 服务' }));
+    expect(await screen.findByRole('textbox', { name: '命令' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'MCP 服务' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'MCP 服务' }));
+    expect(await screen.findByRole('tab', { name: 'MCP 服务' })).toBeTruthy();
   });
 });

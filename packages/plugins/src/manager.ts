@@ -10,7 +10,8 @@ import { pathToFileURL } from 'node:url';
 import type { Hooks, Tool } from '@spica/core';
 import type { HookModule, PluginContext } from './authoring.ts';
 import { expandCommand, hasErrors, insidePlugin, readPluginFolder, type CommandDef, type PluginFolder, type ServerDef, type ViewDef } from './folder.ts';
-import type { McpExit, McpHandle, McpLaunch, PluginHost } from './host.ts';
+import type { McpLaunch, PluginHost } from './host.ts';
+import { newRun, startServer, stopServer, type ServerStatus, type SupervisedRun, type Supervision } from './supervisor.ts';
 import { checkConfigValue, configForServer, missingConfig, scrubSecrets, type UserConfigField, type UserConfigValue } from './user-config.ts';
 import type { PluginI18n } from './i18n.ts';
 import { HOOK_KINDS, appNameOf, compareVersions, satisfies, type HookKind, type Issue, type PluginIcon, type PluginManifest } from './manifest.ts';
@@ -32,7 +33,7 @@ export const PLUGIN_INHERIT_ENV: readonly string[] = [
   'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
 ];
 
-export type ServerStatus = 'stopped' | 'starting' | 'running' | 'restarting' | 'failed';
+export type { ServerStatus };
 
 /**
  * Where an install is, for the shell to show while it runs. In order:
@@ -240,14 +241,9 @@ export class PluginError extends Error {
   }
 }
 
-interface ServerRun {
+interface ServerRun extends SupervisedRun {
   def: ServerDef;
   launchName: string;
-  status: ServerStatus;
-  handle?: McpHandle;
-  restarts: number[];
-  stopping: boolean;
-  lastError?: string;
 }
 
 interface Active {
@@ -894,7 +890,7 @@ export class PluginManager {
       this.#registerPermissionHooks(a);
       const mcpCount = folder.servers.filter((s) => s.kind === 'mcp').length;
       for (const def of folder.servers.filter((s) => s.kind === 'mcp')) {
-        const run: ServerRun = { def, launchName: mcpCount === 1 ? name : `${name}-${def.id}`, status: 'stopped', restarts: [], stopping: false };
+        const run: ServerRun = { def, launchName: mcpCount === 1 ? name : `${name}-${def.id}`, ...newRun() };
         a.servers.push(run);
         await this.#startServer(a, run);
       }
@@ -902,7 +898,7 @@ export class PluginManager {
       this.#registerMail(a);
       await this.#registerHooks(a);
       for (const def of folder.servers.filter((s) => s.kind === 'service')) {
-        const run: ServerRun = { def, launchName: `${name}-${def.id}`, status: 'stopped', restarts: [], stopping: false };
+        const run: ServerRun = { def, launchName: `${name}-${def.id}`, ...newRun() };
         a.servers.push(run);
         await this.#startServer(a, run);
       }
@@ -1107,7 +1103,7 @@ export class PluginManager {
 
   // ---------- servers ----------
 
-  #launch(a: Active, run: ServerRun): McpLaunch {
+  #launch(a: Active, run: ServerRun): Omit<McpLaunch, 'onExit'> {
     const def = run.def;
     const name = a.manifest.name;
     const env: Record<string, string> = {
@@ -1143,70 +1139,35 @@ export class PluginManager {
       // Forbidden by the user: no model at all, the server is not offered sampling.
       ...(a.manifest.permissions.model && this.#modelAllowed(name) ? { sampling: { pluginId: name } } : {}),
       stderrLog: (chunk) => void this.#log(name, `[${def.id}] ${chunk.trimEnd()}`),
-      onExit: (info) => this.#onExit(a, run, info),
     };
   }
 
-  #setStatus(a: Active, run: ServerRun, status: ServerStatus, message?: string): void {
-    run.status = status;
-    this.#emit({ type: 'server.status', name: a.manifest.name, server: run.def.id, status, ...(message ? { message } : {}) });
+  /** How a plugin's server is kept going (supervisor.ts), in the plugin's words and log. */
+  #supervision(a: Active, run: ServerRun): Supervision {
+    const name = a.manifest.name;
+    return {
+      host: this.#host,
+      source: a.source,
+      launch: (onExit) => ({ ...this.#launch(a, run), onExit }),
+      restart: run.def.restart,
+      setStatus: (status, message) => this.#emit({ type: 'server.status', name, server: run.def.id, status, ...(message ? { message } : {}) }),
+      log: (line) => void this.#log(name, `[${run.def.id}] ${line}`),
+      alive: () => this.#active.get(name) === a,
+      serial: (fn) => this.#serial(fn),
+      gaveUp: (message) => this.#emit({ type: 'plugin.error', name, message: `「${a.manifest.displayName}」${message}` }),
+      crashMessage: (count, windowS) => `进程 ${run.def.id} 在 ${windowS} 秒内崩溃 ${count} 次，已停止重启，详见插件日志。`,
+      startError: (message, cause) => new Error(`进程 ${run.def.id} 启动失败：${message}`, { cause }),
+      beforeStart: async () => void (await mkdir(this.dataDir(name), { recursive: true })),
+    };
   }
 
-  async #startServer(a: Active, run: ServerRun): Promise<void> {
-    run.stopping = false;
-    this.#setStatus(a, run, run.restarts.length > 0 ? 'restarting' : 'starting');
-    await mkdir(this.dataDir(a.manifest.name), { recursive: true });
-    try {
-      run.handle = await this.#host.connectMcp(this.#launch(a, run), a.source);
-      delete run.lastError;
-      this.#setStatus(a, run, 'running');
-    } catch (err) {
-      run.lastError = (err as Error).message;
-      this.#setStatus(a, run, 'failed', run.lastError);
-      throw new Error(`进程 ${run.def.id} 启动失败：${run.lastError}`, { cause: err });
-    }
+  #startServer(a: Active, run: ServerRun): Promise<void> {
+    return startServer(run, this.#supervision(a, run));
   }
 
-  async #stopServer(a: Active, run: ServerRun): Promise<void> {
-    run.stopping = true;
-    const h = run.handle;
-    delete run.handle;
-    if (h) {
-      try {
-        await h.disconnect(); // resolves once the process has exited, so its folder can be removed
-      } catch {
-        // already gone
-      }
-    }
-    if (run.status !== 'failed') this.#setStatus(a, run, 'stopped');
-  }
-
-  /** Crash handling: restart with a cap per time window, then give up and tell the user. */
-  #onExit(a: Active, run: ServerRun, info: McpExit): void {
-    if (info.expected || run.stopping || this.#active.get(a.manifest.name) !== a) return;
-    const dead = run.handle;
-    delete run.handle;
-    const dropped = Promise.resolve()
-      .then(() => dead?.disconnect()) // drop the dead server's tools before restarting
-      .catch(() => undefined);
-    const now = Date.now();
-    run.restarts = run.restarts.filter((t) => now - t < run.def.restart.windowMs);
-    const tail = info.stderrTail.trim().split('\n').slice(-3).join(' / ');
-    void this.#log(a.manifest.name, `[${run.def.id}] exited (code ${info.code ?? '?'})${tail ? `: ${tail}` : ''}`);
-    if (run.restarts.length >= run.def.restart.maxRestarts) {
-      run.lastError = `进程 ${run.def.id} 在 ${Math.round(run.def.restart.windowMs / 1000)} 秒内崩溃 ${run.restarts.length + 1} 次，已停止重启，详见插件日志。`;
-      this.#setStatus(a, run, 'failed', run.lastError);
-      this.#emit({ type: 'plugin.error', name: a.manifest.name, message: `「${a.manifest.displayName}」${run.lastError}` });
-      return;
-    }
-    run.restarts.push(now);
-    const delay = 250 * 2 ** (run.restarts.length - 1);
-    setTimeout(() => {
-      void dropped.then(() => {
-        if (this.#active.get(a.manifest.name) !== a || run.stopping) return;
-        return this.#serial(() => this.#startServer(a, run));
-      }).catch(() => undefined);
-    }, delay);
+  /** Resolves once the process has exited, so its folder can be removed. */
+  #stopServer(a: Active, run: ServerRun): Promise<void> {
+    return stopServer(run, this.#supervision(a, run));
   }
 
   // ---------- reading ----------

@@ -9,7 +9,7 @@ import { producedFileCard } from './file-card.ts';
 import { LINE_COUNT_MAX_BYTES, lineDelta, oldText } from './file-changes.ts';
 import { fileChange } from './line-diff.ts';
 import { IMAGE_LIMITS } from '../images.ts';
-import { pagePictures, PICTURE_EXTENSIONS, readPicture } from './read-image.ts';
+import { pagePictures, parseRegion, PICTURE_EXTENSIONS, readPicture } from './read-image.ts';
 
 /**
  * The card for a file a write made: created or modified, with the lines added and removed when they were counted,
@@ -88,7 +88,9 @@ export const readFileTool: Tool = {
       'Pictures (PNG, JPEG, GIF, WEBP, BMP) come back as an image to look at. ' +
       'Documents (PDF, Word, Excel, PowerPoint, CSV, also the older .doc and .xls) are converted to text when an extractor is installed: ' +
       'use pages ("3" or "2-5", slides for PowerPoint) and sheet (name or 1-based index); for tables offset/limit count rows. ' +
-      `PDF pages with no or very little text (scanned pages) come back as page images, up to ${IMAGE_LIMITS.maxPerMessage} per call.`,
+      `PDF pages with no or very little text (scanned pages) come back as page images, up to ${IMAGE_LIMITS.maxPerMessage} per call. ` +
+      'region shows one part of a picture, or of one PDF page (with pages), in more detail: when small text is not legible, ' +
+      'read the part with region instead of writing a script to crop or enlarge the picture.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -97,6 +99,7 @@ export const readFileTool: Tool = {
         limit: { type: 'integer', description: `Max lines (or table rows) to return. Default ${MAX_READ_LINES}.` },
         pages: { type: 'string', description: 'Pages or slides to read, e.g. "3" or "2-5".' },
         sheet: { type: 'string', description: 'Sheet name or 1-based index (spreadsheets).' },
+        region: { type: 'string', description: 'Part of a picture or PDF page to show: "left,top,right,bottom" in percent of its width and height, e.g. "50,0,100,50".' },
       },
       required: ['path'],
     },
@@ -106,7 +109,11 @@ export const readFileTool: Tool = {
     const info = await stat(abs).catch(() => undefined);
     if (!info) return { content: `File not found: ${display(ctx, abs)}`, isError: true };
     if (info.isDirectory()) return { content: `${display(ctx, abs)} is a folder; use list_dir.`, isError: true };
-    if (PICTURE_EXTENSIONS.has(extname(abs).toLowerCase())) return readPicture(abs, info, display(ctx, abs), ctx);
+    const ext = extname(abs).toLowerCase();
+    const region = typeof input.region === 'string' && input.region.trim() ? parseRegion(input.region) : undefined;
+    if (typeof region === 'string') return { content: region, isError: true };
+    if (PICTURE_EXTENSIONS.has(ext)) return readPicture(abs, info, display(ctx, abs), ctx, region);
+    if (region && ext !== '.pdf') return { content: 'region is for pictures and PDF pages.', isError: true };
     let text: string;
     const offsetIn = input.offset === undefined ? undefined : Math.max(1, Number(input.offset) || 1);
     const limitIn = input.limit === undefined ? undefined : Math.max(1, Number(input.limit) || MAX_READ_LINES);
@@ -122,6 +129,7 @@ export const readFileTool: Tool = {
           maxChars: MAX_READ_CHARS,
           // scanned PDF pages as pictures; 0 tells the reader the model does not take them
           pageImages: ctx.imagesAllowed === false ? 0 : IMAGE_LIMITS.maxPerMessage,
+          ...(region ? { region } : {}),
         },
         ctx.signal,
       );

@@ -20,7 +20,7 @@ describe('ComputerCard', () => {
   it('waiting: 操作 N 个程序, 拒绝 and 始终允许, every program a row with its tag and where it is', () => {
     render(<ComputerCard block={waiting} onDecide={vi.fn()} />);
     expect(document.querySelector('.card-title')?.textContent).toBe('操作 3 个程序');
-    expect(screen.getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['拒绝', '始终允许', '其他允许方式']);
+    expect(screen.getAllByRole('button').map((b) => b.textContent || b.getAttribute('aria-label'))).toEqual(['拒绝', '始终允许', '更多选项']);
     const rows = [...document.querySelectorAll('.computer-app')].map((r) => r.textContent);
     expect(rows).toEqual(['Microsoft ExcelC:\\Office\\EXCEL.EXE', '文件资源管理器高风险C:\\Windows\\explorer.exe', 'Microsoft Edge只看C:\\Edge\\msedge.exe']);
   });
@@ -34,7 +34,7 @@ describe('ComputerCard', () => {
     cleanup();
     const once = vi.fn();
     render(<ComputerCard block={waiting} onDecide={once} />);
-    fireEvent.click(screen.getByRole('button', { name: '其他允许方式' }));
+    fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
     fireEvent.click(screen.getByRole('menuitem', { name: '允许一次' }));
     expect(once.mock.calls).toEqual([[true, false]]);
     cleanup();

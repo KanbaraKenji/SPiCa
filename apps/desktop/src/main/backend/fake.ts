@@ -4,6 +4,7 @@
 // It never touches the network or the disk.
 import type {
   AgentRole,
+  CommandJob,
   InstallFailure,
   ContentBlock,
   ContextBreakdown,
@@ -93,7 +94,7 @@ interface Run {
 class Aborted extends Error {}
 
 /** Tools of the script that only read (a round that used only these can be regenerated, as in the core). */
-const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions']);
+const READ_ONLY_TOOLS = new Set(['list_dir', 'read_file', 'glob', 'grep', 'web_fetch', 'web_search', 'ask_user', 'suggest_actions', 'update_plan']);
 /** remember / forget: taken back when their answer is regenerated, so they do not keep it from being regenerated (as in the core). */
 const MEMORY_TOOLS = new Set(['remember', 'forget']);
 const ANSWER_KINDS = new Set<MessageKind>(['assistant', 'tool_results', 'steer']);
@@ -118,7 +119,7 @@ export const FAKE_LONG_COMMAND =
   "Get-ChildItem 'D:\\工作\\样机评审\\报价' -Filter *.xlsx | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-30) } | Sort-Object LastWriteTime | Select-Object -First 50 | ForEach-Object { $_.FullName }; Remove-Item 'D:\\工作\\样机评审' -Recurse -Force";
 
 /** The kind of each step the demo takes (the core says it on tool.start). */
-const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', present_files: 'present' };
+const FAKE_CATEGORY: Partial<Record<string, ToolCategory>> = { list_dir: 'read', read_file: 'read', write_file: 'write', run_command: 'command', command_output: 'command', run_javascript: 'command', stop_command: 'command', present_files: 'present' };
 
 /** What the 汇总 answer's command leaves behind: one file it changed, then new ones. */
 export const FAKE_EXPORT_FILES = ['D:\\工作\\样机评审\\报价\\索引.csv', ...['华东精密', '启明电子', '远航塑胶', '恒信五金', '东方模具', '新锐包装', '海联物流'].map((n) => `D:\\工作\\样机评审\\报价\\${n}.csv`)];
@@ -216,6 +217,8 @@ export class FakeBackend implements AgentBackend {
   #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
   #runs = new Map<string, Run>();
+  /** Commands running in the background, by id. */
+  #jobs = new Map<string, CommandJob>();
   #globalCost = 0;
   /** Calls of a model without a price were made (in any conversation). */
   #globalUnpriced = false;
@@ -531,7 +534,7 @@ export class FakeBackend implements AgentBackend {
   async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void> {
     const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
     if (approved && options?.always) this.#always.add(callId);
-    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder) {
+    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
       const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
       set.add(item.outsideFolder);
       this.#writeFolders.set(sessionId, set);
@@ -543,6 +546,19 @@ export class FakeBackend implements AgentBackend {
 
   async abort(sessionId: string): Promise<void> {
     this.#runs.get(sessionId)?.controller.abort();
+  }
+
+  /** Background commands: the demo conversations run none. */
+  async listCommandJobs(sessionId: string): Promise<CommandJob[]> {
+    return [...this.#jobs.values()].filter((j) => j.sessionId === sessionId);
+  }
+
+  async stopCommandJob(jobId: string): Promise<void> {
+    const j = this.#jobs.get(jobId);
+    if (!j || j.end) return;
+    const done: CommandJob = { ...j, end: 'user', endedAt: new Date().toISOString(), exitCode: null };
+    this.#jobs.set(jobId, done);
+    this.#emit(j.sessionId, { type: 'command.job', job: done });
   }
 
   // Projects: the seed's two, plus any made with createProject.
@@ -1126,6 +1142,30 @@ export class FakeBackend implements AgentBackend {
       // tool answering JSON (fenced, as the core hands outside content to the model) and one failing, a long read,
       // a file written, edited in one place and in several, written over. Names and data are made up. The edits and
       // the overwrite carry the change as the core works it out (tools/line-diff.ts: line numbers, three lines around).
+      // Commands run in the background (run_command with run_in_background): two keep running, as the core shows them.
+      if (/后台命令/.test(text)) {
+        const say = async (words: string) => {
+          await this.#stream(sessionId, 'text', words, signal);
+          blocks.push({ type: 'text', text: words });
+        };
+        const start = async (command: string, description: string, cwd: string, id: string) => {
+          const made = await this.#tool(sessionId, run, 'run_command', { command, description, run_in_background: true }, `running in the background as ${id}; read its output with command_output, stop it with stop_command`, 300);
+          const job: CommandJob = { id, sessionId, callId: (made[0] as { id: string }).id, command, description, cwd, startedAt: isoAt(this.#now()), outputPath: `D:\\工作\\样机评审\\.spica\\${id}.log` };
+          this.#jobs.set(id, job);
+          this.#emit(sessionId, { type: 'command.job', job });
+          blocks.push(...made);
+        };
+        await say('先把预览服务和测试监视放到后台。');
+        await start('npm run dev', '启动预览服务', 'D:\\工作\\样机评审\\site', 'cmd1');
+        await start('npx vitest --watch', '监视测试', 'D:\\工作\\样机评审\\site', 'cmd2');
+        blocks.push(...(await this.#tool(sessionId, run, 'command_output', { id: 'cmd1', wait_seconds: 5 }, 'cmd1 is still running\n  VITE v6.0.0  ready in 412 ms\n  ➜  Local:   http://localhost:5173/', 500)));
+        await say('预览服务已在 http://localhost:5173/ 运行，测试在后台监视文件改动。');
+        this.#commitAssistant(sessionId, blocks);
+        this.#charge(sessionId, 2600, 160);
+        this.#emit(sessionId, { type: 'turn.end', turn });
+        this.#finish(sessionId, 'completed');
+        return;
+      }
       if (/工具详情/.test(text)) {
         const at = isoAt(this.#now());
         const card = (path: string, origin: 'created' | 'modified', added: number, removed: number, change?: FileCardMeta['change']): FileCardMeta => ({
@@ -1522,7 +1562,11 @@ export class FakeBackend implements AgentBackend {
         // A write outside the conversation's folders (core: GuardCause outside_folder): asked in either approval
         // mode, with 工作文件夹以外 and 始终允许此文件夹; once that folder is allowed, the next write there just runs.
         const callId = this.#id('call');
-        const folder = 'D:\\共享资料\\纪要';
+        // 「盘根」: the drive's root, which is never kept (core folderTooWide: the card offers 允许 alone)
+        const root = /盘根/.test(text);
+        const folder = root ? 'D:\\' : 'D:\\共享资料\\纪要';
+        const base = root ? 'D:' : folder;
+        const wide = root ? { folderTooWide: true } : {};
         const newFile = /新建/.test(text);
         // 「用命令」: the same write as a command (approval mode Auto asks for it by the core's fixed rules,
         // command-scope.ts); 「起始文件夹」: a command run in that folder
@@ -1533,8 +1577,8 @@ export class FakeBackend implements AgentBackend {
             ? { command: "Set-Content -Path '周会汇总.md' -Value '样品改用 B 方案'", cwd: folder, description: '在纪要文件夹里写周会汇总' }
             : { command: `Set-Content -Path '${folder}\\周会汇总.md' -Value '样品改用 B 方案'`, description: '把周会汇总写到纪要文件夹' }
           : newFile
-            ? { path: `${folder}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
-            : { path: `${folder}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
+            ? { path: `${base}\\周会汇总.md`, content: '# 周会汇总\n\n- 样品改用 B 方案\n- 交期延后一周\n' }
+            : { path: `${base}\\会议纪要.md`, old_string: '（待补）', new_string: '样品改用 B 方案；交期延后一周。' };
         const change = byCommand ? undefined : newFile
           ? { path: String(input.path), created: true, change: { hunks: [{ oldStart: 0, newStart: 1, lines: ['+# 周会汇总', '+', '+- 样品改用 B 方案', '+- 交期延后一周'] }] } }
           : { path: String(input.path), created: false, change: { hunks: [{ oldStart: 3, newStart: 3, lines: [' ## 决定', '-（待补）', '+样品改用 B 方案；交期延后一周。', ' '] }] } };
@@ -1543,8 +1587,8 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input }]);
         let ok = true;
         if (!allowed) {
-          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, createdAt: isoAt(this.#now()) });
-          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder });
+          this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, ...wide, createdAt: isoAt(this.#now()) });
+          this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: 'writes a file outside the folders of this conversation', cause: 'outside_folder', ...(change ? { change } : {}), outsideFolder: folder, ...wide });
           this.#setStatus(sessionId, 'awaiting_confirm', name);
           waiting = { id: callId, name, input, stored: true };
           ok = (await this.#waitFor(run, callId)) === 'yes';
@@ -1582,6 +1626,41 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/清单/.test(text)) {
+        // The plan (update_plan) above the message box. 清单没做完: two of five steps done, then the round ends.
+        // Otherwise: the plan, its steps done one by one, a question in the middle (the plan and the question card
+        // at once), the rest after the answer, the plan finished.
+        const steps = ['读评审记录和测试报告', '汇总四家供应商的报价', '起草评审纪要', '列出待办和负责人', '整理成邮件草稿给你过目'];
+        const plan = (done: number, going = true) => ({ plan: steps.map((step, i) => ({ step, status: i < done ? 'completed' : i === done && going ? 'in_progress' : 'pending' })) });
+        const short = /没做完/.test(text);
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(0), 'Plan updated: 0 of 5 steps completed.', 200)));
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '评审纪要.md' }, '评审纪要.md (lines 1-60 of 60)\n样机评审：外壳 120×80×24 mm，续航实测 11.5 小时。', 300)));
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(1), 'Plan updated: 1 of 5 steps completed.', 200)));
+        blocks.push(...(await this.#tool(sessionId, run, 'read_file', { path: '报价\\四家报价.xlsx' }, '四家报价.xlsx: 4 rows', 300)));
+        blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(2, !short), 'Plan updated: 2 of 5 steps completed.', 200)));
+        if (short) {
+          const lead = '评审记录和报价都看完了，四家里有两家还没回价。纪要等你确认口径后再写。';
+          await this.#stream(sessionId, 'text', lead, signal);
+          blocks.push({ type: 'text', text: lead });
+        } else {
+          const callId = this.#id('call');
+          const input = { question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'], recommended: '结论加讨论过程' };
+          this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name: 'ask_user', input }]);
+          this.#addPending(sessionId, { kind: 'ask', callId, createdAt: isoAt(this.#now()), ...input });
+          this.#emit(sessionId, { type: 'ask.request', callId, ...input });
+          this.#setStatus(sessionId, 'awaiting_answer');
+          waiting = { id: callId, name: 'ask_user', input, stored: true };
+          const answer = await this.#waitFor(run, callId);
+          waiting = undefined;
+          this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: answer }]);
+          this.#setStatus(sessionId, 'thinking');
+          for (let i = 3; i <= 5; i++) {
+            blocks.push(...(await this.#tool(sessionId, run, 'update_plan', plan(i), `Plan updated: ${i} of 5 steps completed.`, 300)));
+          }
+          const after = `按「${answer}」写好了纪要，待办和负责人列在最后，邮件草稿在草稿箱里，没有发送。`;
+          await this.#stream(sessionId, 'text', after, signal);
+          blocks.push({ type: 'text', text: after });
+        }
       } else if (/确认|发送|发给/.test(text)) {
         const callId = this.#id('call');
         const input = { to: '项目组', subject: '样机评审时间', body: '各位好，样机评审定在周四下午两点。' };
