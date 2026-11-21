@@ -34,7 +34,8 @@ import type {
 } from './types.ts';
 import type { RuntimeInternals } from './runtime.ts';
 import { estimateTokens, isAbortError, newId, truncate, withAppName } from './util.ts';
-import { IMAGE_LIMITS, imageTokens, prepareImage, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
+import { IMAGE_LIMITS, imageTokens, REQUEST_IMAGE_LIMITS, sniffImage } from './images.ts';
+import { fit as fitPicture, keepOriginal } from './tools/read-image.ts';
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, resolve as resolvePath } from 'node:path';
 import { canonicalPath, inScope, pathsInText, realPath, within } from './write-scope.ts';
@@ -615,7 +616,8 @@ export class Session {
           attachments.push({ path, name, block: null, code: 'image.too_many', error: `more than ${IMAGE_LIMITS.maxPerMessage} images in one message` });
           continue;
         }
-        const prepared = prepareImage(full, this.#rt.mediaDir(this.id));
+        const dir = this.#rt.mediaDir(this.id);
+        const prepared = await fitPicture(full, { sessionId: this.id, mediaDir: dir, ...this.#imageContext() });
         if (!prepared.ok) {
           attachments.push({ path, name, block: null, code: prepared.code, error: prepared.message.slice(0, 300) });
           content.push({ type: 'text', text: `[The user attached the image ${name}, but it could not be used: ${prepared.message.slice(0, 200)}]` });
@@ -624,6 +626,9 @@ export class Session {
         const { path: stored, mediaType, width, height, bytes, resized } = prepared.image;
         attachments.push({ path, name, block: content.length + 1, image: { path: stored, mediaType, width, height, bytes, resized } });
         content.push({ type: 'image', path: stored, mediaType, width, height, bytes, name });
+        // a smaller copy went: the original stays with the conversation, for a closer look at a part
+        const closer = resized ? await keepOriginal(full, { width, height }, dir) : undefined;
+        if (closer) content.push({ type: 'text', text: closer });
         continue;
       }
       if (!tool) {

@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import CFB from 'cfb';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { extractFile } from './index.ts';
-import { MINUTES, makeDocx, makeInventoryXlsx, makePdf } from './testing/fixtures.ts';
-import { makeDoc, makeScannedTextPdf, makeXls, xlsCell } from './testing/legacy-fixtures.ts';
+import { MINUTES, makeDocx, makeInventoryXlsx, makePdf, makePptx } from './testing/fixtures.ts';
+import { makeDoc, makePpt, makeScannedTextPdf, makeXls, xlsCell, type PptSlide } from './testing/legacy-fixtures.ts';
 import { rkValue } from './xls.ts';
 
 let dir: string;
@@ -150,6 +150,82 @@ describe('.doc (Word 97-2003)', () => {
     expect((await extractFile(f('renamed.doc'))).text).toContain('一、会议信息');
     await expect(extractFile(f('rtf.doc'))).rejects.toThrow('RTF');
     await expect(extractFile(f('word6.doc'))).rejects.toThrow('Word 6.0/95');
+  });
+});
+
+const DECK: PptSlide[] = [
+  { placeholders: ['季度回顾', '示例公司 · 第三季度'], notes: ['开场先讲目标'] },
+  { placeholders: ['数字'], boxes: ['销量 1,200 件', '退货率 2%'] },
+  { boxes: ['谢谢 ALEX.CHEN'] },
+];
+
+describe('.ppt (PowerPoint 97-2003)', () => {
+  const write = (name: string, bytes: Uint8Array) => writeFile(f(name), bytes);
+
+  it('reads each slide in show order: placeholders and text boxes, with notes', async () => {
+    await write('deck.ppt', makePpt(DECK, { shuffled: true }));
+    const r = await extractFile(f('deck.ppt'));
+    expect(r.meta.kind).toBe('pptx');
+    expect(r.meta.slideCount).toBe(3);
+    expect(r.text).toContain('PowerPoint, 3 slides.');
+    expect(r.text).toContain('=== slide 1 ===\n季度回顾\n示例公司 · 第三季度\nNotes: 开场先讲目标');
+    expect(r.text).toContain('=== slide 2 ===\n数字\n销量 1,200 件\n退货率 2%');
+    expect(r.text).toContain('=== slide 3 ===\n谢谢 ALEX.CHEN');
+    // the notes page's slide number is not notes
+    expect(r.text).not.toMatch(/Notes: 1\b/);
+  });
+
+  it('pages with pages="…" like .pptx', async () => {
+    const r = await extractFile(f('deck.ppt'), { pages: '2' });
+    expect(r.text).toContain('Showing slide 2 of 3.');
+    expect(r.text).not.toContain('季度回顾');
+    expect(r.meta.read.pages).toBe('2');
+  });
+
+  it('takes the newest save of a slide, also when the link between saves is damaged', async () => {
+    const changed = { placeholders: ['季度回顾（改）'] };
+    for (const brokenLink of [false, true]) {
+      await write('saved.ppt', makePpt(DECK, { fastSave: changed, brokenLink }));
+      const r = await extractFile(f('saved.ppt'));
+      expect(r.text).toContain('=== slide 1 ===\n季度回顾（改）');
+      expect(r.text).not.toContain('示例公司 · 第三季度');
+      expect(r.text).toContain('谢谢 ALEX.CHEN');
+    }
+  });
+
+  it('says so for a password, for PowerPoint 95, and reads a .pptx under the old name', async () => {
+    await write('locked.ppt', makePpt(DECK, { encrypted: true }));
+    await expect(extractFile(f('locked.ppt'))).rejects.toThrow('password protected');
+    const pp95 = CFB.utils.cfb_new();
+    CFB.utils.cfb_add(pp95, 'PowerPoint Document', Buffer.alloc(64));
+    CFB.utils.cfb_add(pp95, 'PP40', Buffer.alloc(16));
+    await write('old.ppt', new Uint8Array(CFB.write(pp95, { type: 'buffer', fileType: 'cfb' }) as Buffer));
+    await expect(extractFile(f('old.ppt'))).rejects.toThrow('PowerPoint 95');
+    await write('renamed.ppt', makePptx([{ title: '改名的演示', body: ['正文'] }]));
+    expect((await extractFile(f('renamed.ppt'))).text).toContain('改名的演示');
+  });
+});
+
+describe('a part of a PDF page', () => {
+  it('draws only that part, larger than in the whole-page picture, from any page', async () => {
+    await writeFile(f('drawing.pdf'), await makePdf([['Sheet 1 of 2', 'Note: M8 bolts'], ['Sheet 2 of 2']]));
+    const r = await extractFile(f('drawing.pdf'), { pages: '1', pageImages: 10, region: { left: 0, top: 0, right: 0.5, bottom: 0.25 } });
+    const pic = r.pageImages![0]!;
+    // half the width of an A4 page (595 x 842 pt) drawn 1568 px wide; the whole-page picture is 1568 px high
+    expect([pic.page, pic.width, pic.region]).toEqual([1, 1568, '0,0,50,25']);
+    expect(pic.height).toBe(1110);
+    expect(r.text).toContain('The part left 0%, top 0%, right 50%, bottom 25% of page 1 follows as a picture: 1568x1110 px, drawn at 2.8x the detail of the whole-page picture');
+    expect(r.meta.read).toEqual({ pages: '1', range: 'region 0,0,50,25' });
+    // the corner of a page with text: not all white
+    expect(pic.rgba.some((v, i) => i % 4 !== 3 && v < 128)).toBe(true);
+  });
+
+  it('wants one page, and says it for a model that takes no images', async () => {
+    const region = { left: 0, top: 0, right: 0.5, bottom: 0.5 };
+    await expect(extractFile(f('drawing.pdf'), { pageImages: 10, region })).rejects.toThrow('A region is drawn from one page: give pages="N" as well (1-2).');
+    const r = await extractFile(f('drawing.pdf'), { pages: '2', pageImages: 0, region });
+    expect(r.pageImages).toBeUndefined();
+    expect(r.text).toContain('The current model does not take images');
   });
 });
 

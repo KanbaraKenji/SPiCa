@@ -188,6 +188,21 @@ describe('images in a conversation', () => {
     await rt.close();
   });
 
+  it('a large attached picture: a smaller copy goes, the original is kept and the model told how to look closer', async () => {
+    const rt = makeRuntime(gw, { cwd: dir, mediaDir: join(dir, 'media') });
+    const s = rt.createSession();
+    const r = await s.readAttachments([{ path: write('screen.png', png(3200, 1800)) }, { path: write('icon.png', png(40, 40)) }]);
+    expect(r.content.map((b) => b.type)).toEqual(['image', 'text', 'image']);
+    expect(r.content[0]).toMatchObject({ width: 1568, height: 882 });
+    const text = (r.content[1] as { text: string }).text;
+    expect(text).toContain('[The picture is 3200x1800 px; the copy above is 1568x882 px.');
+    const kept = /path="([^"]+)"/.exec(text)![1]!;
+    expect(kept.startsWith(join(dir, 'media'))).toBe(true);
+    expect(readFileSync(kept).equals(readFileSync(join(dir, 'screen.png')))).toBe(true);
+    expect(r.attachments.map((a) => a.block)).toEqual([1, 3]);
+    await rt.close();
+  });
+
   it('an attached scanned PDF: the pages read_file drew go in the message too, within its image limit', async () => {
     const rgba = new Uint8Array(28 * 28 * 4).fill(200);
     const asked: unknown[] = [];
