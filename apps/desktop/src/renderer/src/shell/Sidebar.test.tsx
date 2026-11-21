@@ -315,6 +315,27 @@ describe('Sidebar', () => {
     }
   });
 
+  it('the rows under a row hang on its line: one branch each, the line under the parent’s name, a level in for each level down', () => {
+    const chat = seed.sessions.find((x) => x.id === SEED_IDS.chat)!;
+    const kid = (id: string, title: string, parent: SessionInfo): SessionInfo => ({ ...chat, id, title, role: 'worker', parentId: parent.id, parentChain: [parent.id, ...parent.parentChain], status: 'idle' });
+    const a = kid('k-a', '查报价', chat);
+    const b = kid('k-b', '追踪样制', chat);
+    const c = kid('k-c', '联系样品供应商', b);
+    render(<Sidebar sessions={[...seed.sessions, a, b, c]} activeId={c.id} onOpen={vi.fn()} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
+    const row = (name: string) => screen.getByRole('button', { name }).closest('.tree-row') as HTMLElement;
+    const kids = row('看一下样机评审资料').nextElementSibling as HTMLElement;
+    expect(kids.className).toBe('tree-kids');
+    expect(kids.style.getPropertyValue('--tree-line-x')).toBe('16px');
+    // One branch per sub-task; the last one holds what is under it, so the line ends at its own row.
+    expect([...kids.children].map((x) => x.className)).toEqual(['tree-branch', 'tree-branch']);
+    expect(kids.lastElementChild!.contains(row('联系样品供应商'))).toBe(true);
+    expect(row('查报价').style.paddingLeft).toBe('20px');
+    expect(row('联系样品供应商').style.paddingLeft).toBe('40px');
+    expect((row('追踪样制').nextElementSibling as HTMLElement).style.getPropertyValue('--tree-line-x')).toBe('36px');
+    // Nothing under a row: no line.
+    expect(row('整理本周来信').nextElementSibling?.className ?? '').not.toBe('tree-kids');
+  });
+
   it('the expand arrow is a button of its own right after the name; it and the arrow keys only expand or collapse', () => {
     const onOpen = vi.fn();
     render(<Sidebar sessions={seed.sessions} activeId={null} onOpen={onOpen} onNewChat={vi.fn()} onSettings={vi.fn()} settingsOpen={false} />);
