@@ -193,6 +193,9 @@ export const EN_SHELL: Catalog = {
   // shell/CommandJobs.tsx
   '展开详情（{n} 个运行中）': 'Show details ({n} running)',
   后台命令: 'Background commands',
+  子项目: 'Sub-projects',
+  常驻: 'Resident',
+  回报: 'Report',
   运行中: 'Running',
   停止: 'Stop',
 

@@ -9449,3 +9449,162 @@ input[type='radio']:disabled {
 .plan-strip.is-record.is-open .plan-chevron {
   rotate: none;
 }
+
+/* ---------- Mock-up (project-sub): a project's page, 子任务 in the details ---------- */
+
+/* A project holding sub-projects: its page in the main area, a column as wide as the conversation's. */
+.project-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
+}
+
+.project-column {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 24px 24px;
+  translate: var(--centre-shift, 0px) 0;
+}
+
+.project-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--spica-divider);
+}
+
+.project-facts .detail-path {
+  display: block;
+  max-width: 100%;
+}
+
+/* A sub-project: its name, its state after it (nothing when idle); the row opens its conversation. */
+.project-task {
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--control-h);
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  text-align: left;
+}
+
+.project-task:hover {
+  background: var(--spica-hover);
+}
+
+.project-task-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.project-state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--spica-muted);
+}
+
+.project-state.is-waiting {
+  color: var(--spica-warning);
+}
+
+/* Which sub-project an activity line is from, before it. */
+.project-activity-from {
+  color: var(--spica-muted);
+}
+
+/* 子任务: a row is a button (its record in the details) with 停止 beside it, as 后台命令's. */
+.detail-task-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.detail-task {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.detail-task-row .detail-job-stop {
+  margin-left: 6px;
+}
+
+.detail-task:hover {
+  background: var(--spica-hover);
+}
+
+/* 「N 个已完成」: quiet words, as Claude's 14 finished. */
+.detail-task-fold {
+  width: calc(100% + 12px);
+  color: var(--spica-faint);
+}
+
+.detail-task-fold:hover {
+  color: var(--spica-ink);
+}
+
+/* One sub-task shown in the details: ← 子任务, its name and state, then what it was asked, did and said. */
+.subtask-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.subtask-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  font-size: var(--fs-heading);
+  line-height: var(--lh-heading);
+  font-weight: 600;
+}
+
+.subtask-head .detail-item-meta {
+  font-weight: 400;
+}
+
+.subtask-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.subtask-text {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body-compact);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.subtask-calls {
+  margin: 0 -8px;
+}

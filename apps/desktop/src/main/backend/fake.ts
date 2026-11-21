@@ -49,7 +49,7 @@ import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
-import { buildSeed, fakeCard } from './fake-seed';
+import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
@@ -270,6 +270,23 @@ export class FakeBackend implements AgentBackend {
           status: 'active',
           createdAt: pm.createdAt,
           updatedAt: pm.updatedAt,
+        });
+      }
+      // Mock-up (project-sub): projects holding sub-projects; a sub-project's folder is inside its project's.
+      for (const p of SUB_PROJECTS) {
+        const pm = p.managerSessionId ? this.#sessions.get(p.managerSessionId) : undefined;
+        const at = pm?.updatedAt ?? this.#now().toISOString();
+        this.#projects.set(p.id, {
+          id: p.id,
+          name: p.name,
+          folder: p.folder ?? pm?.cwd ?? '',
+          managerSessionId: p.managerSessionId,
+          ...(p.parentId ? { parentId: p.parentId } : {}),
+          workflowId: null,
+          stage: null,
+          status: 'active',
+          createdAt: pm?.createdAt ?? at,
+          updatedAt: at,
         });
       }
     }
@@ -608,7 +625,7 @@ export class FakeBackend implements AgentBackend {
     const manager = p ? this.#sessions.get(p.managerSessionId) : undefined;
     if (!p || !manager) return undefined;
     const agents = [...this.#sessions.values()].filter((s) => s.parentId === manager.id);
-    return structuredClone({ ...p, workflow: null, objects: [], recentLog: [], manager, agents });
+    return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager, agents });
   }
 
   async renameProject(projectId: string, name: string): Promise<ProjectInfo> {

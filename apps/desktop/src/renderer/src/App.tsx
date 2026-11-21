@@ -22,6 +22,7 @@ import { Sidebar } from './shell/Sidebar';
 import { canRename, commitRename, hasRowMenu, RenameField, rowMenuItems, type RowActions } from './shell/row-menu';
 import { ContextMenu } from './ui/ContextMenu';
 import { DetailPanel } from './shell/DetailPanel';
+import { ProjectPage } from './shell/ProjectPage';
 import { runningJobs } from './shell/CommandJobs';
 import { Conversation, type ConversationActions, type WaitingChild } from './chat/Conversation';
 import { ConfirmTarget } from './chat/Blocks';
@@ -72,7 +73,8 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'inbox' | 'plugin';
+/** 'project' (mock-up, project-sub): the page of a project that holds sub-projects. */
+type View = 'chat' | 'inbox' | 'plugin' | 'project';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
@@ -91,6 +93,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
+  /** The project whose page is open (view 'project'). */
+  const [projectPageId, setProjectPageId] = useState<string | null>(null);
+  const openProjectRef = useRef<(id: string) => void>(() => undefined);
   // Settings: a dialog over whatever is open; it opens again on the section (and 插件's tab) it was left at.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
@@ -325,6 +330,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setSettingsOpen(tab !== null);
         setView(v === 'inbox' ? 'inbox' : 'chat');
       },
+      openProject: (id) => openProjectRef.current(id),
     };
     return () => {
       delete window.__spicaShots;
@@ -508,6 +514,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
   };
 
+  /** Mock-up (project-sub): a project's page in the main area; its sub-projects' activity loads behind it. */
+  const openProject = (pid: string) => {
+    setView('project');
+    setProjectPageId(pid);
+    setSettingsOpen(false);
+    if (layout.left === 'floating') setFloating(null);
+    for (const p of state.projects) if (p.parentId === pid) void agent.loadProject(p.id);
+  };
+  openProjectRef.current = openProject;
   const openSession = (id: string) => {
     setView('chat');
     // From the settings (设置 › 记忆): the conversation is what is wanted now.
@@ -1038,7 +1053,19 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
-  const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const pageProject = view === 'project' ? state.projects.find((p) => p.id === projectPageId) : undefined;
+  const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
+  /** Mock-up (project-sub): a project manager's 子任务 in the details (the workers it sent out). */
+  const subTasks =
+    session?.role === 'manager'
+      ? {
+          tasks: sessions.filter((x) => x.parentId === session.id && x.role === 'worker'),
+          transcriptOf: (sid: string) => agent.transcript(sid),
+          load: (sid: string) => void agent.load(sid),
+          stop: (sid: string) => void agent.stop(sid),
+          open: openSession,
+        }
+      : undefined;
 
   // The details' content: docked beside the conversation, or in the small card over it (infoFloat).
   const detailsBody = (
@@ -1074,6 +1101,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         activity={project ? (state.activity[project.id] ?? []) : []}
         hideHeading={panelPages.length > 0}
         onStopJob={(jobId) => void agent.stopJob(jobId)}
+        {...(subTasks ? { subTasks } : {})}
       />
       )}
     </>
@@ -1127,7 +1155,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setFloating(null);
       }}
       settingsOpen={settingsOpen}
-      elsewhere={view === 'plugin'}
+      elsewhere={view === 'plugin' || view === 'project'}
+      projectInfos={state.projects}
+      onOpenProject={openProject}
+      projectPageId={view === 'project' ? projectPageId : null}
       account={effectiveAccount(settings, shell.autoAccount)}
       onAccount={(where) => {
         openSettings(where === 'models' ? 'models' : undefined);
@@ -1320,6 +1351,22 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               onOpenSession={openSession}
               onOpenSettings={() => openSettings('plugins', 'installed')}
               onDismissProblem={() => mailStore.dismissProblem()}
+            />
+          ) : view === 'project' && pageProject ? (
+            <ProjectPage
+              project={pageProject}
+              subs={state.projects
+                .filter((p) => p.parentId === pageProject.id)
+                .flatMap((p) => {
+                  const manager = sessions.find((x) => x.id === p.managerSessionId);
+                  return manager ? [{ project: p, manager, below: sessions.filter((x) => x.parentChain.includes(manager.id)) }] : [];
+                })}
+              activity={state.projects
+                .filter((p) => p.parentId === pageProject.id)
+                .flatMap((p) => (state.activity[p.id] ?? []).map((a) => ({ ...a, from: p.name })))
+                .sort((a, b) => b.at.localeCompare(a.at))}
+              onOpenSession={openSession}
+              onOpenFolder={(f) => actions.openFolder?.(f)}
             />
           ) : state.loaded ? (
             <Conversation

@@ -489,6 +489,8 @@ export interface SessionInfo {
   templateId?: string;
   /** Project the session works for (project manager and its sub-agents). */
   projectId?: string;
+  /** Mock-up (project-sub): a sub-task its manager keeps for later jobs; it is not put away when a job is done. */
+  resident?: boolean;
   // The three below are always set by the core (optional only so older fakes still type-check).
   /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
   approvalMode?: ApprovalMode;
@@ -1564,7 +1566,10 @@ export interface ProjectInfo {
   name: string;
   /** Absolute path of the project folder. */
   folder: string;
+  /** The project's own conversation (its manager); '' for a project that only holds sub-projects. */
   managerSessionId: string;
+  /** Mock-up (project-sub): the project this one is a sub-project of; its folder is inside that project's. */
+  parentId?: string;
   workflowId: string | null;
   /** Current stage id (null when the project has no workflow). */
   stage: string | null;
