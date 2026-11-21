@@ -522,7 +522,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     if (layout.left === 'floating') setFloating(null);
     for (const p of state.projects) if (p.parentId === pid) void agent.loadProject(p.id);
   };
-  openProjectRef.current = openProject;
+  // the screenshot hook (set once) reaches the latest one
+  useEffect(() => {
+    openProjectRef.current = openProject;
+  });
   const openSession = (id: string) => {
     setView('chat');
     // From the settings (设置 › 记忆): the conversation is what is wanted now.

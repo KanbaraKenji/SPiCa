@@ -169,6 +169,29 @@ describe('projects', () => {
     expect(activity).toHaveLength(3);
   });
 
+  it('a sub-task the manager sent out keeps its record after a restart: what it was asked, its calls and results, its report', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'read_file', args: { path: 'quote.txt' } }] }, { text: 'price is 2.35' });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    await mkdir(p.folder, { recursive: true });
+    await writeFile(join(p.folder, 'quote.txt'), 'unit price 2.35');
+    const worker = rt1.createSession({ parentId: p.managerSessionId, title: 'Quotes' });
+    await worker.send('find the price', { author: 'parent' }).done;
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    const again = rt2.session(worker.id)!;
+    expect(again.info()).toMatchObject({ parentId: p.managerSessionId, role: 'worker', status: 'done', title: 'Quotes' });
+    const kept = again.messages();
+    expect(kept.find((m) => m.kind === 'user')?.content).toEqual([expect.objectContaining({ text: 'find the price' })]);
+    expect(kept.flatMap((m) => m.content).find((b) => b.type === 'tool_use')).toMatchObject({ name: 'read_file', input: { path: 'quote.txt' } });
+    expect(JSON.stringify(kept.flatMap((m) => m.content).find((b) => b.type === 'tool_result'))).toContain('unit price 2.35');
+    expect(kept.at(-1)?.content).toEqual([expect.objectContaining({ text: 'price is 2.35' })]);
+    await rt2.close();
+  });
+
   it('projects survive a restart', async () => {
     const { SqliteStore } = await import('./store/sqlite.ts');
     const path = join(dir, 'spica.db');

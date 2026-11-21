@@ -247,7 +247,7 @@ describe('FakeBackend', () => {
     const backend = new FakeBackend({ speed: 0 });
     const { until } = collect(backend);
     expect((await backend.getTopSession()).id).toBe(SEED_IDS.chat);
-    expect((await backend.listProjects()).map((p) => p.name)).toEqual(['新品样机评审', '年度预算']);
+    expect((await backend.listProjects()).map((p) => p.name)).toEqual(['新品样机评审', '年度预算', '机种', '磁件 T1', '磁件 L1', '磁件 L2', '游戏攻略', '怪物猎人: 冰原']);
     const detail = await backend.getProject('p-review');
     expect(detail?.manager.id).toBe(SEED_IDS.pm);
     expect(detail?.agents.map((a) => a.id)).toContain(SEED_IDS.quotes);
