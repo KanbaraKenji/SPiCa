@@ -192,6 +192,38 @@ describe('projects', () => {
     await rt2.close();
   });
 
+  it('a sub-task kept for later jobs (spawn_agent resident) reports, then waits idle, and is still that after a restart', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return { toolCalls: [{ id: 's1', name: 'spawn_agent', args: { title: 'Samples', task: 'FOLLOW-UP the samples', resident: true } }, { id: 's2', name: 'spawn_agent', args: { title: 'Once', task: 'ONE-OFF job' } }] };
+      }
+      if (all.includes('FOLLOW-UP') || all.includes('ONE-OFF')) return { text: 'reported' };
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    await pm.send('PM-GO').done;
+    const kids = rt1.children(pm.id);
+    await Promise.all(kids.map((k) => k.idle()));
+    const kept = kids.find((k) => k.info().title === 'Samples')!;
+    const once = kids.find((k) => k.info().title === 'Once')!;
+    expect(kept.info()).toMatchObject({ resident: true, status: 'idle' });
+    expect(once.info()).toMatchObject({ status: 'done' });
+    expect(once.info()).not.toHaveProperty('resident');
+    expect(JSON.stringify(kept.messages()[0]?.content)).toContain('You are kept for later jobs');
+    // its report reached the manager as any sub-agent's does
+    expect(rt1.lastReport(kept.id)).toBe('reported');
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.session(kept.id)!.info()).toMatchObject({ resident: true, status: 'idle' });
+    await rt2.close();
+  });
+
   it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
     const rt = rtFor();
     const models = rt.createProject({ name: 'Models', manager: false });

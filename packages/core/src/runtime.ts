@@ -614,6 +614,7 @@ export class Runtime implements RuntimeInternals {
       ...((req.projectId ?? parent?.config.projectId) ? { projectId: req.projectId ?? parent?.config.projectId } : {}),
       // sub-agents work under their parent's approval mode
       ...((req.approvalMode ?? parent?.config.approvalMode) === 'auto' ? { approvalMode: 'auto' as const } : {}),
+      ...(req.resident && parent ? { resident: true } : {}),
     };
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;

@@ -49,6 +49,8 @@ export interface SessionConfig {
   memoryId?: string;
   /** Folders the user allowed on a card to write in without asking (write-scope.ts), as written on the card. */
   writeFolders?: string[];
+  /** A sub-agent kept for later jobs (spawn_agent resident): idle between jobs, not ended. */
+  resident?: boolean;
   /** Other projects' folders the user allowed on a card to read in without asking (GuardCause other_project). */
   readFolders?: string[];
   /**

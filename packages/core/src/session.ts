@@ -171,6 +171,7 @@ export class Session {
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
       ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
+      ...(r.config.resident ? { resident: true } : {}),
       approvalMode: r.config.approvalMode ?? 'manual',
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
@@ -824,7 +825,8 @@ export class Session {
     const end = (reason: RunEndReason, detail?: string): RunResult => {
       this.#ending = true; // the button state goes out with the last status, before run.end
       const status: SessionStatus =
-        reason === 'completed' && this.#record.role === 'worker'
+        // a worker kept for later jobs (resident) waits for the next one: idle, not done
+        reason === 'completed' && this.#record.role === 'worker' && !this.#record.config.resident
           ? 'done'
           : reason === 'completed' || reason === 'max_turns'
           ? 'idle'

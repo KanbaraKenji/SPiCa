@@ -1359,6 +1359,8 @@ export interface CreateSessionRequest {
   projectId?: string;
   /** Default manual; sub-agents inherit their parent's. */
   approvalMode?: ApprovalMode;
+  /** A sub-agent kept for later jobs (SessionInfo.resident). */
+  resident?: boolean;
 }
 
 export interface SendResult {
