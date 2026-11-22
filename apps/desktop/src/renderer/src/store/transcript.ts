@@ -409,6 +409,14 @@ export function currentPlan(t: Transcript): { callId: string; steps: PlanStep[];
   return undefined;
 }
 
+/** The plan above the message box: while it is going, and once finished until the user writes again. */
+export function dockedPlan(t: Transcript): { callId: string; steps: PlanStep[]; item: number } | undefined {
+  const plan = currentPlan(t);
+  if (!plan) return undefined;
+  const finished = plan.steps.every((s) => s.status === 'completed');
+  return !finished || !t.items.slice(plan.item + 1).some((it) => it.kind === 'user') ? plan : undefined;
+}
+
 /** The update_plan call an answer finished the plan with (its last plan has every step done): that list stays there. */
 export function finishedPlanIn(blocks: Block[]): string | undefined {
   for (let j = blocks.length - 1; j >= 0; j--) {

@@ -33,6 +33,7 @@ export const ZH_TW_CHAT: Catalog = {
   展开: '展開',
   未开始: '未開始',
   清单: '清單',
+  出错: '出錯',
   '{step}（{status}）': '{step}（{status}）',
   '全部 {n} 个': '全部 {n} 個',
   '已停用，未执行': '已停用，未執行',

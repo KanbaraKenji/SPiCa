@@ -3,7 +3,7 @@ import type { CoreEvent, HistoryCardMeta, Message } from '@spica/protocol';
 import { FakeBackend } from '../../../main/backend/fake';
 import { buildSeed, SEED_IDS } from '../../../main/backend/fake-seed';
 import { changesAfter } from './relocate';
-import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Block, type Transcript } from './transcript';
+import { applyEvent, askAnswer, cancelCard, currentPlan, cwdNoteText, dockedPlan, finishedPlanIn, fileCardLine, filesOf, fromHistory, historyRef, humanError, itemAtSeq, resultBody, withJobs, type Block, type Transcript } from './transcript';
 
 describe('fromHistory', () => {
   const seed = buildSeed(new Date('2026-11-09T10:00:00+08:00'));
@@ -837,6 +837,31 @@ describe('currentPlan (update_plan)', () => {
     expect(finishedPlanIn([p('a', ['completed']), p('b', ['completed', 'pending'], true)])).toBe('a');
     expect(finishedPlanIn([p('a', ['completed']), p('b', [])])).toBeUndefined();
     expect(finishedPlanIn([{ type: 'text', text: '好' } as Block])).toBeUndefined();
+  });
+
+  it('finished, the plan stays above the message box until the user writes again', () => {
+    let t: Transcript = { items: [] };
+    t = applyEvent(t, plan('p1', [['读资料', 'completed'], ['写纪要', 'in_progress']]));
+    expect(dockedPlan(t)?.callId).toBe('p1');
+    t = applyEvent(t, plan('p2', [['读资料', 'completed'], ['写纪要', 'completed']]));
+    expect(dockedPlan(t)?.callId).toBe('p2');
+    t = { ...t, items: [...t.items, { kind: 'user', id: 'u2', text: '好', steer: false }] };
+    expect(dockedPlan(t)).toBeUndefined();
+    expect(currentPlan(t)?.callId).toBe('p2');
+  });
+
+  it('demo: two sub-agents, each its plan finished, the parent waiting for them', async () => {
+    const b = new FakeBackend({ speed: 0, seed: false });
+    const chat = await b.createSession({});
+    const done = new Promise<void>((resolve) => b.onEvent((e: CoreEvent) => e.type === 'run.end' && e.sessionId === chat.id && resolve()));
+    await b.send(chat.id, '分两个子任务做');
+    await done;
+    const kids = (await b.listSessions()).filter((x) => x.parentId === chat.id);
+    expect(kids.map((k) => [k.title, k.status])).toEqual([['报价汇总', 'done'], ['测试报告核对', 'done']]);
+    for (const k of kids) expect(currentPlan(fromHistory(await b.getMessages(k.id)))?.steps.every((x) => x.status === 'completed')).toBe(true);
+    const parent = fromHistory(await b.getMessages(chat.id));
+    const wait = parent.items.flatMap((it) => (it.kind === 'response' ? it.blocks : [])).find((x) => x.type === 'tool' && x.name === 'wait_agents');
+    expect((wait as { input?: { ids?: string[] } } | undefined)?.input?.ids).toEqual(kids.map((k) => k.id));
   });
 
   it('read back from the stored conversation as it was live', async () => {

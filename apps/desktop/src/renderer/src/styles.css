@@ -697,6 +697,30 @@ a:hover {
   background: var(--spica-active);
 }
 
+/* The line from a row down to what is under it (sidebar). Drawn over the rows' hover and current
+   colours, so it stays whole; the last one's end turns in towards its name. */
+.tree-branch {
+  position: relative;
+}
+
+.tree-kids > .tree-branch::after {
+  content: '';
+  position: absolute;
+  left: var(--tree-line-x);
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--spica-border-strong);
+  pointer-events: none;
+}
+
+.tree-kids > .tree-branch:last-child::after {
+  bottom: auto;
+  height: 16px;
+  width: 7px;
+  border-bottom: 1px solid var(--spica-border-strong);
+  border-bottom-left-radius: 7px;
+}
+
 /* The name keeps a few characters when the row is crowded; it is only as wide as its text, so the
    expand arrow comes right after it. */
 .tree-title {
@@ -9551,4 +9575,36 @@ input[type='radio']:disabled {
 
 .plan-strip.is-record.is-open .plan-chevron {
   rotate: none;
+}
+
+/* The 等待子任务 row opened: a line per sub-agent, its name, how far its plan is, the step it is on. */
+.child-progress {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.child-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 0;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.child-progress-name {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.child-progress-row .plan-current {
+  color: var(--spica-muted);
 }
