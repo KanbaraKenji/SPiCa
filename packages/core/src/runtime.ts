@@ -712,6 +712,8 @@ export class Runtime implements RuntimeInternals {
       const going = s.running || s.pending().length > 0 || c.resident === true;
       if (!going) continue;
       s.abort('the plugin was turned off', { by: 'plugin' });
+      // its manager knows (a note for the model; the row tells the user)
+      this.session(s.parentId)?.addNote('note', `[Sub-agent ${label(s)} was stopped: the plugin it came from was turned off. It takes no more jobs.]`, { author: 'runtime', pluginStopped: s.id });
       n++;
     }
     return n;

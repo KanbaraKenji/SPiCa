@@ -319,6 +319,10 @@ describe('projects', () => {
     expect(rt1.endPluginAgents('notes')).toBe(1);
     expect(kid.info()).toMatchObject({ status: 'aborted', stoppedBy: 'plugin' });
     expect(kid.info()).not.toHaveProperty('resident');
+    // its manager is told (a note for the model, not shown to the user)
+    const told = pm.messages().at(-1)!;
+    expect(told).toMatchObject({ kind: 'note', meta: { author: 'runtime', pluginStopped: kid.id } });
+    expect(JSON.stringify(told.content)).toContain('was stopped: the plugin it came from was turned off');
     await rt1.close();
     const rt2 = rtFor({ store: new SqliteStore(path) });
     rt2.restore();
