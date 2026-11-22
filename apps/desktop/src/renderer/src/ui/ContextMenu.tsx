@@ -53,6 +53,7 @@ export function ContextMenu({
   minWidth,
   focusChecked = false,
   align = 'start',
+  className,
 }: {
   x: number;
   y: number;
@@ -66,6 +67,8 @@ export function ContextMenu({
   focusChecked?: boolean;
   /** `end`: the menu's right edge on the anchor's (a button at the right end of a card: the menu stays over the card). */
   align?: 'start' | 'end';
+  /** Another class on the menu, for a menu with a look of its own (始终允许's drop-down). */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -145,7 +148,7 @@ export function ContextMenu({
     // take the focus back to the items, and hover stops lighting them until the pointer moves.
     <div
       ref={ref}
-      className={keys ? 'context-menu is-keys' : 'context-menu'}
+      className={['context-menu', keys ? 'is-keys' : '', className ?? ''].filter(Boolean).join(' ')}
       role="menu"
       tabIndex={-1}
       style={{ left: pos.left, top: pos.top, ...(minWidth ? { minWidth } : {}) }}

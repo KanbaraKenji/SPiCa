@@ -6582,6 +6582,16 @@ section.plugins-part > .plugins-part-title {
 }
 
 /* The keyboard ring inside each part (outside it would run over the other part). */
+/* Its drop-down holds one item (允许一次): the item fills the menu, so when it is lit (pointer or keys) the menu is one
+   lit shape, not a lit block inside a frame. */
+.context-menu.allow-split-menu {
+  padding: 0;
+}
+
+.allow-split-menu .context-item {
+  border-radius: var(--radius-popup);
+}
+
 .allow-split > .btn:focus-visible {
   outline-color: var(--spica-on-accent);
   outline-offset: -4px;
