@@ -40,7 +40,7 @@ async function setup() {
 const asks = (events: ReturnType<typeof captureEvents>) => events.filter((e) => e.type === 'confirm.request') as unknown as { cause?: string; outsideFolder?: string; callId: string }[];
 
 async function read(s: { send(t: string): { done: Promise<{ reason: string }> } }, path: string, id: string, name = 'read_file') {
-  gw.enqueue({ toolCalls: [{ id, name, args: name === 'grep' ? { path, pattern: '.' } : { path } }] }, { text: 'read' });
+  gw.enqueue({ toolCalls: [{ id, name, args: name === 'grep' ? { path, pattern: '.' } : name === 'glob' ? { path, pattern: '**/*.md' } : { path } }] }, { text: 'read' });
   return (await s.send(`read ${id}`).done).reason;
 }
 
@@ -59,6 +59,9 @@ describe('reading in another project’s folder', () => {
     // a path in no project's folder is read as before
     expect(await read(pm, join(root, 'plain', 'x.md'), 'plain')).toBe('completed');
     expect(asks(events)).toHaveLength(2);
+    // glob in a sibling's folder asks too
+    expect(await read(pm, t10.folder, 'gl', 'glob')).toBe('awaiting_confirm');
+    expect(asks(events).at(-1)).toMatchObject({ cause: 'other_project', outsideFolder: t10.folder });
   });
 
   it('a project reading its sub-project does not ask; another project, or a plain conversation, does', async () => {

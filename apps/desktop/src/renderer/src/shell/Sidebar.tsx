@@ -258,8 +258,11 @@ export function projectRowSession(p: ProjectInfo): SessionInfo {
  */
 function ProjectRow({ p, subs, tree, current, onOpenProject, leafOf }: { p: ProjectInfo; subs: SessionInfo[]; tree: TreeProps; current: boolean; onOpenProject(id: string): void; leafOf(s: SessionInfo): SessionInfo[] }) {
   const open = p.id in tree.expanded ? tree.expanded[p.id] === true : true;
-  // The page is open: no conversation row is the current one (elsewhere), this one is.
-  const active = current;
+  // The page is open (no conversation row is the current one then), or its own conversation or something it sent out.
+  const own = p.managerSessionId;
+  const active =
+    current ||
+    (!tree.settingsOpen && Boolean(own) && (tree.activeId === own || descendantsOf(own, tree.childrenOf).some((k) => k.id === tree.activeId)));
   const toggle = () => tree.setExpanded(p.id, !open);
   const s = projectRowSession(p);
   const menuOpen = tree.menuFor === p.id;

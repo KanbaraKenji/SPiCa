@@ -7,6 +7,12 @@ import { Icon } from "../ui/Icon";
 import { APP_NAME } from "../../../shared/app-identity";
 import { N_, t, tx } from "../../../shared/i18n";
 
+/** The last folder of a path, after …\ when there is more before it (what a hint has room for). */
+function tailOf(folder: string): string {
+  const parts = folder.split(/[\\/]/).filter(Boolean);
+  return parts.length > 1 ? `…\\${parts[parts.length - 1]}` : folder;
+}
+
 export interface NewProjectInput {
   name: string;
   folder?: string;
@@ -115,7 +121,7 @@ export function NewProjectDialog({
               onChange={(e) => setFolder(e.target.value)}
               placeholder={
                 parent
-                  ? t("默认：{folder}\\名称", { folder: parent.folder })
+                  ? t("默认：{folder}\\名称", { folder: tailOf(parent.folder) })
                   : t("默认：文档\\{app}", { app: APP_NAME })
               }
             />

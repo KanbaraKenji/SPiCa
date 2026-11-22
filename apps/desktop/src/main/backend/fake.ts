@@ -648,7 +648,8 @@ export class FakeBackend implements AgentBackend {
   async deleteProject(projectId: string): Promise<void> {
     const p = this.#projects.get(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
-    const ids = new Set([p.managerSessionId]);
+    const subs = [...this.#projects.values()].filter((x) => x.parentId === projectId);
+    const ids = new Set([p.managerSessionId, ...subs.map((x) => x.managerSessionId)].filter(Boolean));
     for (let grew = true; grew; ) {
       grew = false;
       for (const s of this.#sessions.values()) {
@@ -666,8 +667,12 @@ export class FakeBackend implements AgentBackend {
       this.#superseded.delete(id);
       this.#pending.delete(id);
     }
-    this.#projects.delete(projectId);
     const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
+    for (const x of subs) {
+      this.#projects.delete(x.id);
+      this.#emit(top?.id ?? '', { type: 'project.deleted', projectId: x.id });
+    }
+    this.#projects.delete(projectId);
     this.#emit(top?.id ?? '', { type: 'project.deleted', projectId });
   }
 

@@ -76,7 +76,7 @@ describe('新子项目', () => {
     render(<NewProjectDialog parent={{ name: '机种', folder: 'D:\\工作\\机种' }} onPickFolder={async () => null} onCreate={onCreate} onClose={vi.fn()} />);
     expect(screen.getByText('新子项目')).toBeTruthy();
     expect(screen.getByText('机种')).toBeTruthy();
-    expect(screen.getByPlaceholderText('默认：D:\\工作\\机种\\名称')).toBeTruthy();
+    expect(screen.getByPlaceholderText('默认：…\\机种\\名称')).toBeTruthy();
   });
 });
 
