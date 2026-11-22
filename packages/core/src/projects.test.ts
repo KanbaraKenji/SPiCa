@@ -330,6 +330,53 @@ describe('projects', () => {
     await rt2.close();
   });
 
+  it("a plugin turned off while its agents are working: both stop (kept or not), its manager's wait ends and it is told; working again clears the mark", async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return {
+          toolCalls: [
+            { id: 's1', name: 'spawn_agent', args: { title: 'Kept', task: 'SLOW-KEPT', agent: 'notes__kept' } },
+            { id: 's2', name: 'spawn_agent', args: { title: 'Once', task: 'SLOW-ONCE', agent: 'notes__once' } },
+          ],
+        };
+      }
+      if (all.includes('PM-GO') && !all.includes('wait_agents')) return { toolCalls: [{ id: 'w1', name: 'wait_agents', args: { timeout_seconds: 60 } }] };
+      if (all.includes('AGAIN')) return { text: 'again done' };
+      if (all.includes('SLOW-')) return { text: 'late', delayMs: 4000 };
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    rt1.registerTemplate({ id: 'notes__kept', name: 'Kept', role: 'worker', system: 'K', resident: true, plugin: 'Notes' }, 'plugin:notes');
+    rt1.registerTemplate({ id: 'notes__once', name: 'Once', role: 'worker', system: 'O', plugin: 'Notes' }, 'plugin:notes');
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    const pmDone = pm.send('PM-GO').done;
+    // both working, the manager waiting on them
+    for (let i = 0; i < 100 && !(rt1.children(pm.id).length === 2 && rt1.children(pm.id).every((k) => k.running)); i++) await new Promise((r) => setTimeout(r, 30));
+    const [kept, once] = ['Kept', 'Once'].map((t) => rt1.children(pm.id).find((k) => k.info().title === t)!);
+    expect(kept!.running && once!.running).toBe(true);
+    expect(rt1.endPluginAgents('notes')).toBe(2);
+    await Promise.all([kept!.idle(), once!.idle()]);
+    await pmDone;
+    for (const k of [kept!, once!]) {
+      expect(k.info()).toMatchObject({ status: 'aborted', stoppedBy: 'plugin' });
+      expect(k.info()).not.toHaveProperty('resident');
+    }
+    const notes = pm.messages().filter((m) => m.meta?.pluginStopped);
+    expect(notes.map((m) => m.meta?.pluginStopped).sort()).toEqual([kept!.id, once!.id].sort());
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.session(once!.id)!.info()).toMatchObject({ status: 'aborted', stoppedBy: 'plugin' });
+    // the user writes in it: it works again, and is no longer marked as stopped by its plugin
+    await rt2.session(once!.id)!.send('AGAIN').done;
+    expect(rt2.session(once!.id)!.info()).not.toHaveProperty('stoppedBy');
+    await rt2.close();
+  });
+
   it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
     const rt = rtFor();
     const models = rt.createProject({ name: 'Models', manager: false });

@@ -820,6 +820,13 @@ export class Session {
   // ---------------------------------------------------------------------------
 
   #startRun(): Promise<RunResult> {
+    // working again (the user wrote in it): no longer the one its plugin stopped
+    if (this.#record.config.stoppedBy) {
+      const { stoppedBy: _s, ...config } = this.#record.config;
+      void _s;
+      this.#record = { ...this.#record, config };
+      this.#rt.store.upsertSession(this.#record);
+    }
     const p = this.#loop().finally(() => {
       this.#run = undefined;
       this.#runAbort = undefined;

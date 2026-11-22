@@ -118,6 +118,17 @@ describe('详情 › 子任务', () => {
     expect(screen.getByText('类型')).toBeTruthy();
   });
 
+  it('one its plugin stopped says 插件已停用 where a stopped one says 已停止', () => {
+    const base = tasksOf(SUB_IDS.t1)[0]!;
+    const off = { ...base, id: 'x-off', title: '样品跟踪员', status: 'aborted', stoppedBy: 'plugin', resident: undefined } as SessionInfo;
+    const stopped = { ...base, id: 'x-stop', title: '手动停的', status: 'aborted', resident: undefined } as SessionInfo;
+    render(<DetailPanel session={byId(SUB_IDS.t1)} parent={undefined} transcript={empty} globalCostUsd={0} onOpenFile={vi.fn()} onOpenSession={vi.fn()} subTasks={{ tasks: [off, stopped], transcriptOf: () => empty, load: vi.fn(), stop: vi.fn(), open: vi.fn() }} />);
+    fireEvent.click(screen.getByText('2 个已结束'));
+    const metaOf = (name: string) => screen.getByText(name).closest('.detail-task')!.querySelector('.detail-item-meta')!.textContent;
+    expect(metaOf('样品跟踪员')).toBe('插件已停用');
+    expect(metaOf('手动停的')).toBe('已停止');
+  });
+
   it('a conversation without sub-tasks has no section', () => {
     const chat = { ...byId(SUB_IDS.l2) } as SessionInfo;
     render(<DetailPanel session={chat} parent={undefined} transcript={empty} globalCostUsd={0} onOpenFile={vi.fn()} onOpenSession={vi.fn()} subTasks={{ tasks: [], transcriptOf: () => empty, load: vi.fn(), stop: vi.fn(), open: vi.fn() }} />);
