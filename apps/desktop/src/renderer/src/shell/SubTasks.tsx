@@ -88,7 +88,7 @@ export function SubTasks({ tasks, onSelect, onStop }: SubTasksProps) {
   if (!tasks.length) return null;
   const row = (s: SessionInfo) => {
     const name = s.title ?? '';
-    const canStop = onStop && !isEnded(s) && !(s.status === 'idle' && s.resident);
+    const canStop = onStop && !isEnded(s);
     return (
       <li key={s.id} className="detail-task-row">
         <button type="button" className="detail-task" onClick={() => onSelect(s.id)} title={name}>
@@ -176,7 +176,7 @@ export function SubTaskDetail({ task, transcript, onBack, onOpen, onStop }: SubT
   const [open, setOpen] = useState<string | null>(null);
   const ask = transcript ? firstAsk(transcript) : '';
   const said = transcript ? lastWords(transcript) : '';
-  const canStop = onStop && !isEnded(task) && !(task.status === 'idle' && task.resident);
+  const canStop = onStop && !isEnded(task);
   return (
     <div className="detail-scroll subtask-detail">
       <button type="button" className="back-link" onClick={onBack}>

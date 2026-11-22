@@ -562,6 +562,13 @@ export class FakeBackend implements AgentBackend {
   }
 
   async abort(sessionId: string): Promise<void> {
+    // as the core: stopping a sub-task kept for later jobs ends it
+    const s = this.#sessions.get(sessionId);
+    if (s?.resident) {
+      delete s.resident;
+      if (!this.#runs.has(sessionId)) Object.assign(s, { status: 'aborted', updatedAt: isoAt(this.#now()) });
+      this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
+    }
     this.#runs.get(sessionId)?.controller.abort();
   }
 

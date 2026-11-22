@@ -227,6 +227,49 @@ describe('projects', () => {
     await rt2.close();
   });
 
+  it('a sub-task kept for later jobs is ended by stopping it (the user, or its manager with stop_agent), and stays ended after a restart', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return { toolCalls: [{ id: 's1', name: 'spawn_agent', args: { title: 'A', task: 'JOB-A', resident: true } }, { id: 's2', name: 'spawn_agent', args: { title: 'B', task: 'JOB-B', resident: true } }] };
+      }
+      if (all.includes('PM-END') && !all.includes('Stopped sub-agent')) {
+        const b = all.match(/B\\*" with id (ses_[A-Za-z0-9_-]+)/)?.[1] ?? 'none';
+        return { toolCalls: [{ id: 'x1', name: 'stop_agent', args: { id: b } }, { id: 'x2', name: 'stop_agent', args: { id: 'ses_nope' } }] };
+      }
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    await pm.send('PM-GO').done;
+    const kids = rt1.children(pm.id);
+    await Promise.all(kids.map((k) => k.idle()));
+    const a = kids.find((k) => k.info().title === 'A')!;
+    const b = kids.find((k) => k.info().title === 'B')!;
+    expect(a.info()).toMatchObject({ resident: true, status: 'idle' });
+    // the user presses 停止 on the idle one: ended
+    a.abort();
+    expect(a.info()).toMatchObject({ status: 'aborted' });
+    expect(a.info()).not.toHaveProperty('resident');
+    // its manager ends the other one; someone else's id is refused
+    await pm.send('PM-END').done;
+    expect(b.info()).toMatchObject({ status: 'aborted' });
+    expect(b.info()).not.toHaveProperty('resident');
+    const refused = pm.messages().flatMap((m) => m.content).find((x) => x.type === 'tool_result' && x.toolUseId === 'x2');
+    expect(refused && 'content' in refused ? refused.content : '').toContain('not one of your sub-agents');
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    for (const id of [a.id, b.id]) {
+      expect(rt2.session(id)!.info()).toMatchObject({ status: 'aborted' });
+      expect(rt2.session(id)!.info()).not.toHaveProperty('resident');
+    }
+    await rt2.close();
+  });
+
   it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
     const rt = rtFor();
     const models = rt.createProject({ name: 'Models', manager: false });

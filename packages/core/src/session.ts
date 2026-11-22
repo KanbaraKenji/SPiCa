@@ -500,6 +500,19 @@ export class Session {
 
   /** Stop the run. Pending questions and confirmations are cancelled. */
   abort(reason = 'aborted by user'): void {
+    // a sub-agent kept for later jobs is ended by stopping it: no longer kept (also after a restart), stopped
+    if (this.#record.config.resident) {
+      const { resident: _r, ...config } = this.#record.config;
+      void _r;
+      this.#record = { ...this.#record, config };
+      this.#rt.store.upsertSession(this.#record);
+      if (!this.#run && !this.#hasPending()) {
+        this.#setStatus('aborted');
+        this.#emit({ type: 'session.updated', info: this.info() });
+        return;
+      }
+      this.#emit({ type: 'session.updated', info: this.info() });
+    }
     if (this.#run) {
       this.#runAbort?.abort(Object.assign(new Error(reason), { name: 'AbortError' }));
       return;

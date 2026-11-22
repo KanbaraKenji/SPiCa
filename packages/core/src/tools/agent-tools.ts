@@ -89,6 +89,24 @@ export const spawnAgentTool: Tool = {
   },
 };
 
+export const stopAgentTool: Tool = {
+  category: 'agent',
+  spec: {
+    name: 'stop_agent',
+    description:
+      'Stop one of your sub-agents: a running one stops now; one kept for later jobs (resident) is ended and no longer waits for jobs. ' +
+      'Its record stays; the user can still open it.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  async execute(input, ctx) {
+    const rt = runtimeOf(ctx);
+    const child = rt.session(String(input.id));
+    if (!child || child.parentId !== ctx.sessionId) return { content: `${String(input.id)} is not one of your sub-agents.`, isError: true };
+    child.abort('stopped by the agent that started it');
+    return { content: `Stopped sub-agent "${child.info().title ?? child.id}".` };
+  },
+};
+
 export const messageAgentTool: Tool = {
   category: 'message',
   spec: {
@@ -263,4 +281,4 @@ export const suggestActionsTool: Tool = {
   },
 };
 
-export const agentTools: Tool[] = [askUserTool, suggestActionsTool, spawnAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];
+export const agentTools: Tool[] = [askUserTool, suggestActionsTool, spawnAgentTool, stopAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];

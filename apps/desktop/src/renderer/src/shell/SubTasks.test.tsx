@@ -91,8 +91,8 @@ describe('详情 › 子任务', () => {
     expect(screen.queryByText('整理规格书')).toBeNull();
     fireEvent.click(screen.getByText('4 个已结束'));
     expect(screen.getByText('整理规格书')).toBeTruthy();
-    // 停止 only on the ones going (not on the one kept for later, nor the ended ones)
-    expect(screen.getAllByRole('button', { name: /^停止 / }).map((b) => b.getAttribute('aria-label'))).toEqual(['停止 查报价', '停止 查旧料参考']);
+    // 停止 on the ones going, the one kept for later too (stopping it ends it); not on the ended ones
+    expect(screen.getAllByRole('button', { name: /^停止 / }).map((b) => b.getAttribute('aria-label'))).toEqual(['停止 追踪样制', '停止 查报价', '停止 查旧料参考']);
   });
 
   it('a click shows that sub-task in the details: what it was asked, its calls, its report; ← 子任务 goes back', () => {

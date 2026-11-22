@@ -203,6 +203,7 @@ export const EN_CHAT: Catalog = {
   批量操作网页: 'Batch page steps',
   发送邮件: 'Send email',
   创建子任务: 'Create subtask',
+  停止子任务: 'Stop subtask',
   发消息给子任务: 'Message subtask',
   等待子任务: 'Wait for subtasks',
   记录决定: 'Record decision',
