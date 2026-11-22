@@ -27,7 +27,8 @@ export interface ConversationActions {
   stop(): void;
   answer(callId: string, answer: string): void;
   /** `always`: 始终允许 rather than 允许一次 (操作电脑's card). */
-  confirm(callId: string, approved: boolean, allowFolder?: boolean, always?: boolean): void;
+  /** `always`: 始终允许 (what the card keeps: its folder, or 操作电脑's programs). */
+  confirm(callId: string, approved: boolean, always?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */
   openFolder?: (path: string) => void;
@@ -254,9 +255,9 @@ function Response({
             // Waiting, it stands above the message box (Conversation: openAsks); here once answered or stopped.
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
-            return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, folder) => actions.confirm(b.callId, ok, folder)} />;
+            return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'computer':
-            return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, false, always)} />;
+            return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'plan':
             return <PlanStrip key={`plan-${b.callId}`} steps={b.steps} running={false} record />;
           case 'suggest':

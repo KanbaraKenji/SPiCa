@@ -534,7 +534,8 @@ export class Session {
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
-    if (outside && options.allowFolder) this.allowWriteFolder(outside);
+    const always = options.always === true || options.allowFolder === true;
+    if (outside && always) this.allowWriteFolder(outside);
     // Mark as no longer pending before running so a crash does not re-ask.
     this.#rt.store.deletePending(this.id, callId);
     const tool = this.#rt.tools.get(p.item.toolName);
@@ -547,7 +548,7 @@ export class Session {
     this.#runAbort = undefined;
     // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
     // write that went through as "asking did not work"), and whether the folder was kept
-    const kept = outside && options.allowFolder && !tooWideToAllow(outside);
+    const kept = outside && always && !tooWideToAllow(outside);
     const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
     this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
