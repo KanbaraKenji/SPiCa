@@ -122,7 +122,7 @@ export const DEMO_FORM = { title: '每日报表', prompt: '汇总昨天的出货
 /** 收件箱's 定时任务 cards for the demo list: the runs waiting for a confirmation, the task paused after failures. */
 export function demoRunCards(items: ScheduleItem[]): RunCard[] {
   const out: RunCard[] = [];
-  const what: Record<string, string> = { 'sch-orders': '发送邮件给「ALEX.CHEN」', 'sch-same-2': '修改文件：交期.xlsx' };
+  const what: Record<string, string> = { 'sch-orders': '发送邮件给「ALEX.CHEN」', 'sch-same-2': '运行命令' };
   for (const s of items) {
     const run = s.runs[0];
     if (run?.status === 'waiting') out.push({ id: `rc-${s.id}`, title: s.title, status: 'waiting', at: run.at, what: what[s.id] ?? '', ...(run.sessionId ? { sessionId: run.sessionId } : {}), scheduleId: s.id });

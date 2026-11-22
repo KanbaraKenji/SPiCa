@@ -111,7 +111,9 @@ export function buildScheduleSeed(now: Date): Seed {
     msg(waiting, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: 'sch-c-7', content: 'Scheduled 更新交期表: every day at 08:00.' }], new Date(waitSetup.getTime() + 30_000)),
     msg(waiting, 'assistant', 'assistant', [text('建好了，每天 08:00 在这个对话里更新一次。')], new Date(waitSetup.getTime() + 35_000)),
     runNote(waiting, '更新交期表', day(0, 8)),
-    msg(waiting, 'assistant', 'assistant', [text('启明电子回信把 L1 的交期改到 12/05，要改交期表里的这一格。'), { type: 'tool_use', id: 'sch-c-8', name: 'edit_file', input: { path: '交期.xlsx', old_string: '11/28', new_string: '12/05' } }], day(0, 8, 1)),
+    msg(waiting, 'assistant', 'assistant', [{ type: 'tool_use', id: 'sch-c-11', name: 'read_file', input: { path: '回信\\启明电子_1121.eml' } }], day(0, 8)),
+    msg(waiting, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: 'sch-c-11', content: 'L1 交期改到 12/05。' }], day(0, 8)),
+    msg(waiting, 'assistant', 'assistant', [text('启明电子回信把 L1 的交期改到 12/05，用脚本改交期表里这一格。'), { type: 'tool_use', id: 'sch-c-8', name: 'run_command', input: { command: 'python 更新交期.py --row L1 --date 12/05' } }], day(0, 8, 1)),
   ];
 
   // The agent proposes a schedule; the card waits for the user.
@@ -138,15 +140,15 @@ export function buildScheduleSeed(now: Date): Seed {
   ];
 
   const pending: Record<string, PendingItem[]> = {
-    [orders.id]: [{ kind: 'confirm', callId: 'sch-c-5', toolName: 'send_email', input: mail, reason: '发送邮件给「ALEX.CHEN」', irreversible: true, createdAt: iso(new Date(ordersAt.getTime() + 60_000)) }],
+    [orders.id]: [{ kind: 'confirm', callId: 'sch-c-5', toolName: 'send_email', input: mail, reason: '发送邮件给「ALEX.CHEN」', irreversible: true, cause: 'untrusted_turn', createdAt: iso(new Date(ordersAt.getTime() + 60_000)) }],
     [waiting.id]: [
       {
         kind: 'confirm',
         callId: 'sch-c-8',
-        toolName: 'edit_file',
-        input: { path: '交期.xlsx', old_string: '11/28', new_string: '12/05' },
-        reason: '修改文件',
-        change: { path: 'D:\\工作\\样机评审\\交期.xlsx', created: false, change: { hunks: [{ oldStart: 7, newStart: 7, lines: [' L0  华东精密  11/20', '-L1  启明电子  11/28', '+L1  启明电子  12/05', ' L2  远航塑胶  12/02'] }] } },
+        toolName: 'run_command',
+        input: { command: 'python 更新交期.py --row L1 --date 12/05' },
+        reason: '运行命令',
+        cause: 'untrusted_turn',
         createdAt: iso(day(0, 8, 1)),
       },
     ],

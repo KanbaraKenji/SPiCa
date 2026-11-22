@@ -91,8 +91,6 @@ const SCHEDULE_RUN_IDS = { report: 'sch-run-report', orders: 'sch-run-orders', s
 export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppProps) {
   const { settings } = useShell(shell);
   const state = useAgent(agent);
-  const agentRef = useRef(agent);
-  agentRef.current = agent;
   const [mailStore] = useState(() => mailProp ?? new MailStore(bridge));
   const mail = useMail(mailStore);
   useEffect(() => {
@@ -348,7 +346,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setSettingsOpen(false);
         const open = (id: string) => {
           setView('chat');
-          void agentRef.current.open(id);
+          void agent.open(id);
         };
         if (l === 'sidebar') {
           if (sc === 'create' || sc === 'list') setView('schedule');
@@ -366,7 +364,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     return () => {
       delete window.__spicaShots;
     };
-  }, []);
+  }, [agent]);
 
   // Memos holding words (a conversation's name when it has none) are made again in a new language.
   const locale = useLocale();

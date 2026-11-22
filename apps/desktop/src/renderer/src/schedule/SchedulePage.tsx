@@ -56,7 +56,7 @@ export function SchedulePage(props: ScheduleHomeProps) {
             </button>
           </div>
         </div>
-        <ScheduleRows items={props.items.filter((s) => s.output === 'new')} now={props.now} onToggle={props.onToggle} onOpen={open} onMore={menu.open} />
+        <ScheduleRows items={props.items} now={props.now} onToggle={props.onToggle} onOpen={open} onMore={menu.open} />
       </div>
       {menu.el}
       {props.creating ? <ScheduleDialog initial={{ ...emptyForm(props.now), ...DEMO_FORM }} onCancel={() => props.onCreating(false)} onSave={() => props.onCreating(false)} /> : null}
@@ -79,7 +79,7 @@ export function ScheduleSettings(props: ScheduleHomeProps) {
           </button>
         }
       >
-        <ScheduleSettingsRows items={props.items.filter((s) => s.output === 'new')} now={props.now} onToggle={props.onToggle} onOpen={(s) => s.runs[0]?.sessionId && props.onOpenRun(s.runs[0].sessionId)} onMore={menu.open} />
+        <ScheduleSettingsRows items={props.items} now={props.now} onToggle={props.onToggle} onOpen={(s) => s.runs[0]?.sessionId && props.onOpenRun(s.runs[0].sessionId)} onMore={menu.open} />
       </Group>
       {menu.el}
     </>

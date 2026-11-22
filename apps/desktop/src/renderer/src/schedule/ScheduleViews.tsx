@@ -37,7 +37,8 @@ function RunMark({ run }: { run: ScheduleRun | undefined }) {
 
 /** 每天 09:00 · 下次 明天 09:00 (paused: 已暂停; after failures: 连续 3 次失败，已暂停). */
 export function scheduleLine(item: ScheduleItem, now: Date): string {
-  const when = repeatText(item.trigger.repeat);
+  // 一次: the time is the next run, said once
+  const when = item.trigger.repeat.kind === 'once' ? t('一次') : repeatText(item.trigger.repeat);
   if (!item.enabled) return item.pausedAfterFailures ? `${when} · ${t('连续 {n} 次失败，已暂停', { n: item.pausedAfterFailures })}` : `${when} · ${t('已暂停')}`;
   return `${when} · ${t('下次 {when}', { when: whenText(item.nextAt, now) })}`;
 }
