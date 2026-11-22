@@ -7,6 +7,12 @@ import { Icon } from "../ui/Icon";
 import { APP_NAME } from "../../../shared/app-identity";
 import { N_, t, tx } from "../../../shared/i18n";
 
+/** The last folder of a path, after …\ when there is more before it (what a hint has room for). */
+function tailOf(folder: string): string {
+  const parts = folder.split(/[\\/]/).filter(Boolean);
+  return parts.length > 1 ? `…\\${parts[parts.length - 1]}` : folder;
+}
+
 export interface NewProjectInput {
   name: string;
   folder?: string;
@@ -19,6 +25,8 @@ export interface NewProjectDialogProps {
   onClose(): void;
   /** Prefilled name (e.g. what the mail sorting suggested). */
   initialName?: string;
+  /** A sub-project of this project: its folder goes inside the project's (the default: a folder of its name there). */
+  parent?: { name: string; folder: string };
 }
 
 export function NewProjectDialog({
@@ -26,6 +34,7 @@ export function NewProjectDialog({
   onCreate,
   onClose,
   initialName = "",
+  parent,
 }: NewProjectDialogProps) {
   const id = useId();
   const [name, setName] = useState(initialName);
@@ -83,8 +92,14 @@ export function NewProjectDialog({
         }}
       >
         <p className="dialog-title" id={id}>
-          {t("新项目")}
+          {parent ? t("新子项目") : t("新项目")}
         </p>
+        {parent ? (
+          <div className="form-field">
+            <span className="field-label">{t("项目")}</span>
+            <span className="form-value">{parent.name}</span>
+          </div>
+        ) : null}
         <label className="form-field">
           <span className="field-label">{t("名称")}</span>
           <input
@@ -104,7 +119,11 @@ export function NewProjectDialog({
               value={folder}
               spellCheck={false}
               onChange={(e) => setFolder(e.target.value)}
-              placeholder={t("默认：文档\\{app}", { app: APP_NAME })}
+              placeholder={
+                parent
+                  ? t("默认：{folder}\\名称", { folder: tailOf(parent.folder) })
+                  : t("默认：文档\\{app}", { app: APP_NAME })
+              }
             />
             <button
               type="button"

@@ -476,11 +476,20 @@ export class Runtime implements RuntimeInternals {
         if (!p) return;
         const wf = p.workflowId ? this.#workflows.workflows.get(p.workflowId) : undefined;
         const stage = wf?.stages.find((s) => s.id === p.stage);
+        const above = p.parentId ? this.store.getProject(p.parentId) : undefined;
         const text =
           `You work for the project "${p.name}" (${p.id}); project folder: ${p.folder}.` +
+          (above ? ` It is a sub-project of "${above.name}" (${above.id}; folder ${above.folder}).` : '') +
           (wf ? ` Workflow: ${wf.name}; current stage: ${stage?.name ?? p.stage}${stage?.goal ? ` (goal: ${stage.goal})` : ''}.` : '');
         return [{ position: 'system:after', text, priority: 10 }];
       },
+    });
+    // A sub-agent kept for later jobs knows it stays (in its instructions, not in the task the user reads).
+    this.hooks.register('core:resident', {
+      inject: (ctx) =>
+        ctx.session.resident
+          ? [{ position: 'system:after', text: 'You are kept for later jobs: report when a job is done; the next one will come as a message.', priority: 10 }]
+          : undefined,
     });
   }
 
@@ -612,6 +621,7 @@ export class Runtime implements RuntimeInternals {
       ...((req.projectId ?? parent?.config.projectId) ? { projectId: req.projectId ?? parent?.config.projectId } : {}),
       // sub-agents work under their parent's approval mode
       ...((req.approvalMode ?? parent?.config.approvalMode) === 'auto' ? { approvalMode: 'auto' as const } : {}),
+      ...(req.resident && parent ? { resident: true } : {}),
     };
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
@@ -856,12 +866,23 @@ export class Runtime implements RuntimeInternals {
     return this.#workflows.errors;
   }
 
-  /** `askerId`: the conversation that created it gets the manager's report on the brief. */
+  /**
+   * `askerId`: the conversation that created it gets the manager's report on the brief. A sub-project (`parentId`)
+   * has its folder inside its project's (relative folders are taken from there); only one level: a sub-project holds
+   * no sub-projects. `manager: false`: a project that only holds sub-projects, no conversation of its own.
+   */
   createProject(req: CreateProjectRequest, opts: { askerId?: string } = {}): ProjectInfo {
     const name = req.name.trim();
     if (!name) throw new Error('a project needs a name');
-    const rootDir = this.#opts.projectsRoot ?? this.#opts.cwd ?? process.cwd();
+    const parent = req.parentId ? this.store.getProject(req.parentId) : undefined;
+    if (req.parentId && !parent) throw new Error(`unknown project: ${req.parentId}`);
+    if (parent?.parentId) throw new Error(`"${parent.name}" is a sub-project; a sub-project holds no sub-projects`);
+    if (parent && req.manager === false) throw new Error('a sub-project is a conversation: it needs its manager');
+    const rootDir = parent?.folder ?? this.#opts.projectsRoot ?? this.#opts.cwd ?? process.cwd();
     const folder = req.folder ? (isAbsolute(req.folder) ? req.folder : join(rootDir, req.folder)) : join(rootDir, safeFolderName(name));
+    if (parent && (samePath(folder, parent.folder) || !within(parent.folder, folder))) {
+      throw new Error(`a sub-project's folder is inside its project's folder (${parent.folder})`);
+    }
     let workflow: WorkflowDef | undefined;
     if (req.workflowId) {
       workflow = this.#workflows.workflows.get(req.workflowId);
@@ -870,13 +891,14 @@ export class Runtime implements RuntimeInternals {
     mkdirSync(folder, { recursive: true });
     const id = newId('prj');
     // a standing session of its own: no conversation is its parent; any assistant conversation can talk to it
-    const manager = this.createSession({ templateId: 'project-manager', title: name, cwd: folder, projectId: id });
+    const manager = req.manager === false ? undefined : this.createSession({ templateId: 'project-manager', title: name, cwd: folder, projectId: id });
     const now = isoNow();
     const project: ProjectInfo = {
       id,
       name,
       folder,
-      managerSessionId: manager.id,
+      managerSessionId: manager?.id ?? '',
+      ...(parent ? { parentId: parent.id } : {}),
       workflowId: workflow?.id ?? null,
       stage: workflow?.stages[0]?.id ?? null,
       status: 'active',
@@ -884,10 +906,16 @@ export class Runtime implements RuntimeInternals {
       updatedAt: now,
     };
     this.store.upsertProject(project);
+    if (parent) this.store.upsertProject({ ...parent, updatedAt: now });
     this.events.emit(this.eventHost, { type: 'project.created', project });
-    if (opts.askerId) this.noteAsker(manager.id, opts.askerId);
-    if (req.brief?.trim()) manager.send(req.brief, { author: 'parent' });
+    if (manager && opts.askerId) this.noteAsker(manager.id, opts.askerId);
+    if (manager && req.brief?.trim()) manager.send(req.brief, { author: 'parent' });
     return project;
+  }
+
+  /** The sub-projects of a project, oldest first. */
+  subProjects(projectId: string): ProjectInfo[] {
+    return this.store.listProjects().filter((p) => p.parentId === projectId);
   }
 
   listProjects(): ProjectInfo[] {
@@ -897,15 +925,16 @@ export class Runtime implements RuntimeInternals {
   getProject(projectId: string): ProjectDetail | undefined {
     const p = this.store.getProject(projectId);
     if (!p) return undefined;
-    const manager = this.session(p.managerSessionId);
-    if (!manager) return undefined;
+    const manager = p.managerSessionId ? this.session(p.managerSessionId) : undefined;
+    if (p.managerSessionId && !manager) return undefined;
     return {
       ...p,
       workflow: p.workflowId ? (this.#workflows.workflows.get(p.workflowId) ?? null) : null,
       objects: this.store.listWorkObjects(projectId),
       recentLog: this.store.listProjectLog(projectId, 20),
-      manager: manager.info(),
-      agents: this.children(manager.id).map((c) => c.info()),
+      manager: manager?.info() ?? null,
+      agents: manager ? this.children(manager.id).map((c) => c.info()) : [],
+      subProjects: this.subProjects(projectId),
     };
   }
 
@@ -1088,30 +1117,40 @@ export class Runtime implements RuntimeInternals {
     if (!n) throw new Error('a project needs a name');
     const updated: ProjectInfo = { ...p, name: n, updatedAt: isoNow() };
     this.store.upsertProject(updated);
-    this.session(p.managerSessionId)?.rename(n);
+    if (p.managerSessionId) this.session(p.managerSessionId)?.rename(n);
     this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
     return updated;
   }
 
   /**
-   * Remove a project from Spica: the project, its manager and every session
-   * under it, its activity log and work objects. The folder and its files are
-   * not touched. Running sessions are stopped first. Mail filed under it
-   * becomes a "new matter" again, and sender memory pointing at it is
+   * Remove a project from Spica: the project, its sub-projects, their managers and every session
+   * under them, their activity logs and work objects. The folders and their files are
+   * not touched. Running sessions are stopped first. Mail filed under them
+   * becomes a "new matter" again, and sender memory pointing at them is
    * forgotten. Traceable records stay (spending history and limits).
    */
   async deleteProject(projectId: string): Promise<void> {
     const p = this.store.getProject(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
-    const ids = this.#withDescendants(this.store.listSessions().filter((s) => s.id === p.managerSessionId || s.config.projectId === p.id).map((s) => s.id));
+    const all = [p, ...this.subProjects(p.id)];
+    const pids = new Set(all.map((x) => x.id));
+    const managers = new Set(all.map((x) => x.managerSessionId).filter(Boolean));
+    const ids = this.#withDescendants(this.store.listSessions().filter((s) => managers.has(s.id) || (s.config.projectId !== undefined && pids.has(s.config.projectId))).map((s) => s.id));
     await this.#stopAll(ids, 'project deleted');
-    for (const m of this.store.listMail({ projectId: p.id, limit: 1_000_000 })) {
-      const { routedTo: _r, ...rest } = m;
-      void _r;
-      const triage = m.triage ? (({ projectId: _p, ...t }) => (void _p, { ...t, decision: 'new' as const }))(m.triage) : undefined;
-      this.store.upsertMail({ ...rest, status: m.status === 'ignored' ? 'ignored' : 'triaged', ...(triage ? { triage } : {}), updatedAt: isoNow() });
+    for (const x of all) {
+      for (const m of this.store.listMail({ projectId: x.id, limit: 1_000_000 })) {
+        const { routedTo: _r, ...rest } = m;
+        void _r;
+        const triage = m.triage ? (({ projectId: _p, ...t }) => (void _p, { ...t, decision: 'new' as const }))(m.triage) : undefined;
+        this.store.upsertMail({ ...rest, status: m.status === 'ignored' ? 'ignored' : 'triaged', ...(triage ? { triage } : {}), updatedAt: isoNow() });
+      }
     }
     this.#drop(ids);
+    // the sub-projects first, each said (the shell drops them as it drops the project)
+    for (const x of all.slice(1)) {
+      this.store.deleteProject(x.id);
+      this.events.emit(this.eventHost, { type: 'project.deleted', projectId: x.id });
+    }
     this.store.deleteProject(p.id);
     this.events.emit(this.eventHost, { type: 'project.deleted', projectId: p.id });
   }

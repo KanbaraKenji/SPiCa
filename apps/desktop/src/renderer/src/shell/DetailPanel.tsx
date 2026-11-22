@@ -14,6 +14,7 @@ import { runningWords, toolWords } from '../chat/tool-words';
 import { SpicaStatusIcon } from '@spica/brand/react';
 import { N_, t, tc } from '../../../shared/i18n';
 import { CommandJobs } from './CommandJobs';
+import { SubTaskDetail, SubTasks } from './SubTasks';
 
 export type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -53,6 +54,18 @@ export interface DetailPanelProps {
   history?: { open: boolean; toggle(): void };
   /** 后台命令's 停止. */
   onStopJob?: (jobId: string) => void;
+  /**
+   * The sub-tasks the open conversation sent out (its 子任务 section) and how to show one:
+   * its record (loaded on a click), 停止, its whole conversation in the main area.
+   */
+  subTasks?: {
+    tasks: SessionInfo[];
+    /** Its record; undefined while it loads. */
+    transcriptOf(id: string): Transcript | undefined;
+    load(id: string): void;
+    stop(id: string): void;
+    open(id: string): void;
+  };
 }
 
 
@@ -77,19 +90,23 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob, subTasks }: DetailPanelProps) {
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
   const running = tools.filter((b) => isRunning(b, live));
   const [filesOpen, setFilesOpen] = useState(true);
   const [allFiles, setAllFiles] = useState(false);
   // another conversation: its files open again, the first five
+  /** A sub-task shown in place of the list (子任务 › one of them). */
+  const [taskShown, setTaskShown] = useState<string | null>(null);
   const [shownFor, setShownFor] = useState(session?.id);
   if (shownFor !== session?.id) {
     setShownFor(session?.id);
     setFilesOpen(true);
     setAllFiles(false);
+    setTaskShown(null);
   }
+  const task = taskShown ? subTasks?.tasks.find((x) => x.id === taskShown) : undefined;
   // Per answer, so files named before the working-folder note are where it put them; each file once.
   const moves = changesAfter(transcript.items);
   const files = [
@@ -108,7 +125,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
       </header>
       )}
       {/* Nothing open yet: the panel stays empty rather than a column of dashes. */}
-      {session ? (
+      {task && subTasks ? (
+        <SubTaskDetail task={task} transcript={subTasks.transcriptOf(task.id)} onBack={() => setTaskShown(null)} onOpen={subTasks.open} onStop={subTasks.stop} />
+      ) : session ? (
       <div className="detail-scroll">
         {session ? (
           <section className="detail-section">
@@ -159,6 +178,17 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
               ) : null}
             </dl>
           </section>
+        ) : null}
+
+        {subTasks?.tasks.length ? (
+          <SubTasks
+            tasks={subTasks.tasks}
+            onSelect={(id) => {
+              subTasks.load(id);
+              setTaskShown(id);
+            }}
+            onStop={subTasks.stop}
+          />
         ) : null}
 
         {project ? (

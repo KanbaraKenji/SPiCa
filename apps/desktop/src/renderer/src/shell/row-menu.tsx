@@ -16,6 +16,9 @@ export interface RowActions {
   onDeleteProject?: (projectId: string, name: string) => void;
   /** Only the user's own conversations (not a project's, not a sub-task). */
   onDeleteChat?: (s: SessionInfo) => void;
+  /** 新子项目 on a project's menu; never on a sub-project's (`isSubProject`), which holds none. */
+  onNewSubProject?: (projectId: string) => void;
+  isSubProject?: (projectId: string) => boolean;
   /** Project ids pinned to the top, in pin order. */
   pinned: readonly string[];
 }
@@ -27,7 +30,7 @@ export function isOwnChat(s: SessionInfo): boolean {
 
 /** Whether the session has a menu at all (conversations to rename or delete; projects to rename, pin, delete). */
 export function hasRowMenu(s: SessionInfo, a: RowActions): boolean {
-  return s.role === 'manager' ? Boolean(s.projectId && (a.onPin || a.onRenameProject || a.onDeleteProject)) : Boolean(a.onRename || (a.onDeleteChat && isOwnChat(s)));
+  return s.role === 'manager' ? Boolean(s.projectId && (a.onPin || a.onRenameProject || a.onDeleteProject || a.onNewSubProject)) : Boolean(a.onRename || (a.onDeleteChat && isOwnChat(s)));
 }
 
 /** Whether the session's name can be changed. */
@@ -43,9 +46,10 @@ export function rowMenuItems(s: SessionInfo, a: RowActions, startRename: () => v
   }
   const pid = s.projectId;
   if (!pid) return [];
-  const { onPin, onDeleteProject } = a;
+  const { onPin, onDeleteProject, onNewSubProject } = a;
   const isPinned = a.pinned.includes(pid);
   return [
+    ...(onNewSubProject && !a.isSubProject?.(pid) ? [{ label: t('新子项目'), onSelect: () => onNewSubProject(pid) }] : []),
     ...(a.onRenameProject ? [{ label: t('重命名'), onSelect: startRename }] : []),
     ...(onPin ? [{ label: isPinned ? t('取消置顶') : t('置顶'), onSelect: () => onPin(pid, !isPinned) }] : []),
     ...(onDeleteProject ? [{ label: t('删除'), danger: true, onSelect: () => onDeleteProject(pid, s.title ?? '') }] : []),

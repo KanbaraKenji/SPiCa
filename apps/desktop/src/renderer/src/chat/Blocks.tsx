@@ -1306,7 +1306,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <span className="card-title" title={title} data-tip-clipped="">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
-        {block.outsideFolder ? <span className="confirm-undo">{t('工作文件夹以外')}</span> : null}
+        {/* reading in another project's folder: said the same way, with which (the folder is on the main button's hover) */}
+        {block.outsideFolder ? <span className="confirm-undo">{block.cause === 'other_project' ? t('其他项目') : t('工作文件夹以外')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
