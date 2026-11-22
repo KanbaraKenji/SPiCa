@@ -209,6 +209,7 @@ export const priority = 100; // 可选，小的先跑
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
 | 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` 并带 `irreversible: true`，理由是「「插件显示名」：工具名」（卡片右上角已有「无法撤销」，标题不再重复）。本插件任何 server 的工具，mcp/ 和 services/ 都算；模型调隐藏的服务工具先返回 `deny`。插件自己的钩子再对同一个工具要求确认时，理由用它的，标记保留 | `plugin:<name>` |
 | 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `callPluginTool`（钩子生效、留痕） | — |
+| 子任务（`agents`） | 启用时（server 起来之后）每个声明调 `runtime.registerTemplate({ id: '<插件>__<id>', role: 'worker', name, description, system, tools, resident, plugin }, source)`，`unregisterSource` 撤掉；和内置、部署模板同 id 会被拒。内核的 `core:agents` 注入每一轮把可用的列给看得到 `spawn_agent` 的经理和助手（子任务不给）；`spawn_agent` 的 `agent` 按模板起子任务，模板说常驻就是常驻。用户点停用或卸载时插件包先调 `runtime.endPluginAgents(插件名)`：它名下还在跑的、常驻的子任务停下，记上 `stoppedBy: 'plugin'`（行上写「插件已停用」）；更新、回退、改设置、切模拟模式、关应用走的是内部停用，不停它们 | `plugin:<name>` |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
 

@@ -270,6 +270,62 @@ describe('projects', () => {
     await rt2.close();
   });
 
+  it("a plugin's agent: listed to the manager each turn, started by spawn_agent agent with its instructions and tools, kept when it says so", async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return {
+          toolCalls: [
+            { id: 's1', name: 'spawn_agent', args: { title: 'Watch', task: 'WATCH the samples', agent: 'notes__watcher', resident: false } },
+            { id: 's2', name: 'spawn_agent', args: { title: 'Nope', task: 'x', agent: 'notes__nope' } },
+          ],
+        };
+      }
+      if (all.includes('WATCH')) return { text: 'watched' };
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    rt1.registerTemplate(
+      { id: 'notes__watcher', name: 'Watcher', role: 'worker', description: 'Follows up on samples', system: 'WATCHER-RULES', tools: ['read_file'], resident: true, plugin: 'Notes' },
+      'plugin:notes',
+    );
+    // a plugin cannot take a built-in template's place
+    expect(() => rt1.registerTemplate({ id: 'top', name: 'x', role: 'worker', system: 'x' }, 'plugin:bad')).toThrow(/already exists/);
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    await pm.send('PM-GO').done;
+    const pmSystem = (gw.requests[0]!.body.messages as { content: string }[])[0]!.content;
+    expect(pmSystem).toContain('Agents you can start with spawn_agent');
+    expect(pmSystem).toContain('- notes__watcher: Watcher (Notes plugin, kept for later jobs): Follows up on samples');
+    const kid = rt1.children(pm.id).find((k) => k.info().title === 'Watch')!;
+    await kid.idle();
+    // the agent says kept: asking for less does not undo that
+    expect(kid.info()).toMatchObject({ templateId: 'notes__watcher', resident: true, status: 'idle', role: 'worker' });
+    const kidReq = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('WATCH the samples'))!;
+    expect((kidReq.body.messages as { content: string }[])[0]!.content).toContain('WATCHER-RULES');
+    expect(((kidReq.body.tools ?? []) as { name?: string; function?: { name: string } }[]).map((t) => t.function?.name ?? t.name)).toEqual(['read_file']);
+    // a sub-agent is not given the list
+    expect((kidReq.body.messages as { content: string }[])[0]!.content).not.toContain('Agents you can start');
+    const unknown = pm.messages().flatMap((m) => m.content).find((x) => x.type === 'tool_result' && x.toolUseId === 's2');
+    expect(unknown && 'content' in unknown ? unknown.content : '').toContain('No agent "notes__nope". Available: notes__watcher.');
+    // the plugin restarts (an update): the agent goes and comes back, the sub-agent stays kept
+    rt1.unregisterSource('plugin:notes');
+    expect(rt1.agentTemplates()).toEqual([]);
+    expect(kid.info()).toMatchObject({ resident: true, status: 'idle' });
+    rt1.registerTemplate({ id: 'notes__watcher', name: 'Watcher', role: 'worker', system: 'WATCHER-RULES', resident: true, plugin: 'Notes' }, 'plugin:notes');
+    // turned off: stopped, and the row says why
+    expect(rt1.endPluginAgents('notes')).toBe(1);
+    expect(kid.info()).toMatchObject({ status: 'aborted', stoppedBy: 'plugin' });
+    expect(kid.info()).not.toHaveProperty('resident');
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.session(kid.id)!.info()).toMatchObject({ status: 'aborted', stoppedBy: 'plugin', templateId: 'notes__watcher' });
+    await rt2.close();
+  });
+
   it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
     const rt = rtFor();
     const models = rt.createProject({ name: 'Models', manager: false });

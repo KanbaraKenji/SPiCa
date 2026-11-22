@@ -57,7 +57,9 @@ export const spawnAgentTool: Tool = {
       'Start a sub-agent session for one piece of work. It runs in parallel and the user can open it and talk to it. ' +
       'Returns its id immediately; use wait_agents to collect its report. resident: true keeps it for later jobs of the ' +
       'same kind (e.g. following up on something over days): it reports each job as usual and then waits; give it the ' +
-      'next job with message_agent instead of starting a new one.',
+      'next job with message_agent instead of starting a new one. agent starts it as one of the agents plugins provide ' +
+      '(listed in your instructions when there are any): it then has that agent\'s instructions and tools, and is kept ' +
+      'for later jobs when that agent says so.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -66,17 +68,24 @@ export const spawnAgentTool: Tool = {
         role: { type: 'string', description: '"worker" (default) or "manager" (for a project manager).' },
         cwd: { type: 'string', description: 'Working folder for the sub-agent (default: yours).' },
         resident: { type: 'boolean', description: 'Keep it for later jobs (default false: one piece of work).' },
+        agent: { type: 'string', description: 'Id of an agent a plugin provides (default: a general sub-agent).' },
       },
       required: ['title', 'task'],
     },
   },
   async execute(input, ctx) {
     const rt = runtimeOf(ctx);
-    const role = input.role === 'manager' ? 'manager' : 'worker';
+    const agent = typeof input.agent === 'string' && input.agent.trim() ? input.agent.trim() : undefined;
+    if (agent && !rt.agentTemplates().some((t) => t.id === agent)) {
+      const ids = rt.agentTemplates().map((t) => t.id);
+      return { content: `No agent "${agent}". ${ids.length ? `Available: ${ids.join(', ')}.` : 'No plugin provides agents right now.'}`, isError: true };
+    }
+    const role = agent ? 'worker' : input.role === 'manager' ? 'manager' : 'worker';
     const child = rt.createSession({
       parentId: ctx.sessionId,
       role,
       title: String(input.title),
+      ...(agent ? { templateId: agent } : {}),
       ...(typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
       ...(input.resident === true ? { resident: true } : {}),
     });
@@ -84,7 +93,7 @@ export const spawnAgentTool: Tool = {
     return {
       content:
         `Started sub-agent "${String(input.title)}" with id ${child.id}. It is working now.` +
-        (input.resident === true ? ' It is kept for later jobs: give it the next one with message_agent.' : ''),
+        (child.config.resident ? ' It is kept for later jobs: give it the next one with message_agent.' : ''),
     };
   },
 };

@@ -58,7 +58,7 @@ const isLive = (s: SessionInfo) => s.status === 'thinking' || s.status === 'tool
 function metaOf(s: SessionInfo, now: number): React.ReactNode {
   if (s.status === 'awaiting_answer' || s.status === 'awaiting_confirm') return t(STATUS_LABEL[s.status]);
   if (s.status === 'error' || s.status === 'interrupted') return <span className="text-danger">{t(STATUS_LABEL[s.status])}</span>;
-  if (s.status === 'aborted') return t('已停止');
+  if (s.status === 'aborted') return s.stoppedBy === 'plugin' ? t('插件已停用') : t('已停止');
   if (s.status === 'idle' && s.resident) return t('常驻');
   if (isEnded(s)) return formatDuration(ms(s.createdAt, s.updatedAt));
   return formatClock(ms(s.createdAt, now));

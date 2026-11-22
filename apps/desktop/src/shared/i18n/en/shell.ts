@@ -198,6 +198,7 @@ export const EN_SHELL: Catalog = {
   '将删除该项目、它的子项目及其对话记录，不会删除文件夹中的文件。': 'The project, its sub-projects and their conversations will be deleted. Files in the folders won’t be deleted.',
   子项目: 'Sub-projects',
   常驻: 'Resident',
+  插件已停用: 'Plugin disabled',
   回报: 'Report',
   '{n} 个已结束': '{n} finished',
   运行中: 'Running',

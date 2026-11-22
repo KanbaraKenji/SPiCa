@@ -33,6 +33,16 @@
     "supported": true,
     "description": "The catalog answers from bundled sample data instead of the catalog service."
   },
+  "agents": [
+    {
+      "id": "keeper",
+      "name": "Notebook keeper",
+      "description": "Keeps one topic's notes up to date over several jobs: files what it is given, merges repeats, reports what changed.",
+      "system": "You keep the notes on one topic in the user's notebook. For each job: read the notes that are there (notes__list_notes, notes__read_note), add or update them with notes__write_note (one topic per note, the date first), and never delete a note. Then report in two or three lines what you changed. You are given new jobs as messages; keep using the same notes.",
+      "tools": ["notes__list_notes", "notes__read_note", "notes__write_note"],
+      "resident": true
+    }
+  ],
   "user_config": {
     "notes_folder": {
       "type": "folder",
@@ -64,6 +74,9 @@
       "skills": {
         "note-taking": "怎样在本机笔记本里整齐地记笔记（标题、日期、一条笔记一个主题）。"
       },
+      "agents": {
+        "keeper": { "name": "笔记管家", "description": "替一个主题持续整理笔记：收进新内容、合并重复的，每次回报改了什么。" }
+      },
       "user_config": {
         "notes_folder": { "title": "笔记文件夹" },
         "catalog_url": { "title": "样例目录地址" }
@@ -87,6 +100,9 @@
       },
       "skills": {
         "note-taking": "如何在本機筆記本裡整齊地記筆記（標題、日期、一則筆記一個主題）。"
+      },
+      "agents": {
+        "keeper": { "name": "筆記管家", "description": "替一個主題持續整理筆記：收進新內容、合併重複的，每次回報改了什麼。" }
       },
       "user_config": {
         "notes_folder": { "title": "筆記資料夾" },

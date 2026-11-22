@@ -628,6 +628,32 @@ if (process.env.SPICA_MOCK === '1') {
 - 被拒绝时是 JSON-RPC 错误 `-32000`，`data.code` 是 `invalid`、`no_model`、`model_not_configured`、`budget`、`rate_limited`、`failed` 之一，要转成一句告诉用户怎么办的话。
 - 页面脚本不能直接用，要用就调自己 server 的工具。
 
+## 6d. 给项目经理用的子任务（`agents`，可选）
+
+项目经理（每个项目自己的那个对话）把活分给子任务做。插件可以带上自己的子任务：写好它的说明、它能用的工具、做完一件要不要留着等下一件，经理派活时按名字挑它。
+
+```json
+"agents": [
+  {
+    "id": "keeper",
+    "name": "To-do keeper",
+    "description": "Keeps one list of to-dos up to date over several jobs and reports what changed.",
+    "system": "You keep one to-do list up to date. For each job: read the list (todo__list), add what you are given with todo__add, never clear anything, then report in two or three lines what you changed. New jobs come as messages.",
+    "tools": ["todo__list", "todo__add"],
+    "resident": true
+  }
+]
+```
+
+- `id` 用小写字母、数字和 `-`，2–32 个字符，在插件里不能重复。模型用 `<插件名>__<id>` 叫它，上面这个就是 `todo__keeper`。
+- `name`、`description`、`system` 必填。`description` 写一句话：经理每一轮都能看到所有可用子任务的 id、名字和这句话，靠它决定派给谁。`system` 是子任务的说明（系统提示），不超过 20000 字；它看不到经理的对话，要做的事由经理派活时写给它。
+- `tools` 是它能用的工具，写模型看到的名字：自己的工具带前缀（`todo__add`；插件有多个 server 时是 `todo-<server>__add`），Spica 自带的照原名（`read_file`、`write_file`……）。不写就和派它的经理用一样的工具。写了不存在的工具不挡安装，插件日志里记一行。
+- `resident: true`：做完一件不结束，留着等下一件（界面上「子任务」那一段写「常驻」），经理用 `message_agent` 把下一件发给它，直到用户或经理点停止。不写或写 `false` 是一件做完就结束。插件说常驻，经理派活时就是常驻。
+- 经理派活：`spawn_agent` 带上 `agent: "todo__keeper"`，`title` 和 `task` 照常写。
+- 插件被停用或卸载时，它的子任务里还在跑的、常驻等着的都停下，那一行写「插件已停用」，记录留着。更新插件、切模拟模式、关掉 Spica 再开都不停：常驻的照旧等着。
+- `name`、`description` 的别的语言写在 `i18n` 的 `agents` 里：`"agents": { "keeper": { "name": "待办管家", "description": "…" } }`。
+- 例子：`plugins/example-notes` 的 `keeper`（笔记管家）；脚手架 `scaffold.mjs --with agent` 生成一个。
+
 ## 7. 本地试
 
 在 Spica 仓库里：

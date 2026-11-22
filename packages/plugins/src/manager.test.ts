@@ -14,7 +14,8 @@ import { runtimeHost } from './host.ts';
 import { readPluginFolder } from './folder.ts';
 import { unpackPlugin } from './pack.ts';
 import { writeZip } from './zip.ts';
-import { EXAMPLE_PLUGIN, OUTLOOK_PLUGIN, callTool, hookCtx, makeRuntime, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
+import { EXAMPLE_PLUGIN, OUTLOOK_PLUGIN, callTool, exampleAt, hookCtx, makeRuntime, manifest, rig, toolNames, until, writePlugin, type Rig } from './testing/helpers.ts';
+import { validateManifest } from './manifest.ts';
 
 let r: Rig | undefined;
 const dirs: string[] = [];
@@ -158,6 +159,61 @@ describe('enable and disable', () => {
     expect(pm2.mock).toBe(true);
     expect(toolNames(r.rt)).toContain('notes__search_catalog');
     await pm2.shutdown();
+  });
+});
+
+describe('agents (manifest.json · agents)', () => {
+  it("the example's keeper: registered as notes__keeper on enable, listed by describe(), gone on disable", async () => {
+    r = await rig();
+    await r.pm.install(EXAMPLE_PLUGIN);
+    await r.pm.enable('notes');
+    expect(r.rt.agentTemplates()).toEqual([
+      expect.objectContaining({ id: 'notes__keeper', name: 'Notebook keeper', role: 'worker', resident: true, plugin: 'Notes (example)', tools: ['notes__list_notes', 'notes__read_note', 'notes__write_note'] }),
+    ]);
+    expect(r.pm.describe('notes').agents).toEqual([{ id: 'keeper', name: 'Notebook keeper', description: expect.stringContaining('Keeps one topic'), resident: true }]);
+    // the managers read the list each turn
+    const inj = await r.rt.hooks.injections({ session: { id: 'pm', role: 'manager', title: '' }, runId: 'r1', turn: 1 } as never);
+    expect(inj.map((i) => i.text).join('\n')).toContain('- notes__keeper: Notebook keeper (Notes (example) plugin, kept for later jobs)');
+    await r.pm.disable('notes');
+    expect(r.rt.agentTemplates()).toEqual([]);
+  });
+
+  it('turning it off or removing it stops its sub-agents; an update, mock mode and closing the app keep them', async () => {
+    r = await rig();
+    const end = vi.spyOn(r.rt, 'endPluginAgents');
+    await r.pm.install(await exampleAt('0.1.0'));
+    await r.pm.enable('notes');
+    await r.pm.install(await exampleAt('0.1.1'));
+    await r.pm.setMock(true);
+    await r.pm.shutdown();
+    expect(end).not.toHaveBeenCalled();
+    await r.pm.enable('notes');
+    expect(r.rt.agentTemplates().map((t) => t.id)).toEqual(['notes__keeper']);
+    await r.pm.disable('notes');
+    expect(end).toHaveBeenLastCalledWith('notes');
+    await r.pm.enable('notes');
+    await r.pm.uninstall('notes');
+    expect(end).toHaveBeenCalledTimes(2);
+    expect(r.rt.agentTemplates()).toEqual([]);
+  });
+
+  it('a wrong agent is named in the error; a tool it names that is not there is logged, the agent still registers', async () => {
+    const bad = validateManifest({ ...manifest('demo'), agents: [{ id: 'A b', name: 'x', description: 'y', system: 'z' }, { id: 'ok', name: 'n', description: 'd' }, { id: 'ok2', name: 'n', description: 'd', system: 's', resident: 'yes', extra: 1 }] });
+    expect(bad.manifest).toBeUndefined();
+    expect(bad.issues.map((i) => `${i.where} ${i.severity}`)).toEqual([
+      'manifest.json · agents[0].id error',
+      'manifest.json · agents[1].system error',
+      'manifest.json · agents[2].resident error',
+      'manifest.json · agents[2].extra warning',
+    ]);
+    const lines: string[] = [];
+    r = await rig(undefined, { onLog: (_p, l) => lines.push(l) });
+    const dir = await writePlugin({ 'manifest.json': manifest('demo', { agents: [{ id: 'helper', name: 'Helper', description: 'Helps', system: 'Help.', tools: ['demo__nope'] }] }) });
+    dirs.push(dir);
+    await r.pm.install(dir);
+    await r.pm.enable('demo');
+    expect(r.rt.agentTemplates()).toEqual([expect.objectContaining({ id: 'demo__helper', resident: false })]);
+    expect(lines.join('\n')).toContain('agent helper: no such tools: demo__nope');
   });
 });
 

@@ -243,6 +243,8 @@ export class Runtime implements RuntimeInternals {
   readonly #secrets = new Set<string>();
   readonly #limiters = new Map<string, RateLimiter>();
   readonly #sessions = new Map<string, Session>();
+  /** Agents plugins provide (role templates added while running, by source); their ids carry the plugin's prefix. */
+  readonly #agentTemplates = new Map<string, { tpl: RoleTemplate; source: string }>();
   /** Aborted by close(): stops tool calls made outside any run (plugin pages, the mail pipeline). */
   readonly #shutdown = new AbortController();
   readonly #opts: RuntimeOptions;
@@ -491,6 +493,26 @@ export class Runtime implements RuntimeInternals {
           ? [{ position: 'system:after', text: 'You are kept for later jobs: report when a job is done; the next one will come as a message.', priority: 10 }]
           : undefined,
     });
+    // The agents plugins provide, each turn, to the conversations that start sub-agents (not to every sub-agent).
+    this.hooks.register('core:agents', {
+      inject: (ctx) => {
+        const agents = this.agentTemplates();
+        if (!agents.length || ctx.session.role === 'worker') return undefined;
+        const allow = this.session(ctx.session.id)?.config.tools;
+        if (allow && !allow.includes('spawn_agent')) return undefined;
+        const lines = agents.map((t) => {
+          const notes = [t.plugin ? `${t.plugin} plugin` : '', t.resident ? 'kept for later jobs' : ''].filter(Boolean).join(', ');
+          return `- ${t.id}: ${t.name}${notes ? ` (${notes})` : ''}${t.description ? `: ${t.description}` : ''}`;
+        });
+        return [
+          {
+            position: 'system:after',
+            text: `Agents you can start with spawn_agent (set agent to the id; give title and task as usual):\n${lines.join('\n')}`,
+            priority: 40,
+          },
+        ];
+      },
+    });
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {
@@ -621,7 +643,8 @@ export class Runtime implements RuntimeInternals {
       ...((req.projectId ?? parent?.config.projectId) ? { projectId: req.projectId ?? parent?.config.projectId } : {}),
       // sub-agents work under their parent's approval mode
       ...((req.approvalMode ?? parent?.config.approvalMode) === 'auto' ? { approvalMode: 'auto' as const } : {}),
-      ...(req.resident && parent ? { resident: true } : {}),
+      // kept for later jobs: asked for, or the plugin's agent says so (asking for less does not undo that)
+      ...((req.resident || tpl?.resident) && parent ? { resident: true } : {}),
     };
     const provider = this.provider(config.providerId); // fail fast
     config.serverWebSearch = (this.#opts.hostedWebSearch ?? true) && provider.capabilities.serverWebSearch;
@@ -653,7 +676,45 @@ export class Runtime implements RuntimeInternals {
 
   /** A role template by id (deployment templates override the built-in ones). */
   template(id: string): RoleTemplate | undefined {
-    return (this.#opts.templates ?? []).find((t) => t.id === id) ?? BUILTIN_TEMPLATES.find((t) => t.id === id);
+    return (this.#opts.templates ?? []).find((t) => t.id === id) ?? BUILTIN_TEMPLATES.find((t) => t.id === id) ?? this.#agentTemplates.get(id)?.tpl;
+  }
+
+  /**
+   * Add an agent a plugin provides (a role template for spawn_agent's agent) under a source; returns a remover.
+   * Its id must not be a built-in or deployment template's (a plugin's carries its prefix, `<plugin>__<id>`).
+   */
+  registerTemplate(tpl: RoleTemplate, source: string): () => void {
+    if ((this.#opts.templates ?? []).some((t) => t.id === tpl.id) || BUILTIN_TEMPLATES.some((t) => t.id === tpl.id)) {
+      throw new Error(`role template ${tpl.id} already exists`);
+    }
+    const entry = { tpl: { ...tpl, role: 'worker' as const }, source };
+    this.#agentTemplates.set(tpl.id, entry);
+    return () => {
+      if (this.#agentTemplates.get(tpl.id) === entry) this.#agentTemplates.delete(tpl.id);
+    };
+  }
+
+  /** The agents plugins provide right now (spawn_agent's agent). */
+  agentTemplates(): RoleTemplate[] {
+    return [...this.#agentTemplates.values()].map((e) => e.tpl);
+  }
+
+  /**
+   * A plugin was turned off or removed: its sub-agents still going (running, or kept for later jobs) are stopped and
+   * say so (stoppedBy 'plugin'). Not on an update or a restart of the plugin: those keep them.
+   */
+  endPluginAgents(plugin: string): number {
+    const prefix = `${plugin}__`;
+    let n = 0;
+    for (const s of this.sessions()) {
+      const c = s.config;
+      if (!c.templateId?.startsWith(prefix) || !s.parentId) continue;
+      const going = s.running || s.pending().length > 0 || c.resident === true;
+      if (!going) continue;
+      s.abort('the plugin was turned off', { by: 'plugin' });
+      n++;
+    }
+    return n;
   }
 
   session(id: string): Session | undefined {
@@ -1397,6 +1458,7 @@ export class Runtime implements RuntimeInternals {
   unregisterSource(source: string): { hooks: number; tools: number; mcpServers: number; stopped: Promise<void> } {
     const servers = [...this.#mcp.values()].filter((m) => m.source === source);
     const stopped = Promise.all(servers.map((m) => m.disconnect())).then(() => undefined);
+    for (const [id, e] of this.#agentTemplates) if (e.source === source) this.#agentTemplates.delete(id);
     return { hooks: this.hooks.unregisterSource(source), tools: this.tools.unregisterSource(source), mcpServers: servers.length, stopped };
   }
 

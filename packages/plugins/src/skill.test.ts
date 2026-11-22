@@ -207,6 +207,27 @@ describe('plugin-author skill', () => {
     expect((await r.pm.viewCall('panel-demo', 'main', 'remove_item', { id: 'item-001' })).content).toMatch(/^\[CONFIRM_REQUIRED\]/);
   });
 
+  it('scaffold --with agent: an agent kept for later jobs, its tools with the prefix; check passes, the plugin manager registers it; a wrong one is pointed out', async () => {
+    const zip = await scaffoldAndPack('shelf', ['--with', 'agent']);
+    const r = await rig();
+    cleanups.push(() => r.cleanup());
+    await r.pm.setMock(true);
+    const d = await installZip(r.pm, await readFile(zip), { kind: 'zip', location: zip });
+    expect(d.agents).toEqual([{ id: 'keeper', name: 'Shelf keeper', description: expect.any(String), resident: true }]);
+    await r.pm.enable('shelf');
+    expect(r.rt.agentTemplates()).toEqual([expect.objectContaining({ id: 'shelf__keeper', resident: true, tools: ['shelf__list_items', 'shelf__get_item', 'shelf__add_item'] })]);
+    const parent = await temp('spica-skill-agent-');
+    await script('scaffold.mjs', ['shelf', '--dir', parent, '--with', 'agent']);
+    const root = join(parent, 'shelf');
+    const m = JSON.parse(await readFile(join(root, 'manifest.json'), 'utf8')) as { agents: Record<string, unknown>[] };
+    m.agents.push({ id: 'Keeper 2', name: 'x', description: 'y', system: 'z', resident: 'yes' });
+    await writeFile(join(root, 'manifest.json'), JSON.stringify(m));
+    const bad = await script('check.mjs', [root]);
+    expect(bad.code).toBe(1);
+    expect(bad.out).toMatch(/agents\[1\].*id「Keeper 2」只能用小写字母/);
+    expect(bad.out).toMatch(/agents\[1\].*resident 只能是 true 或 false/);
+  });
+
   it('a settings page (--placement settings) passes check and opens in the preview; its pickers answer --pick, or null (cancelled)', async () => {
     const zip = await scaffoldAndPack('prefs', ['--placement', 'settings']);
     const folder = dirname(dirname(zip));

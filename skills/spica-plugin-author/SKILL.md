@@ -14,7 +14,7 @@ Spica 插件是一个文件夹：`manifest.json` 加上 MCP server（给 Agent �
 1. **读需求**，写下三件事给用户确认：插件名（小写字母、数字、`-`，以后不能改，它是工具名前缀）；要哪些工具；哪些工具会删数据、发东西、写外部系统（这些是**不可逆**的）。要界面就加上「页面放侧栏还是对话旁的面板」。
 2. **生成骨架**：
    ```
-   node <skill>/scripts/scaffold.mjs <插件名> --dir <放插件的文件夹> [--with skill,command,hook,config] [--with-ui]
+   node <skill>/scripts/scaffold.mjs <插件名> --dir <放插件的文件夹> [--with skill,command,hook,config,agent] [--with-ui]
    ```
    生成的插件已经能跑：4 个示例工具、错误码、模拟数据、测试，`--with-ui` 再带一个页面。
 3. **实现工具**：改 `server/tools.js`（工具清单和参数）、`server/backend.js`（数据从哪来）、`server/errors.js`（错误码）。每个工具都要写清：
