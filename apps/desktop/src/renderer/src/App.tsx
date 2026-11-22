@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { DesktopBridge } from '../../shared/bridge';
 import { AgentStore, displayTitle, friendlyError, useAgent } from './store/agent';
 import { ShellStore, useShell } from './store/shell';
+import { isRunning as isRunningStatus } from './store/transcript';
 import { centreShift, computeLayout, infoFits, monitorFits, panelWidths, previewFloats, previewMaxWidth, toggleFrom, type Floating, type Open } from './shell/layout';
 import { Resizer } from './shell/Resizer';
 import { ConfirmDialog } from './ui/Dialog';
@@ -979,7 +980,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const previewTip = pane.open ? t('预览') : lastPreview ? t('预览：{name}', { name: lastName }) : t('没有打开的预览：点对话里的文件打开');
   // A preview floating over a narrow window takes no room: there the window is what is too narrow.
   // The details closed while this conversation's background commands run: how many, on their button.
-  const jobsRunning = view === 'chat' && !infoShown && infoRoom ? runningJobs(transcript.jobs) : 0;
+  // ...and the sub-tasks it sent out that are running (a project's conversation): counted with them.
+  const jobsRunning =
+    view === 'chat' && !infoShown && infoRoom
+      ? runningJobs(transcript.jobs) +
+        (session && (session.role === 'manager' || project) ? sessions.filter((x) => x.parentId === session.id && x.role === 'worker' && isRunningStatus(x.status)).length : 0)
+      : 0;
   const infoTip = !infoRoom ? t('窗口太窄，放不下详情') : jobsRunning ? t('展开详情（{n} 个运行中）', { n: jobsRunning }) : t('详情（Ctrl+Alt+B）');
   // The 监控台 (switched on in 设置 › 关于): as the details, no room means not shown and a button that says why.
   const monitorShown = layout.monitor === 'docked';
@@ -1060,6 +1066,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
   const pageProject = view === 'project' ? state.projects.find((p) => p.id === projectPageId) : undefined;
+  const aboveProject = project?.parentId ? state.projects.find((p) => p.id === project.parentId) : undefined;
   const newProjectParent = newProject?.parentId ? state.projects.find((p) => p.id === newProject.parentId) : undefined;
   const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
   /**
@@ -1263,6 +1270,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             <>
               <button type="button" className="crumb" onClick={() => openSession(parent.id)} title={t('返回 {title}', { title: parent.title ?? '' })}>
                 {parent.title}
+              </button>
+              <Icon name="chevronRight" size={12} className="crumb-sep" />
+            </>
+          ) : null}
+          {/* a sub-project's conversation: the project it belongs to before its name (its page) */}
+          {view === 'chat' && !parent && aboveProject ? (
+            <>
+              <button type="button" className="crumb" onClick={() => openProject(aboveProject.id)} title={t('返回 {title}', { title: aboveProject.name })}>
+                {aboveProject.name}
               </button>
               <Icon name="chevronRight" size={12} className="crumb-sep" />
             </>
