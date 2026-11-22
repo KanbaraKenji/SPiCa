@@ -1396,9 +1396,11 @@ export interface AgentApi {
    */
   regenerate?(sessionId: string, messageId?: string): Promise<RegenerateResult>;
   /**
-   * `always` (with approved; 始终允许): what the card offers to keep, kept with the conversation (its sub-agents
-   * too): on a confirmation with `outsideFolder`, writing in that folder; with `keepTool`, that tool running without
-   * asking. `allowFolder` is the older name of `always`, for the folder only.
+   * `always` (with approved; 始终允许 rather than 允许一次): what the card offers to keep, kept with the conversation
+   * (its sub-agents too): on a confirmation with `outsideFolder`, writing in that folder; with `keepTool`, that tool
+   * running without asking. The tool is told as well (computer_request_access keeps the programs for every
+   * conversation). Tools that have no such choice run as for a plain approval. `allowFolder` is the older name of
+   * `always`, for the folder only.
    */
   confirm(sessionId: string, callId: string, approved: boolean, options?: { always?: boolean; allowFolder?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;

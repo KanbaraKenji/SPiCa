@@ -8,6 +8,8 @@ apps/*/release/
 apps/*/node-libs/
 # uv, fetched at build time (apps/desktop/scripts/uv.mjs)
 apps/*/uv/
+# koffi as the installed app carries it (apps/desktop/scripts/koffi.mjs)
+apps/*/koffi/
 apps/*/.node-libs-*.cjs
 coverage/
 *.tsbuildinfo

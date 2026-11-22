@@ -19,13 +19,14 @@ import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT, installFailureText, NETWORK_FAILURES } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
 import { MemoryLinesContext, MemoryNote, type MemoryLines } from './MemoryNote';
+import { ComputerCard } from './ComputerCard';
 
 export interface ConversationActions {
   /** `suggested`: the text is a suggested action the user picked. */
   send(text: string, attachments?: string[], suggested?: boolean): void;
   stop(): void;
   answer(callId: string, answer: string): void;
-  /** `always`: 始终允许 (what the card keeps: its folder, or its service's tool). */
+  /** `always`: 始终允许 (what the card keeps: its folder, its service's tool, or 操作电脑's programs). */
   confirm(callId: string, approved: boolean, always?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */
@@ -254,6 +255,8 @@ function Response({
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
+          case 'computer':
+            return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'plan':
             return <PlanStrip key={`plan-${b.callId}`} steps={b.steps} running={false} record />;
           case 'suggest':

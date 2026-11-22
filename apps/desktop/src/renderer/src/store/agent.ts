@@ -322,7 +322,7 @@ export class AgentStore {
     await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
-  /** `always`: 始终允许, what the card keeps for this conversation (a folder written outside its folders, a service's tool). */
+  /** `always`: 始终允许, what the card keeps (a folder written outside the conversation's folders, a service's tool, 操作电脑's programs). */
   async confirm(id: string, callId: string, approved: boolean, always = false): Promise<void> {
     await this.#card(id, callId, () => (always ? this.#api.confirm(id, callId, approved, { always: true }) : this.#api.confirm(id, callId, approved)));
   }

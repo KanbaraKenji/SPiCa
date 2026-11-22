@@ -21,6 +21,8 @@ export interface ToolContext {
   emit(body: CoreEventBody): void;
   /** Who started the call, for traceable records (default `tool:<name>`; a plugin view is `view:<plugin>`). */
   initiator?: string;
+  /** The person allowed the call with 始终允许 rather than 允许一次 (computer_request_access keeps the programs for every conversation). */
+  always?: boolean;
   /** The call needed confirmation and got it (recorded in its traceable record). */
   confirmedBy?: 'user' | 'view';
   /** ISO 8601: when the user message this round answers was written (present_files tells made from read by it). */
@@ -108,6 +110,11 @@ export interface Tool {
    * returns one, the user confirms it first (cause python_install, in auto mode too); undefined: nothing to fetch.
    */
   previewInstall?(input: Record<string, unknown>): Promise<import('../types.ts').InstallPreview | undefined>;
+  /**
+   * Only the newest `newest` images that tools of `group` returned are sent with each request again; older ones are
+   * a line saying they were left out (computer screenshots: every step would send all the earlier ones again).
+   */
+  keepImages?: { group: string; newest: number };
   /** Hide the tool when this returns false (e.g. no search backend configured). */
   available?(env: ToolEnv): boolean;
   execute(input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
@@ -115,6 +122,8 @@ export interface Tool {
 
 export interface ToolEnv {
   providerId: string;
+  /** The session's model (whether it takes images: Runtime.imagesAllowed). */
+  model?: string;
   /** Role of the session (tools for the top-level agent only, ...). */
   role?: import('../types.ts').AgentRole;
   /** Set when the session works for a project. */

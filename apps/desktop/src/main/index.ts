@@ -72,6 +72,7 @@ ipcMain.handle(DesktopChannel.BrowserTakeOverPage, (_e, wcId: unknown) => {
   return null;
 });
 import { pathToFileURL } from 'node:url';
+import { setupComputer, type ComputerSetup } from './computer/setup';
 import { IpcChannel, type AgentApi, type AppInfo, type UsageSummary } from '@spica/protocol';
 import { usageQuery } from '../shared/usage';
 import { MonitorHub, monitorSecretsFrom, scrub } from './monitor';
@@ -182,6 +183,8 @@ function overlayHeight(zoom: number): number {
 //   SPICA_DEMO_PLUGINS=many  the demo's plugin list has twelve plugins (screenshots; not in installed builds)
 //   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
 //                            someone is using the computer (not in installed builds)
+//   SPICA_COMPUTER=real|fake 操作电脑 is there in this run: real = the Windows driver (installed builds too), fake =
+//                            the made-up desktop (not in installed builds); unset = off (main/computer/driver.ts)
 const forcedTheme = process.env.SPICA_THEME;
 const capturePath = devSwitch(process.env, app.isPackaged, 'SPICA_CAPTURE');
 const shotsDir = devSwitch(process.env, app.isPackaged, 'SPICA_SHOTS');
@@ -343,7 +346,7 @@ function backendConfig(): DesktopBackendConfig {
       extensions: [
         {
           module: '@spica/desktop-host',
-          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale(), userMcp: mcpStore.configs(), ...(deployedPython.enabled && existsSync(UV_EXE) ? { uv: { exe: UV_EXE, root: pythonRoot() } } : {}) },
+          options: { pluginRoot, pluginSourcesFile: join(app.getPath('userData'), 'plugin-sources.json'), officialPluginSources: buildDefaults.pluginSources, mcpInfoFile, mcpTokenFile, userAccount: userAccount(), userConfig: pluginConfig.inputs(deployPluginSettings), locale: getLocale(), computerAvailable: computer !== null, computerUse: computer !== null && settings.get().computerUse.enabled, userMcp: mcpStore.configs(), ...(deployedPython.enabled && existsSync(UV_EXE) ? { uv: { exe: UV_EXE, root: pythonRoot() } } : {}) },
         },
       ],
     },
@@ -456,6 +459,8 @@ const backend: AgentBackend =
           'browser.javascript': (sessionId: string, args: Record<string, unknown>) => browserAgent.javascript(sessionId, args),
           'browser.console': (sessionId: string, args: Record<string, unknown>) => browserAgent.console(sessionId, args),
           'browser.network': (sessionId: string, args: Record<string, unknown>) => browserAgent.network(sessionId, args),
+          // 操作电脑: programs on this computer (backend/computer-tools.ts, main/computer/agent.ts)
+          ...computerHostMethods(),
           'models.setDefault': (ref: ModelRef) => {
             providers.setDefaultModel({ connectionId: String(ref?.connectionId ?? ''), model: String(ref?.model ?? '') });
             applyProviders();
@@ -473,6 +478,29 @@ console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own proces
 // A development run says where it keeps things (SPICA_USER_DATA moves all of it), so a check can see it.
 if (!app.isPackaged) console.log(`[spica] data: ${app.getPath('userData')} · documents: ${app.getPath('documents')} · app's Python: ${pythonRoot()}`);
 const settings = new SettingsStore(app.getPath('userData'), { persist: !automated });
+// 操作电脑 (main/computer): null (off) unless SPICA_COMPUTER asks for it (driver.ts computerMode)
+const computer = setupComputer({
+  settings,
+  hidden,
+  look: () => {
+    const s = settings.get();
+    return { tokens: deriveTokens(resolveSkin(s.skin, nativeTheme.shouldUseDarkColors, s.customSkins)), font: uiFontFamily(s.uiFont, s.uiFont === 'system' ? app.getLocale() : getLocale()) };
+  },
+  abort: (sessionId) => void backend.abort(sessionId).catch(() => undefined),
+});
+/** The host methods of 操作电脑 (the backend is made before the settings are read; asked when called). */
+function computerHostMethods(): ComputerSetup['hostMethods'] {
+  const names = ['prepare', 'grant', 'listApps', 'screenshot', 'zoom', 'click', 'drag', 'scroll', 'type', 'key', 'open'];
+  return Object.fromEntries(
+    names.map((n) => [
+      `computer.${n}`,
+      async (sessionId: string, args: Record<string, unknown>) => {
+        if (!computer) throw new Error('operating the computer is not available in this copy');
+        return computer.hostMethods[`computer.${n}`]!(sessionId, args);
+      },
+    ]),
+  );
+}
 // 外观 › 显示 › 语言: set before anything builds words (menus, the tray, the core's locale).
 setLocale(resolveLocale(settings.get().language, systemLanguages()));
 // The demo backend starts with 设置 › 记忆 › 启用记忆 and 模型 › 代理互发消息上限 as saved (the core gets them in backendConfig()).
@@ -1099,7 +1127,7 @@ function shellState(): ShellState {
   // Only the first page of this start opens on 新对话; a page loaded again goes back where it was (reopen).
   const newChat = newChatAtStart && !again;
   newChatAtStart = false;
-  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, systemLanguages: systemLanguages(), demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
+  return { settings: settings.get(), systemDark: nativeTheme.shouldUseDarkColors, systemLanguages: systemLanguages(), demo: backendKind === 'fake' && !automated, automated, legacyDefaultCwd, autostart, autoAccount, ...(computer ? { computerUse: true } : {}), ...(newChat ? { startOnNewChat: true } : {}), ...(again ? { reopen: again } : {}) };
 }
 
 ipcMain.handle(IpcChannel.AppInfo, (): AppInfo => ({ name: APP_NAME, version: app.getVersion() }));
@@ -1550,6 +1578,7 @@ let lastLocalConnect = settings.get().localConnect;
 let lastMemory = settings.get().memory;
 let lastAutoTidy = settings.get().memoryAutoTidy;
 let lastAgentMessages = settings.get().agentMessageLimit;
+let lastComputerUse = settings.get().computerUse.enabled;
 let lastAccount = userAccount();
 /** Problems the core reported for the network settings (e.g. a certificate file it cannot read), as it wrote them. */
 let networkWarnings: string[] = [];
@@ -1593,6 +1622,11 @@ settings.onChange((s) => {
     else if (backend instanceof FakeBackend) backend.setAgentMessages(s.agentMessageLimit);
   }
   if (!(backend instanceof ProcessBackend)) return;
+  // 操作电脑 switched: the core offers its tools from the next request on
+  if (computer && s.computerUse.enabled !== lastComputerUse) {
+    lastComputerUse = s.computerUse.enabled;
+    void backend.call('computerUse', s.computerUse.enabled).catch(() => undefined);
+  }
   const mail = JSON.stringify(s.mail);
   if (mail !== lastMail) {
     lastMail = mail;
@@ -2005,6 +2039,8 @@ if (backend instanceof FakeBackend) {
 }
 // Whether a conversation is running, for the close question's one line (「有任务正在运行，退出会中断它。」).
 backend.onEvent((event) => running.seen(event));
+// 操作电脑: a run that ended lets go of the computer (the bar goes)
+backend.onEvent((event) => computer?.seen(event));
 settings.onChange((s) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   syncNativeChrome(mainWindow, s);

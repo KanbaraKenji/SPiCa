@@ -157,3 +157,17 @@ describe('update settings', () => {
     }
   });
 });
+
+describe('操作电脑 settings', () => {
+  it('off by default; what is kept is made valid', () => {
+    expect(sanitizeSettings({}).computerUse).toEqual({ enabled: false, always: [], denied: [] });
+    const v = sanitizeSettings({
+      computerUse: {
+        enabled: true,
+        always: [{ exe: 'D:/apps/notepad.exe', name: '记事本' }, { exe: 'd:/APPS/notepad.EXE', name: 'again' }, { exe: '' }, 'x', { exe: 'D:/a.exe' }],
+        denied: ['game.exe', 'GAME.EXE', 3, ' '],
+      },
+    }).computerUse;
+    expect(v).toEqual({ enabled: true, always: [{ exe: 'D:/apps/notepad.exe', name: '记事本' }, { exe: 'D:/a.exe', name: 'D:/a.exe' }], denied: ['game.exe'] });
+  });
+});
