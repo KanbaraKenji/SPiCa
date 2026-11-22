@@ -49,6 +49,10 @@ export interface SessionConfig {
   memoryId?: string;
   /** Folders the user allowed on a card to write in without asking (write-scope.ts), as written on the card. */
   writeFolders?: string[];
+  /** A sub-agent kept for later jobs (spawn_agent resident): idle between jobs, not ended. */
+  resident?: boolean;
+  /** Other projects' folders the user allowed on a card to read in without asking (GuardCause other_project). */
+  readFolders?: string[];
   /**
    * Folders taken back with allowed_folders, and the position (`Message.seq`) of the last message then: paths inside
    * them the user gave in their messages up to it no longer count as given (write-scope.ts).

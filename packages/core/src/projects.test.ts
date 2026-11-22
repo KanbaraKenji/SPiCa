@@ -169,6 +169,181 @@ describe('projects', () => {
     expect(activity).toHaveLength(3);
   });
 
+  it('a sub-task the manager sent out keeps its record after a restart: what it was asked, its calls and results, its report', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'read_file', args: { path: 'quote.txt' } }] }, { text: 'price is 2.35' });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    await mkdir(p.folder, { recursive: true });
+    await writeFile(join(p.folder, 'quote.txt'), 'unit price 2.35');
+    const worker = rt1.createSession({ parentId: p.managerSessionId, title: 'Quotes' });
+    await worker.send('find the price', { author: 'parent' }).done;
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    const again = rt2.session(worker.id)!;
+    expect(again.info()).toMatchObject({ parentId: p.managerSessionId, role: 'worker', status: 'done', title: 'Quotes' });
+    const kept = again.messages();
+    expect(kept.find((m) => m.kind === 'user')?.content).toEqual([expect.objectContaining({ text: 'find the price' })]);
+    expect(kept.flatMap((m) => m.content).find((b) => b.type === 'tool_use')).toMatchObject({ name: 'read_file', input: { path: 'quote.txt' } });
+    expect(JSON.stringify(kept.flatMap((m) => m.content).find((b) => b.type === 'tool_result'))).toContain('unit price 2.35');
+    expect(kept.at(-1)?.content).toEqual([expect.objectContaining({ text: 'price is 2.35' })]);
+    await rt2.close();
+  });
+
+  it('a sub-task kept for later jobs (spawn_agent resident) reports, then waits idle, and is still that after a restart', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return { toolCalls: [{ id: 's1', name: 'spawn_agent', args: { title: 'Samples', task: 'FOLLOW-UP the samples', resident: true } }, { id: 's2', name: 'spawn_agent', args: { title: 'Once', task: 'ONE-OFF job' } }] };
+      }
+      if (all.includes('FOLLOW-UP') || all.includes('ONE-OFF')) return { text: 'reported' };
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    await pm.send('PM-GO').done;
+    const kids = rt1.children(pm.id);
+    await Promise.all(kids.map((k) => k.idle()));
+    const kept = kids.find((k) => k.info().title === 'Samples')!;
+    const once = kids.find((k) => k.info().title === 'Once')!;
+    expect(kept.info()).toMatchObject({ resident: true, status: 'idle' });
+    expect(once.info()).toMatchObject({ status: 'done' });
+    expect(once.info()).not.toHaveProperty('resident');
+    // told in its instructions, not in the task the user reads
+    expect(JSON.stringify(kept.messages()[0]?.content)).not.toContain('kept for later');
+    const keptRequest = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('FOLLOW-UP'))!;
+    expect((keptRequest.body.messages as { content: string }[])[0]!.content).toContain('You are kept for later jobs');
+    // its report reached the manager as any sub-agent's does
+    expect(rt1.lastReport(kept.id)).toBe('reported');
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.session(kept.id)!.info()).toMatchObject({ resident: true, status: 'idle' });
+    await rt2.close();
+  });
+
+  it('a sub-task kept for later jobs is ended by stopping it (the user, or its manager with stop_agent), and stays ended after a restart', async () => {
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'spica.db');
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('PM-GO') && !all.includes('Started sub-agent')) {
+        return { toolCalls: [{ id: 's1', name: 'spawn_agent', args: { title: 'A', task: 'JOB-A', resident: true } }, { id: 's2', name: 'spawn_agent', args: { title: 'B', task: 'JOB-B', resident: true } }] };
+      }
+      if (all.includes('PM-END') && !all.includes('Stopped sub-agent')) {
+        const b = all.match(/B\\*" with id (ses_[A-Za-z0-9_-]+)/)?.[1] ?? 'none';
+        return { toolCalls: [{ id: 'x1', name: 'stop_agent', args: { id: b } }, { id: 'x2', name: 'stop_agent', args: { id: 'ses_nope' } }] };
+      }
+      return { text: 'ok' };
+    });
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    const p = rt1.createProject({ name: 'Part T1' });
+    const pm = rt1.session(p.managerSessionId)!;
+    await pm.send('PM-GO').done;
+    const kids = rt1.children(pm.id);
+    await Promise.all(kids.map((k) => k.idle()));
+    const a = kids.find((k) => k.info().title === 'A')!;
+    const b = kids.find((k) => k.info().title === 'B')!;
+    expect(a.info()).toMatchObject({ resident: true, status: 'idle' });
+    // the user presses 停止 on the idle one: ended
+    a.abort();
+    expect(a.info()).toMatchObject({ status: 'aborted' });
+    expect(a.info()).not.toHaveProperty('resident');
+    // its manager ends the other one; someone else's id is refused
+    await pm.send('PM-END').done;
+    expect(b.info()).toMatchObject({ status: 'aborted' });
+    expect(b.info()).not.toHaveProperty('resident');
+    const refused = pm.messages().flatMap((m) => m.content).find((x) => x.type === 'tool_result' && x.toolUseId === 'x2');
+    expect(refused && 'content' in refused ? refused.content : '').toContain('not one of your sub-agents');
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    for (const id of [a.id, b.id]) {
+      expect(rt2.session(id)!.info()).toMatchObject({ status: 'aborted' });
+      expect(rt2.session(id)!.info()).not.toHaveProperty('resident');
+    }
+    await rt2.close();
+  });
+
+  it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
+    const rt = rtFor();
+    const models = rt.createProject({ name: 'Models', manager: false });
+    expect(models.managerSessionId).toBe('');
+    expect(rt.sessions().some((s) => s.info().projectId === models.id)).toBe(false);
+    const t1 = rt.createProject({ name: 'T1', parentId: models.id });
+    expect(t1).toMatchObject({ parentId: models.id, folder: join(models.folder, 'T1') });
+    expect(rt.session(t1.managerSessionId)!.info()).toMatchObject({ role: 'manager', parentId: null, projectId: t1.id, cwd: t1.folder });
+    // a relative folder is taken from the project's folder; one outside it is refused
+    expect(rt.createProject({ name: 'L1', parentId: models.id, folder: 'coils/L1' }).folder).toBe(join(models.folder, 'coils', 'L1'));
+    expect(() => rt.createProject({ name: 'Out', parentId: models.id, folder: join(dir, 'elsewhere') })).toThrow(/inside its project's folder/);
+    expect(() => rt.createProject({ name: 'Up', parentId: models.id, folder: '../up' })).toThrow(/inside its project's folder/);
+    expect(() => rt.createProject({ name: 'Same', parentId: models.id, folder: models.folder })).toThrow(/inside its project's folder/);
+    // one level: a sub-project holds no sub-projects; a sub-project is a conversation
+    expect(() => rt.createProject({ name: 'Deep', parentId: t1.id })).toThrow(/holds no sub-projects/);
+    expect(() => rt.createProject({ name: 'Bare', parentId: models.id, manager: false })).toThrow(/needs its manager/);
+    expect(() => rt.createProject({ name: 'Lost', parentId: 'prj_nope' })).toThrow(/unknown project/);
+    const d = rt.getProject(models.id)!;
+    expect(d.manager).toBeNull();
+    expect(d.agents).toEqual([]);
+    expect(d.subProjects.map((p) => p.name)).toEqual(['T1', 'L1']);
+    expect(rt.getProject(t1.id)).toMatchObject({ manager: { id: t1.managerSessionId }, subProjects: [] });
+    // renaming the holder touches no conversation
+    expect(rt.renameProject(models.id, 'Models 2').name).toBe('Models 2');
+    // a project with a conversation of its own can hold sub-projects too
+    const old = rt.createProject({ name: 'Old' });
+    const sub = rt.createProject({ name: 'Part', parentId: old.id });
+    expect(rt.getProject(old.id)).toMatchObject({ manager: { id: old.managerSessionId }, subProjects: [{ id: sub.id }] });
+  });
+
+  it('deleting a project deletes its sub-projects and their conversations (the folders stay)', async () => {
+    const rt = rtFor();
+    const events: { type: string; projectId?: string }[] = [];
+    rt.events.on((e) => events.push(e as { type: string; projectId?: string }));
+    const models = rt.createProject({ name: 'Models', manager: false });
+    const t1 = rt.createProject({ name: 'T1', parentId: models.id });
+    const worker = rt.createSession({ parentId: t1.managerSessionId });
+    const other = rt.createProject({ name: 'Other' });
+    await rt.deleteProject(models.id);
+    expect(rt.listProjects().map((p) => p.id)).toEqual([other.id]);
+    expect(rt.session(t1.managerSessionId)).toBeUndefined();
+    expect(rt.session(worker.id)).toBeUndefined();
+    expect(rt.session(other.managerSessionId)).toBeDefined();
+    expect(events.filter((e) => e.type === 'project.deleted').map((e) => e.projectId)).toEqual([t1.id, models.id]);
+    const { stat } = await import('node:fs/promises');
+    expect((await stat(t1.folder)).isDirectory()).toBe(true);
+  });
+
+  it('sub-projects survive a restart, also in a database made before projects had a parent', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'old.db');
+    // the projects table as earlier builds made it (no parent_id)
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE projects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, manager_session_id TEXT NOT NULL,
+      workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      unread INTEGER NOT NULL DEFAULT 0)`);
+    old.prepare('INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run('prj_old', 'Before', join(dir, 'Before'), '', null, null, 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 0);
+    old.close();
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    rt1.restore();
+    expect(rt1.listProjects()).toEqual([expect.objectContaining({ id: 'prj_old', name: 'Before' })]);
+    expect(rt1.listProjects()[0]).not.toHaveProperty('parentId');
+    const models = rt1.createProject({ name: 'Models', manager: false });
+    const t1 = rt1.createProject({ name: 'T1', parentId: models.id });
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.getProject(t1.id)).toMatchObject({ parentId: models.id, manager: { id: t1.managerSessionId, parentId: null } });
+    expect(rt2.getProject(models.id)).toMatchObject({ managerSessionId: '', manager: null, subProjects: [{ id: t1.id }] });
+    await rt2.close();
+  });
+
   it('projects survive a restart', async () => {
     const { SqliteStore } = await import('./store/sqlite.ts');
     const path = join(dir, 'spica.db');
@@ -213,7 +388,8 @@ describe('project tools', () => {
     expect(topTools).not.toContain('set_stage');
     const pmTools = names(r, r.session(p.managerSessionId)!);
     expect(pmTools).toEqual(expect.arrayContaining(['project_status', 'set_stage', 'add_work_object', 'list_work_objects', 'spawn_agent']));
-    expect(pmTools).not.toContain('create_project');
+    // a manager creates sub-projects of its project
+    expect(pmTools).toContain('create_project');
     // a plain top-level chat may start projects; a sub-agent outside a project sees neither set
     expect(names(r, r.createSession())).toContain('create_project');
     const worker = names(r, r.createSession({ parentId: r.createSession().id }));
@@ -249,6 +425,33 @@ describe('project tools', () => {
     // the stage change is in the project's activity; the assistant reads it there (list_projects / open_project)
     expect(r.getProject(p.id)!.recentLog.some((e) => e.action === 'stage')).toBe(true);
     void top;
+  });
+
+  it('the top-level agent creates a project holding sub-projects; a manager creates one beside its own', async () => {
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('TOP-ASK') && !all.includes('Created project')) {
+        return { toolCalls: [{ id: 'c1', name: 'create_project', args: { name: 'Models', manager: false } }] };
+      }
+      if (all.includes('TOP-ASK') && !all.includes('Created sub-project')) {
+        return { toolCalls: [{ id: 'c2', name: 'create_project', args: { name: 'T1', parent: 'Models', brief: 'T1-BRIEF' } }] };
+      }
+      if (all.includes('T1-BRIEF') && !all.includes('Created sub-project')) {
+        return { toolCalls: [{ id: 'c3', name: 'create_project', args: { name: 'L1', parent: 'ignored' } }] };
+      }
+      return { text: 'done' };
+    });
+    const r = makeRuntime(gw, { cwd: dir, workflowsDir: exampleDir });
+    await r.top().send('TOP-ASK models with T1').done;
+    const models = r.listProjects().find((p) => p.name === 'Models')!;
+    const t1 = r.listProjects().find((p) => p.name === 'T1')!;
+    expect(models.managerSessionId).toBe('');
+    expect(t1.parentId).toBe(models.id);
+    await r.session(t1.managerSessionId)!.idle();
+    // the sub-project's manager made a sibling (its own project is a sub-project)
+    expect(r.listProjects().find((p) => p.name === 'L1')).toMatchObject({ parentId: models.id, folder: join(models.folder, 'L1') });
+    const t1Request = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('T1-BRIEF'))!;
+    expect((t1Request.body.messages as { content: string }[])[0]!.content).toContain(`It is a sub-project of "Models" (${models.id}`);
   });
 });
 

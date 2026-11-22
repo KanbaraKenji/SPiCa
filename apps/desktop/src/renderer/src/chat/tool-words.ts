@@ -214,6 +214,8 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
         : { verb: 'Took back', object: 'allowed folders' };
     case 'spawn_agent':
       return { verb: 'Started', object: arg(c, 'title') ? named(arg(c, 'title')) : 'a sub-agent' };
+    case 'stop_agent':
+      return { verb: 'Stopped', object: 'a sub-agent' };
     case 'wait_agents': {
       const ids = (c.input as { ids?: unknown } | undefined)?.ids;
       const k = Array.isArray(ids) ? ids.length : 0;

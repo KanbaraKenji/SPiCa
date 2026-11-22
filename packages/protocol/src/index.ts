@@ -489,6 +489,11 @@ export interface SessionInfo {
   templateId?: string;
   /** Project the session works for (project manager and its sub-agents). */
   projectId?: string;
+  /**
+   * A sub-task its manager keeps for later jobs (spawn_agent resident, or the plugin's agent says so): idle between
+   * jobs, it is not ended when one is done and waits for the next.
+   */
+  resident?: boolean;
   // The three below are always set by the core (optional only so older fakes still type-check).
   /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
   approvalMode?: ApprovalMode;
@@ -586,7 +591,12 @@ export interface GuardNote {
  * python_install: python_env would download Python or packages into the app's folder (asked in auto mode too;
  * `install` says what).
  */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'python_install';
+/**
+ * other_project: read_file, list_dir, glob or grep in another project's folder (a sub-project's too): the project
+ * whose folder holds the path most closely is not the conversation's own nor one of its sub-projects, and the path
+ * is not in the conversation's folders; `outsideFolder` is that project's folder (始终允许 keeps it for reading).
+ */
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'other_project' | 'python_install';
 
 /**
  * What a python_env install waiting to be confirmed would download, worked out when it asks (nothing downloaded):
@@ -1349,6 +1359,8 @@ export interface CreateSessionRequest {
   projectId?: string;
   /** Default manual; sub-agents inherit their parent's. */
   approvalMode?: ApprovalMode;
+  /** A sub-agent kept for later jobs (SessionInfo.resident). */
+  resident?: boolean;
 }
 
 export interface SendResult {
@@ -1566,7 +1578,10 @@ export interface ProjectInfo {
   name: string;
   /** Absolute path of the project folder. */
   folder: string;
+  /** The project's own conversation (its manager); '' for a project that only holds sub-projects. */
   managerSessionId: string;
+  /** The project this one is a sub-project of (one level only); its folder is inside that project's. */
+  parentId?: string;
   workflowId: string | null;
   /** Current stage id (null when the project has no workflow). */
   stage: string | null;
@@ -1624,16 +1639,26 @@ export interface ProjectDetail extends ProjectInfo {
   objects: WorkObject[];
   /** Newest first. */
   recentLog: ProjectLogEntry[];
-  manager: SessionInfo;
+  /** Null for a project that only holds sub-projects. */
+  manager: SessionInfo | null;
   /** Sub-agents of the manager. */
   agents: SessionInfo[];
+  /** Its sub-projects (a sub-project has none). */
+  subProjects: ProjectInfo[];
 }
 
 export interface CreateProjectRequest {
   name: string;
-  /** Absolute, or relative to the deployment's projects folder. Created if missing. Default: the name. */
+  /**
+   * Absolute, or relative to the deployment's projects folder (a sub-project: to its project's folder, and inside it).
+   * Created if missing. Default: the name.
+   */
   folder?: string;
   workflowId?: string;
   /** First task for the project manager. */
   brief?: string;
+  /** Make it a sub-project of this project (which must not be a sub-project itself). */
+  parentId?: string;
+  /** false: a project that only holds sub-projects, with no conversation (manager) of its own. Default true. */
+  manager?: boolean;
 }
