@@ -1,4 +1,4 @@
-// 子任务 in the details (mock-up, project-sub): what the open conversation's manager sent out, as Claude's
+// 子任务 in the details: what the open conversation's manager sent out, as Claude's
 // Background tasks. The ones going first (its ring, how long it has run, 停止), the ones kept for later jobs with
 // them; the ended ones folded under 「N 个已结束」. A click on a row shows that sub-task in the details: what it was
 // asked, the calls it made (each opens as in 工具调用), what it said last; ← 子任务 goes back to the list.

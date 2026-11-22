@@ -192,6 +192,80 @@ describe('projects', () => {
     await rt2.close();
   });
 
+  it('a project holds sub-projects: their folders inside its own, one level only, a holder without a conversation', async () => {
+    const rt = rtFor();
+    const models = rt.createProject({ name: 'Models', manager: false });
+    expect(models.managerSessionId).toBe('');
+    expect(rt.sessions().some((s) => s.info().projectId === models.id)).toBe(false);
+    const t1 = rt.createProject({ name: 'T1', parentId: models.id });
+    expect(t1).toMatchObject({ parentId: models.id, folder: join(models.folder, 'T1') });
+    expect(rt.session(t1.managerSessionId)!.info()).toMatchObject({ role: 'manager', parentId: null, projectId: t1.id, cwd: t1.folder });
+    // a relative folder is taken from the project's folder; one outside it is refused
+    expect(rt.createProject({ name: 'L1', parentId: models.id, folder: 'coils/L1' }).folder).toBe(join(models.folder, 'coils', 'L1'));
+    expect(() => rt.createProject({ name: 'Out', parentId: models.id, folder: join(dir, 'elsewhere') })).toThrow(/inside its project's folder/);
+    expect(() => rt.createProject({ name: 'Up', parentId: models.id, folder: '../up' })).toThrow(/inside its project's folder/);
+    expect(() => rt.createProject({ name: 'Same', parentId: models.id, folder: models.folder })).toThrow(/inside its project's folder/);
+    // one level: a sub-project holds no sub-projects; a sub-project is a conversation
+    expect(() => rt.createProject({ name: 'Deep', parentId: t1.id })).toThrow(/holds no sub-projects/);
+    expect(() => rt.createProject({ name: 'Bare', parentId: models.id, manager: false })).toThrow(/needs its manager/);
+    expect(() => rt.createProject({ name: 'Lost', parentId: 'prj_nope' })).toThrow(/unknown project/);
+    const d = rt.getProject(models.id)!;
+    expect(d.manager).toBeNull();
+    expect(d.agents).toEqual([]);
+    expect(d.subProjects.map((p) => p.name)).toEqual(['T1', 'L1']);
+    expect(rt.getProject(t1.id)).toMatchObject({ manager: { id: t1.managerSessionId }, subProjects: [] });
+    // renaming the holder touches no conversation
+    expect(rt.renameProject(models.id, 'Models 2').name).toBe('Models 2');
+    // a project with a conversation of its own can hold sub-projects too
+    const old = rt.createProject({ name: 'Old' });
+    const sub = rt.createProject({ name: 'Part', parentId: old.id });
+    expect(rt.getProject(old.id)).toMatchObject({ manager: { id: old.managerSessionId }, subProjects: [{ id: sub.id }] });
+  });
+
+  it('deleting a project deletes its sub-projects and their conversations (the folders stay)', async () => {
+    const rt = rtFor();
+    const events: { type: string; projectId?: string }[] = [];
+    rt.events.on((e) => events.push(e as { type: string; projectId?: string }));
+    const models = rt.createProject({ name: 'Models', manager: false });
+    const t1 = rt.createProject({ name: 'T1', parentId: models.id });
+    const worker = rt.createSession({ parentId: t1.managerSessionId });
+    const other = rt.createProject({ name: 'Other' });
+    await rt.deleteProject(models.id);
+    expect(rt.listProjects().map((p) => p.id)).toEqual([other.id]);
+    expect(rt.session(t1.managerSessionId)).toBeUndefined();
+    expect(rt.session(worker.id)).toBeUndefined();
+    expect(rt.session(other.managerSessionId)).toBeDefined();
+    expect(events.filter((e) => e.type === 'project.deleted').map((e) => e.projectId)).toEqual([t1.id, models.id]);
+    const { stat } = await import('node:fs/promises');
+    expect((await stat(t1.folder)).isDirectory()).toBe(true);
+  });
+
+  it('sub-projects survive a restart, also in a database made before projects had a parent', async () => {
+    const { DatabaseSync } = await import('node:sqlite');
+    const { SqliteStore } = await import('./store/sqlite.ts');
+    const path = join(dir, 'old.db');
+    // the projects table as earlier builds made it (no parent_id)
+    const old = new DatabaseSync(path);
+    old.exec(`CREATE TABLE projects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL, manager_session_id TEXT NOT NULL,
+      workflow_id TEXT, stage TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      unread INTEGER NOT NULL DEFAULT 0)`);
+    old.prepare('INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run('prj_old', 'Before', join(dir, 'Before'), '', null, null, 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 0);
+    old.close();
+    const rt1 = rtFor({ store: new SqliteStore(path) });
+    rt1.restore();
+    expect(rt1.listProjects()).toEqual([expect.objectContaining({ id: 'prj_old', name: 'Before' })]);
+    expect(rt1.listProjects()[0]).not.toHaveProperty('parentId');
+    const models = rt1.createProject({ name: 'Models', manager: false });
+    const t1 = rt1.createProject({ name: 'T1', parentId: models.id });
+    await rt1.close();
+    const rt2 = rtFor({ store: new SqliteStore(path) });
+    rt2.restore();
+    expect(rt2.getProject(t1.id)).toMatchObject({ parentId: models.id, manager: { id: t1.managerSessionId, parentId: null } });
+    expect(rt2.getProject(models.id)).toMatchObject({ managerSessionId: '', manager: null, subProjects: [{ id: t1.id }] });
+    await rt2.close();
+  });
+
   it('projects survive a restart', async () => {
     const { SqliteStore } = await import('./store/sqlite.ts');
     const path = join(dir, 'spica.db');
@@ -236,7 +310,8 @@ describe('project tools', () => {
     expect(topTools).not.toContain('set_stage');
     const pmTools = names(r, r.session(p.managerSessionId)!);
     expect(pmTools).toEqual(expect.arrayContaining(['project_status', 'set_stage', 'add_work_object', 'list_work_objects', 'spawn_agent']));
-    expect(pmTools).not.toContain('create_project');
+    // a manager creates sub-projects of its project
+    expect(pmTools).toContain('create_project');
     // a plain top-level chat may start projects; a sub-agent outside a project sees neither set
     expect(names(r, r.createSession())).toContain('create_project');
     const worker = names(r, r.createSession({ parentId: r.createSession().id }));
@@ -272,6 +347,33 @@ describe('project tools', () => {
     // the stage change is in the project's activity; the assistant reads it there (list_projects / open_project)
     expect(r.getProject(p.id)!.recentLog.some((e) => e.action === 'stage')).toBe(true);
     void top;
+  });
+
+  it('the top-level agent creates a project holding sub-projects; a manager creates one beside its own', async () => {
+    gw.onRequest((req) => {
+      const all = JSON.stringify(req.body.messages);
+      if (all.includes('TOP-ASK') && !all.includes('Created project')) {
+        return { toolCalls: [{ id: 'c1', name: 'create_project', args: { name: 'Models', manager: false } }] };
+      }
+      if (all.includes('TOP-ASK') && !all.includes('Created sub-project')) {
+        return { toolCalls: [{ id: 'c2', name: 'create_project', args: { name: 'T1', parent: 'Models', brief: 'T1-BRIEF' } }] };
+      }
+      if (all.includes('T1-BRIEF') && !all.includes('Created sub-project')) {
+        return { toolCalls: [{ id: 'c3', name: 'create_project', args: { name: 'L1', parent: 'ignored' } }] };
+      }
+      return { text: 'done' };
+    });
+    const r = makeRuntime(gw, { cwd: dir, workflowsDir: exampleDir });
+    await r.top().send('TOP-ASK models with T1').done;
+    const models = r.listProjects().find((p) => p.name === 'Models')!;
+    const t1 = r.listProjects().find((p) => p.name === 'T1')!;
+    expect(models.managerSessionId).toBe('');
+    expect(t1.parentId).toBe(models.id);
+    await r.session(t1.managerSessionId)!.idle();
+    // the sub-project's manager made a sibling (its own project is a sub-project)
+    expect(r.listProjects().find((p) => p.name === 'L1')).toMatchObject({ parentId: models.id, folder: join(models.folder, 'L1') });
+    const t1Request = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('T1-BRIEF'))!;
+    expect((t1Request.body.messages as { content: string }[])[0]!.content).toContain(`It is a sub-project of "Models" (${models.id}`);
   });
 });
 

@@ -279,7 +279,8 @@ export class MailPipeline {
 
   #batchMessage(batch: MailItem[]): { text: string; notes: GuardNote[] } {
     const notes: GuardNote[] = [];
-    const projects = this.#rt.listProjects().filter((p) => p.status === 'active');
+    // only projects with a conversation of their own take mail (one that only holds sub-projects has no manager to read it)
+    const projects = this.#rt.listProjects().filter((p) => p.status === 'active' && p.managerSessionId);
     const lines = [
       `New mail to sort (${batch.length}). Call triage_mail once with a result for every mail_id.`,
       '',

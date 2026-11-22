@@ -74,7 +74,7 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-/** 'project' (mock-up, project-sub): the page of a project that holds sub-projects. */
+/** 'project': the page of a project that holds sub-projects. */
 type View = 'chat' | 'inbox' | 'plugin' | 'project';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
@@ -109,7 +109,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     setSettingsOpen(true);
   }, []);
   /** The new-project dialog; from a 「新事务」 mail it carries the mail and the suggested name. */
-  const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string }>(null);
+  const [newProject, setNewProject] = useState<null | { name?: string; mailId?: string; parentId?: string }>(null);
   /** The file shown in the right panel instead of the details, if any. */
   // A file to show in the right panel, or (inline) a page from an answer's HTML code block.
   // The right panel's tabs: files and web pages side by side (shell/pane-tabs.ts). `preview` is the file shown;
@@ -517,13 +517,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
   };
 
-  /** Mock-up (project-sub): a project's page in the main area; its sub-projects' activity loads behind it. */
+  /** A project's page in the main area; its sub-projects' activity loads behind it. */
   const openProject = (pid: string) => {
     setView('project');
     setProjectPageId(pid);
     setSettingsOpen(false);
     if (layout.left === 'floating') setFloating(null);
-    for (const p of state.projects) if (p.parentId === pid) void agent.loadProject(p.id);
+    for (const p of state.projects) if (p.parentId === pid || p.id === pid) void agent.loadProject(p.id);
   };
   // the screenshot hook (set once) reaches the latest one
   useEffect(() => {
@@ -1060,9 +1060,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
   const pageProject = view === 'project' ? state.projects.find((p) => p.id === projectPageId) : undefined;
+  const newProjectParent = newProject?.parentId ? state.projects.find((p) => p.id === newProject.parentId) : undefined;
   const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
   /**
-   * Mock-up (project-sub): in a project, a conversation's 子任务 in the details (the workers it sent out; a sub-task's
+   * In a project, a conversation's 子任务 in the details (the workers it sent out; a sub-task's
    * own ones in its details). Shown there, a finished one has been seen (its news dot goes).
    */
   const subTasks =
@@ -1131,6 +1132,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     ...(bridge.agent.renameProject ? { onRenameProject: (pid: string, name: string) => void agent.renameProject(pid, name) } : {}),
     ...(bridge.agent.deleteProject ? { onDeleteProject: (pid: string, name: string) => setDeletingProject({ id: pid, name }) } : {}),
     ...(bridge.agent.deleteSession ? { onDeleteChat: (s: SessionInfo) => setDeletingChat({ id: s.id, name: s.title || t('新对话') }) } : {}),
+    ...(bridge.agent.createProject && !shell.demo
+      ? { onNewSubProject: (pid: string) => setNewProject({ parentId: pid }), isSubProject: (pid: string) => Boolean(state.projects.find((p) => p.id === pid)?.parentId) }
+      : {}),
   };
   // The open conversation's name in the title bar: a click edits it, a right-click opens its menu.
   const named = view === 'chat' ? session : undefined;
@@ -1195,6 +1199,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {...(rowActions.onRenameProject ? { onRenameProject: rowActions.onRenameProject } : {})}
       {...(rowActions.onDeleteProject ? { onDeleteProject: rowActions.onDeleteProject } : {})}
       {...(rowActions.onDeleteChat ? { onDeleteChat: rowActions.onDeleteChat } : {})}
+      {...(rowActions.onNewSubProject ? { onNewSubProject: rowActions.onNewSubProject } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
       {...sidebarNews({
         inboxShown: mail.supported && mailSource,
@@ -1368,6 +1373,10 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
           ) : view === 'project' && pageProject ? (
             <ProjectPage
               project={pageProject}
+              {...(() => {
+                const manager = pageProject.managerSessionId ? sessions.find((x) => x.id === pageProject.managerSessionId) : undefined;
+                return manager ? { own: { manager, below: sessions.filter((x) => x.parentChain.includes(manager.id)) } } : {};
+              })()}
               subs={state.projects
                 .filter((p) => p.parentId === pageProject.id)
                 .flatMap((p) => {
@@ -1375,11 +1384,12 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                   return manager ? [{ project: p, manager, below: sessions.filter((x) => x.parentChain.includes(manager.id)) }] : [];
                 })}
               activity={state.projects
-                .filter((p) => p.parentId === pageProject.id)
+                .filter((p) => p.parentId === pageProject.id || p.id === pageProject.id)
                 .flatMap((p) => (state.activity[p.id] ?? []).map((a) => ({ ...a, from: p.name })))
                 .sort((a, b) => b.at.localeCompare(a.at))}
               onOpenSession={openSession}
               onOpenFolder={(f) => actions.openFolder?.(f)}
+              {...(rowActions.onNewSubProject ? { onNewSubProject: () => rowActions.onNewSubProject?.(pageProject.id) } : {})}
             />
           ) : state.loaded ? (
             <ChildSourceContext.Provider value={childSource}>
@@ -1585,7 +1595,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {deletingProject ? (
         <ConfirmDialog
           title={t('删除项目「{name}」？', { name: deletingProject.name })}
-          detail={t('将删除该项目及其对话记录，不会删除项目文件夹中的文件。')}
+          detail={
+            state.projects.some((p) => p.parentId === deletingProject.id)
+              ? t('将删除该项目、它的子项目及其对话记录，不会删除文件夹中的文件。')
+              : t('将删除该项目及其对话记录，不会删除项目文件夹中的文件。')
+          }
           confirmLabel={t('删除')}
           danger
           onCancel={() => setDeletingProject(null)}
@@ -1604,11 +1618,15 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {newProject ? (
         <NewProjectDialog
           {...(newProject.name ? { initialName: newProject.name } : {})}
+          {...(newProjectParent ? { parent: { name: newProjectParent.name, folder: newProjectParent.folder } } : {})}
           onPickFolder={() => bridge.pickFolder(t('选择项目文件夹'))}
           onCreate={async (input) => {
             const mailId = newProject.mailId;
             // A project started from a mail: the mail moves into it (its manager gets it).
-            const problem = await agent.createProject(input, mailId ? (p) => mailStore.feedback(mailId, 'reassign', p.id) : undefined);
+            const problem = await agent.createProject(
+              { ...input, ...(newProjectParent ? { parentId: newProjectParent.id } : {}) },
+              mailId ? (p) => mailStore.feedback(mailId, 'reassign', p.id) : undefined,
+            );
             if (!problem) {
               setNewProject(null);
               setView('chat');

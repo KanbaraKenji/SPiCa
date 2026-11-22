@@ -193,6 +193,9 @@ export const EN_SHELL: Catalog = {
   // shell/CommandJobs.tsx
   '展开详情（{n} 个运行中）': 'Show details ({n} running)',
   后台命令: 'Background commands',
+  新子项目: 'New sub-project',
+  '默认：{folder}\名称': 'Default: {folder}\name',
+  '将删除该项目、它的子项目及其对话记录，不会删除文件夹中的文件。': 'The project, its sub-projects and their conversations will be deleted. Files in the folders won’t be deleted.',
   子项目: 'Sub-projects',
   常驻: 'Resident',
   回报: 'Report',

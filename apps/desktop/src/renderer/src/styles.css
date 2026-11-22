@@ -9481,7 +9481,7 @@ input[type='radio']:disabled {
   rotate: none;
 }
 
-/* ---------- Mock-up (project-sub): a project's page, 子任务 in the details ---------- */
+/* ---------- A project's page, 子任务 in the details ---------- */
 
 /* A project holding sub-projects: its page in the main area, a column as wide as the conversation's. */
 .project-page {
@@ -9670,4 +9670,20 @@ input[type='radio']:disabled {
 
 .child-progress-row .plan-current {
   color: var(--spica-muted);
+}
+
+/* 新子项目 under a project's sub-projects: the sidebar's 新项目 as a row of the list. */
+.project-new {
+  color: var(--spica-muted);
+}
+
+.project-new:hover {
+  color: var(--spica-ink);
+}
+
+/* A field the dialog shows but does not ask for (a sub-project's project). */
+.form-value {
+  min-height: var(--control-h);
+  display: flex;
+  align-items: center;
 }

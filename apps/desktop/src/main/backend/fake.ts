@@ -272,7 +272,7 @@ export class FakeBackend implements AgentBackend {
           updatedAt: pm.updatedAt,
         });
       }
-      // Mock-up (project-sub): projects holding sub-projects; a sub-project's folder is inside its project's.
+      // Projects holding sub-projects; a sub-project's folder is inside its project's.
       for (const p of SUB_PROJECTS) {
         const pm = p.managerSessionId ? this.#sessions.get(p.managerSessionId) : undefined;
         const at = pm?.updatedAt ?? this.#now().toISOString();
@@ -622,10 +622,12 @@ export class FakeBackend implements AgentBackend {
 
   async getProject(projectId: string): Promise<ProjectDetail | undefined> {
     const p = this.#projects.get(projectId);
-    const manager = p ? this.#sessions.get(p.managerSessionId) : undefined;
-    if (!p || !manager) return undefined;
-    const agents = [...this.#sessions.values()].filter((s) => s.parentId === manager.id);
-    return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager, agents });
+    if (!p) return undefined;
+    const manager = p.managerSessionId ? this.#sessions.get(p.managerSessionId) : undefined;
+    if (p.managerSessionId && !manager) return undefined;
+    const agents = manager ? [...this.#sessions.values()].filter((s) => s.parentId === manager.id) : [];
+    const subProjects = [...this.#projects.values()].filter((x) => x.parentId === p.id);
+    return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager: manager ?? null, agents, subProjects });
   }
 
   async renameProject(projectId: string, name: string): Promise<ProjectInfo> {
@@ -634,7 +636,7 @@ export class FakeBackend implements AgentBackend {
     const n = name.trim();
     if (!n) throw new Error('a project needs a name');
     Object.assign(p, { name: n, updatedAt: isoAt(this.#now()) });
-    await this.renameSession(p.managerSessionId, n);
+    if (p.managerSessionId) await this.renameSession(p.managerSessionId, n);
     this.#emit(p.managerSessionId, { type: 'project.updated', project: structuredClone(p) });
     return structuredClone(p);
   }

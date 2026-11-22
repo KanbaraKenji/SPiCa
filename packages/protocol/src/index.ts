@@ -489,7 +489,10 @@ export interface SessionInfo {
   templateId?: string;
   /** Project the session works for (project manager and its sub-agents). */
   projectId?: string;
-  /** Mock-up (project-sub): a sub-task its manager keeps for later jobs; it is not put away when a job is done. */
+  /**
+   * A sub-task its manager keeps for later jobs (spawn_agent resident, or the plugin's agent says so): idle between
+   * jobs, it is not ended when one is done and waits for the next.
+   */
   resident?: boolean;
   // The three below are always set by the core (optional only so older fakes still type-check).
   /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
@@ -1568,7 +1571,7 @@ export interface ProjectInfo {
   folder: string;
   /** The project's own conversation (its manager); '' for a project that only holds sub-projects. */
   managerSessionId: string;
-  /** Mock-up (project-sub): the project this one is a sub-project of; its folder is inside that project's. */
+  /** The project this one is a sub-project of (one level only); its folder is inside that project's. */
   parentId?: string;
   workflowId: string | null;
   /** Current stage id (null when the project has no workflow). */
@@ -1627,16 +1630,26 @@ export interface ProjectDetail extends ProjectInfo {
   objects: WorkObject[];
   /** Newest first. */
   recentLog: ProjectLogEntry[];
-  manager: SessionInfo;
+  /** Null for a project that only holds sub-projects. */
+  manager: SessionInfo | null;
   /** Sub-agents of the manager. */
   agents: SessionInfo[];
+  /** Its sub-projects (a sub-project has none). */
+  subProjects: ProjectInfo[];
 }
 
 export interface CreateProjectRequest {
   name: string;
-  /** Absolute, or relative to the deployment's projects folder. Created if missing. Default: the name. */
+  /**
+   * Absolute, or relative to the deployment's projects folder (a sub-project: to its project's folder, and inside it).
+   * Created if missing. Default: the name.
+   */
   folder?: string;
   workflowId?: string;
   /** First task for the project manager. */
   brief?: string;
+  /** Make it a sub-project of this project (which must not be a sub-project itself). */
+  parentId?: string;
+  /** false: a project that only holds sub-projects, with no conversation (manager) of its own. Default true. */
+  manager?: boolean;
 }

@@ -172,7 +172,7 @@ export function buildSeed(now: Date): Seed {
   };
 }
 
-// ----- Mock-up (project-sub): projects that hold sub-projects ------------------------------------------------
+// ----- Projects that hold sub-projects ------------------------------------------------
 // 机种 holds three 磁件, 游戏攻略 holds one game. Each sub-project is a conversation, its manager; 磁件 T1's manager
 // has sent out sub-tasks (two running, one kept for later jobs, four ended).
 
@@ -191,7 +191,7 @@ export const SUB_IDS = {
   l1Quote: 's-st-l1q',
 } as const;
 
-/** The projects of the mock-up: two that hold sub-projects (no conversation of their own) and their sub-projects. */
+/** The demo's projects: two that hold sub-projects (no conversation of their own) and their sub-projects. */
 export const SUB_PROJECTS: readonly { id: string; name: string; folder?: string; parentId?: string; managerSessionId: string }[] = [
   { id: 'p-models', name: '机种', folder: 'D:\\工作\\机种', managerSessionId: '' },
   { id: 'p-t1', name: '磁件 T1', parentId: 'p-models', managerSessionId: SUB_IDS.t1 },

@@ -1,8 +1,9 @@
-// A project's own page (mock-up, project-sub): a project that holds sub-projects has no conversation; its name in
-// the sidebar opens this page in the main area. Only what the shell already has: the folder, the cost of all its
-// sub-projects, the sub-projects (a click opens one's conversation, its manager), their activity.
+// A project's own page: the name of a project that holds sub-projects opens it in the main area. The folder, the
+// cost of all its sub-projects, its own conversation (when it has one), the sub-projects (a click opens one's
+// conversation, its manager; 新子项目 under them), their activity.
 import type { ProjectInfo, ProjectLogEntry, SessionInfo } from '@spica/protocol';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { Icon } from '../ui/Icon';
 import { activityText } from './activity';
 import { STATUS_LABEL } from './row-status';
 import { formatUsd } from '../chat/format';
@@ -29,12 +30,16 @@ export interface ProjectPageProps {
   subs: { project: ProjectInfo; manager: SessionInfo; below: SessionInfo[] }[];
   /** The sub-projects' activity, newest first. */
   activity: (ProjectLogEntry & { from: string })[];
+  /** Its own conversation (its manager), when it has one besides the sub-projects; with what that sent out. */
+  own?: { manager: SessionInfo; below: SessionInfo[] };
   onOpenSession(id: string): void;
   onOpenFolder(path: string): void;
+  /** 新子项目 under the sub-projects. Absent: not offered. */
+  onNewSubProject?: () => void;
 }
 
-export function ProjectPage({ project, subs, activity, onOpenSession, onOpenFolder }: ProjectPageProps) {
-  const sessions = subs.flatMap((x) => [x.manager, ...x.below]);
+export function ProjectPage({ project, subs, own, activity, onOpenSession, onOpenFolder, onNewSubProject }: ProjectPageProps) {
+  const sessions = [...(own ? [own.manager, ...own.below] : []), ...subs.flatMap((x) => [x.manager, ...x.below])];
   const cost = sessions.reduce((n, s) => n + s.costUsd, 0);
   const unpriced = sessions.some((s) => s.unpriced);
   return (
@@ -54,6 +59,16 @@ export function ProjectPage({ project, subs, activity, onOpenSession, onOpenFold
             ) : null}
             <dt>{t('花费')}</dt>
             <dd>{spendText(cost, unpriced, formatUsd)}</dd>
+            {own ? (
+              <>
+                <dt>{t('对话')}</dt>
+                <dd>
+                  <button type="button" className="link-btn" onClick={() => onOpenSession(own.manager.id)}>
+                    {project.name}
+                  </button>
+                </dd>
+              </>
+            ) : null}
           </dl>
 
           <section className="project-section">
@@ -80,9 +95,15 @@ export function ProjectPage({ project, subs, activity, onOpenSession, onOpenFold
                   );
                 })}
               </ul>
-            ) : (
+            ) : onNewSubProject ? null : (
               <p className="detail-empty">—</p>
             )}
+            {onNewSubProject ? (
+              <button type="button" className="project-task project-new" onClick={onNewSubProject}>
+                <Icon name="plus" size={16} />
+                <span className="project-task-name">{t('新子项目')}</span>
+              </button>
+            ) : null}
           </section>
 
           <section className="project-section">

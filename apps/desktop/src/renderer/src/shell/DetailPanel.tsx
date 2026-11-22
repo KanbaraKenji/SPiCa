@@ -55,7 +55,7 @@ export interface DetailPanelProps {
   /** 后台命令's 停止. */
   onStopJob?: (jobId: string) => void;
   /**
-   * Mock-up (project-sub): the sub-tasks the open conversation sent out (its 子任务 section) and how to show one:
+   * The sub-tasks the open conversation sent out (its 子任务 section) and how to show one:
    * its record (loaded on a click), 停止, its whole conversation in the main area.
    */
   subTasks?: {
