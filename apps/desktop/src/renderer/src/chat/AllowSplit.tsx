@@ -9,6 +9,13 @@ import { Icon } from '../ui/Icon';
 import { ContextMenu } from '../ui/ContextMenu';
 
 /**
+ * The looks of the drop-down on trial, set by hand on the page (DevTools: document.documentElement.dataset.allowMenu =
+ * 'main' | 'pill' | 'a' | 'b' | 'c'); nothing in the app sets it, so it is 甲 ('a') until one is picked. 乙 and 丙 are
+ * as wide as the button. Goes once one is picked.
+ */
+const sameWidth = (): boolean => ['b', 'c'].includes(document.documentElement.dataset.allowMenu ?? '');
+
+/**
  * Every confirmation that can be allowed for good uses this one (a write outside the folders, the computer-use card):
  * `onAllow(true)` is Always allow, `onAllow(false)` Allow once; `hint` is the main part's hover text (what is allowed).
  */
@@ -44,7 +51,20 @@ export function AllowSplit({ disabled, hint, onAllow }: { disabled: boolean; hin
       </button>
       {/* On the page itself: inside the conversation a fixed position would be taken from the card. */}
       {open
-        ? createPortal(<ContextMenu x={0} y={0} anchor={box} align="end" items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]} onClose={() => setBox(null)} />, document.body)
+        ? createPortal(
+            <ContextMenu
+              x={0}
+              y={0}
+              anchor={box}
+              align="end"
+              className="allow-split-menu"
+              // 乙 / 丙 (the looks on trial, html[data-allow-menu]): as wide as the button
+              minWidth={sameWidth() ? box.offsetWidth : undefined}
+              items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]}
+              onClose={() => setBox(null)}
+            />,
+            document.body,
+          )
         : null}
     </span>
   );

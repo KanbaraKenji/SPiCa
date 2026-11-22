@@ -278,7 +278,7 @@ describe('ConfirmCard', () => {
       expect(more.getAttribute('aria-expanded')).toBe('true');
       expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['允许一次']);
       // one item: it fills the menu (ui/ContextMenu, is-single)
-      expect(screen.getByRole('menu').className).toBe('context-menu is-single');
+      expect(screen.getByRole('menu').className).toBe('context-menu is-single allow-split-menu');
       expect(document.activeElement?.textContent).toBe('允许一次');
       fireEvent.click(more);
       expect(screen.queryByRole('menu')).toBeNull();

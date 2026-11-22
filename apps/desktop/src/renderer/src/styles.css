@@ -6135,14 +6135,65 @@ section.plugins-part > .plugins-part-title {
   outline: none;
 }
 
-/* A menu of one item (复制, 允许一次): the item fills it, with the menu's corners, so when it is lit (pointer or keys)
-   the menu is one lit shape, not a lit block inside its frame. Menus of more items keep the gap. */
+/* A menu of one item (复制, 允许一次): the item fills it edge to edge, so lit (pointer or keys) the menu is one shape,
+   not a lit block inside its frame; the corners are a button's (8), not the big menus' (14), so one row is not a
+   round-ended pill. Menus of more items keep the gap and their corners. */
 .context-menu.is-single {
   padding: 0;
+  border-radius: var(--radius-m);
 }
 
 .context-menu.is-single .context-item {
+  min-height: 32px;
+  border-radius: 0;
+}
+
+/* The looks on trial (html[data-allow-menu], set by hand; chat/AllowSplit.tsx). Goes once one is picked.
+   main: as on main (frame, gap, lit block). pill: the last one (fills, the menu's 14). a: 甲, the rules above.
+   b: 乙, as wide as the button, the words where the button's are. c: 丙, a second button under it. */
+html[data-allow-menu='main'] .context-menu.is-single {
+  padding: 4px;
   border-radius: var(--radius-popup);
+}
+
+html[data-allow-menu='main'] .context-menu.is-single .context-item {
+  min-height: 28px;
+  border-radius: var(--radius-m);
+}
+
+html[data-allow-menu='pill'] .context-menu.is-single {
+  border-radius: var(--radius-popup);
+}
+
+html[data-allow-menu='pill'] .context-menu.is-single .context-item {
+  min-height: 28px;
+  border-radius: var(--radius-popup);
+}
+
+html[data-allow-menu='b'] .allow-split-menu .context-item {
+  padding: 4px var(--control-pad-x);
+}
+
+html[data-allow-menu='c'] .allow-split-menu {
+  border-radius: var(--radius-m);
+}
+
+html[data-allow-menu='c'] .allow-split-menu .context-item {
+  min-height: var(--control-h);
+  padding: 0 var(--control-pad-x);
+  justify-content: center;
+  border: 1px solid var(--spica-border-strong);
+  border-radius: var(--radius-m);
+  background: var(--spica-control);
+}
+
+html[data-allow-menu='c'] .allow-split-menu .context-item:hover,
+html[data-allow-menu='c'] .allow-split-menu .context-item:focus-visible {
+  background: var(--spica-control-hover);
+}
+
+html[data-allow-menu='c'] .allow-split-menu .context-item .context-item-label {
+  flex: none;
 }
 
 /* Moving with Up and Down: only the focused item is lit, not also the one under a pointer that has not moved. */
