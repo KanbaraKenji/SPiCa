@@ -9686,4 +9686,5 @@ input[type='radio']:disabled {
   min-height: var(--control-h);
   display: flex;
   align-items: center;
+  font-weight: 400;
 }

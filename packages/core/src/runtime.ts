@@ -484,6 +484,13 @@ export class Runtime implements RuntimeInternals {
         return [{ position: 'system:after', text, priority: 10 }];
       },
     });
+    // A sub-agent kept for later jobs knows it stays (in its instructions, not in the task the user reads).
+    this.hooks.register('core:resident', {
+      inject: (ctx) =>
+        ctx.session.resident
+          ? [{ position: 'system:after', text: 'You are kept for later jobs: report when a job is done; the next one will come as a message.', priority: 10 }]
+          : undefined,
+    });
   }
 
   addProvider(p: Provider, limits?: LimiterConfig): void {

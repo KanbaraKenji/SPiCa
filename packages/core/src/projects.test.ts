@@ -214,7 +214,10 @@ describe('projects', () => {
     expect(kept.info()).toMatchObject({ resident: true, status: 'idle' });
     expect(once.info()).toMatchObject({ status: 'done' });
     expect(once.info()).not.toHaveProperty('resident');
-    expect(JSON.stringify(kept.messages()[0]?.content)).toContain('You are kept for later jobs');
+    // told in its instructions, not in the task the user reads
+    expect(JSON.stringify(kept.messages()[0]?.content)).not.toContain('kept for later');
+    const keptRequest = gw.requests.find((q) => JSON.stringify(q.body.messages).includes('FOLLOW-UP'))!;
+    expect((keptRequest.body.messages as { content: string }[])[0]!.content).toContain('You are kept for later jobs');
     // its report reached the manager as any sub-agent's does
     expect(rt1.lastReport(kept.id)).toBe('reported');
     await rt1.close();

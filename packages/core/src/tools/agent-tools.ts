@@ -80,11 +80,7 @@ export const spawnAgentTool: Tool = {
       ...(typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
       ...(input.resident === true ? { resident: true } : {}),
     });
-    const task = String(input.task);
-    // a resident one is told it stays: after each job it reports and waits for the next
-    child.send(input.resident === true ? `${task}
-
-(You are kept for later jobs: report when this one is done; the next one will come as a message.)` : task, { author: 'parent' });
+    child.send(String(input.task), { author: 'parent' });
     return {
       content:
         `Started sub-agent "${String(input.title)}" with id ${child.id}. It is working now.` +
