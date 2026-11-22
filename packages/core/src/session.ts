@@ -368,7 +368,6 @@ export class Session {
       const guard = { ...g, tainted: g.tainted || met.tainted, outsideHosts: new Set([...g.outsideHosts, ...met.hosts]) };
       const written = this.#outsideFolder(tool, args);
       const read = written ? undefined : this.#otherProjectFolder(tool, args);
-      const outsideFolder = written ?? read;
       const cause = this.#guardCause(tool, args, guard) ?? (written ? 'outside_folder' : read ? 'other_project' : undefined);
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       let confirmedBy: 'user' | undefined;
