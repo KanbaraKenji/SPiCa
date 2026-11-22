@@ -44,7 +44,7 @@ export function AllowSplit({ disabled, hint, onAllow }: { disabled: boolean; hin
       </button>
       {/* On the page itself: inside the conversation a fixed position would be taken from the card. */}
       {open
-        ? createPortal(<ContextMenu x={0} y={0} anchor={box} align="end" className="allow-split-menu" items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]} onClose={() => setBox(null)} />, document.body)
+        ? createPortal(<ContextMenu x={0} y={0} anchor={box} align="end" items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]} onClose={() => setBox(null)} />, document.body)
         : null}
     </span>
   );
