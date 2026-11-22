@@ -135,6 +135,10 @@ function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): Sess
   return out;
 }
 
+/** Each level in is one step; the line to a row's sub-agents runs under the first character of its name. */
+const TREE_INDENT = 20;
+const TREE_LINE = 16;
+
 /**
  * A row. `leaf` (a sub-project's row): its sub-tasks are not rows under it; they count in its status place, as a
  * collapsed row's do, and it is the current row while one of them is open.
@@ -169,7 +173,7 @@ function Node({ s, depth, tree, leaf }: { s: SessionInfo; depth: number; tree: T
           anywhere on it opens the same menu at the pointer. */}
       <div
         className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')}
-        style={{ paddingLeft: depth * 16 }}
+        style={{ paddingLeft: depth * TREE_INDENT }}
         onContextMenu={(e) => {
           if (!tree.startRename || !tree.hasMenu(s) || tree.editing === s.id) return;
           e.preventDefault();
@@ -223,7 +227,16 @@ function Node({ s, depth, tree, leaf }: { s: SessionInfo; depth: number; tree: T
           </button>
         ) : null}
       </div>
-      {open ? kids.map((k) => <Node key={k.id} s={k} depth={depth + 1} tree={tree} />) : null}
+      {/* What is under a row hangs on a line from it: down its left side, the last one's end turning in. */}
+      {open && kids.length ? (
+        <div className="tree-kids" style={{ '--tree-line-x': `${depth * TREE_INDENT + TREE_LINE}px` } as CSSProperties}>
+          {kids.map((k) => (
+            <div key={k.id} className="tree-branch">
+              <Node s={k} depth={depth + 1} tree={tree} />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }
@@ -267,7 +280,15 @@ function ProjectRow({ p, subs, tree, current, onOpenProject, leafOf }: { p: Proj
           </span>
         ) : null}
       </div>
-      {open ? subs.map((k) => <Node key={k.id} s={k} depth={1} tree={tree} leaf={leafOf(k)} />) : null}
+      {open && subs.length ? (
+        <div className="tree-kids" style={{ '--tree-line-x': `${TREE_LINE}px` } as CSSProperties}>
+          {subs.map((k) => (
+            <div key={k.id} className="tree-branch">
+              <Node s={k} depth={1} tree={tree} leaf={leafOf(k)} />
+            </div>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }

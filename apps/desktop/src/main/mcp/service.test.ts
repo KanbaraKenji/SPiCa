@@ -79,6 +79,26 @@ describe('MCP services in the main process', () => {
     expect(backend.set).toHaveBeenLastCalledWith([]);
   });
 
+  it('a web address: the key and headers sealed, masks shown, the backend gets Authorization: Bearer; empty keeps them', async () => {
+    const { dir, store, backend, deps } = setup();
+    const web = (patch: Partial<McpServerDraft> = {}): McpServerDraft => ({ ...emptyMcpDraft(), name: 'docs', kind: 'url', url: 'https://mcp.example.com/mcp', key: 'Bearer dk-secret-value-0000-77aa', headers: [{ name: 'X-Team', value: 'team-secret-docs' }], ...patch });
+    const r = await runMcp({ op: 'save', was: null, draft: web() }, deps);
+    expect(r.errors).toBeUndefined();
+    const file = readFileSync(join(dir, 'mcp-servers.json'), 'utf8');
+    expect(file).not.toMatch(/dk-secret|team-secret/);
+    expect(r.list.servers[0]).toMatchObject({ name: 'docs', url: 'https://mcp.example.com/mcp', key: 'dk-s****77aa', headers: [{ name: 'X-Team', mask: expect.stringContaining('****') }], command: '', args: [] });
+    expect(backend.set).toHaveBeenLastCalledWith([
+      { name: 'docs', url: 'https://mcp.example.com/mcp', headers: { 'X-Team': 'team-secret-docs', Authorization: 'Bearer dk-secret-value-0000-77aa' }, command: '', args: [], env: {}, enabled: true, approval: 'ask' },
+    ]);
+    // edited with the key and the header left empty: both kept
+    await runMcp({ op: 'save', was: 'docs', draft: web({ key: '', keySaved: true, headers: [{ name: 'X-Team', saved: true }] }) }, deps);
+    expect(store.configs()[0]!.headers).toEqual({ 'X-Team': 'team-secret-docs', Authorization: 'Bearer dk-secret-value-0000-77aa' });
+    // the key taken away
+    await runMcp({ op: 'save', was: 'docs', draft: web({ key: '', headers: [] }) }, deps);
+    expect(store.configs()[0]!.headers).toEqual({});
+    expect((await runMcp({ op: 'save', was: null, draft: web({ name: 'x', url: 'http://mcp.example.com' }) }, deps)).errors?.url).toBeTruthy();
+  });
+
   it('a computer that cannot seal: the value is not saved, and says so', async () => {
     const { dir } = setup();
     const store = new McpServerStore(dir, { ...box, available: () => false });

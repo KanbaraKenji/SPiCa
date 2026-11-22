@@ -1,16 +1,19 @@
 // The MCP services the person adds (not the ones plugins bring). A list, a row a service (its letter, its name,
-// its command under it, its state at the end); a press opens its page in place of the list (← back): its switch
-// and 「…」 (编辑 / 删除), what is wrong and the last lines it wrote, its command, its tools, and whether its tools
-// ask before they run. 添加 opens the form in place of the list: 名称, 命令, 参数 (one a line), 环境变量 (values
-// kept sealed), 工作文件夹, 工具执行; 粘贴配置 fills it from another app's `mcpServers`. 保存 asks first, showing
-// the whole command that will run.
-import { useEffect, useState, type ReactNode } from 'react';
+// its command or address under it, its state at the end); a press opens its page in place of the list (← back): its
+// switch and 「…」 (编辑 / 删除), what is wrong and the last lines it wrote, its command or address, its tools, and
+// whether its tools ask before they run. 添加 opens the form in place of the list. 类型 本机程序: 名称, 命令, 参数
+// (one a line), 环境变量 (values kept sealed), 工作文件夹; 网址: 名称, 网址, 密钥 (sent as Authorization: Bearer),
+// 更多请求头 folded (values sealed); then 工具执行. 粘贴配置 fills it from another app's `mcpServers`. 保存 asks
+// first, showing the whole command that will run or the whole address with the headers' names and masks.
+import { keyMaskParts, keyMaskText } from '@spica/protocol';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import {
   commandLine,
   quoteArg,
   draftArgs,
   draftOf,
   emptyMcpDraft,
+  keyOf,
   MCP_STATUS,
   mcpProblemText,
   mcpDraftErrors,
@@ -18,6 +21,7 @@ import {
   type McpApproval,
   type McpEnvDraft,
   type McpFieldErrors,
+  type McpKind,
   type McpServerDraft,
   type McpServerView,
 } from '../../../shared/mcp-servers';
@@ -52,6 +56,17 @@ export interface McpList {
   /** Names a new service cannot take (plugins' servers). */
   taken: string[];
 }
+
+const KINDS: readonly { value: McpKind; label: string }[] = [
+  { value: 'program', label: N_('本机程序') },
+  { value: 'url', label: N_('网址') },
+];
+
+/** What a row and the page say it runs: the command line, or the address. */
+const runsAs = (s: McpServerView): string => s.url ?? commandLine(s.command, s.args);
+
+/** A value as its mask shows it (the key and headers in the confirmation). */
+const maskOf = (value: string): string => keyMaskText(keyMaskParts(value));
 
 const APPROVALS: readonly { value: McpApproval; label: string }[] = [
   { value: 'ask', label: N_('每次询问') },
@@ -198,18 +213,35 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
           </div>
         ) : null}
         <dl className="detail-facts plugin-facts mcp-facts">
-          <dt>{tc('field', '命令')}</dt>
-          <dd className="mcp-mono">{commandLine(s.command, s.args)}</dd>
-          {s.cwd ? (
+          {s.url ? (
             <>
-              <dt>{t('工作文件夹')}</dt>
-              <dd className="path-text" title={s.cwd} data-tip-clipped="">
-                {s.cwd}
-              </dd>
+              <dt>{t('网址')}</dt>
+              <dd className="mcp-mono">{s.url}</dd>
+              <dt>{t('密钥')}</dt>
+              <dd className="mcp-mono">{s.key ?? '—'}</dd>
+              {s.headers?.length ? (
+                <>
+                  <dt>{t('请求头')}</dt>
+                  <dd>{s.headers.map((h) => h.name).join(t('、'))}</dd>
+                </>
+              ) : null}
             </>
-          ) : null}
-          <dt>{t('环境变量')}</dt>
-          <dd>{s.env.length ? s.env.map((e) => e.name).join(t('、')) : '—'}</dd>
+          ) : (
+            <>
+              <dt>{tc('field', '命令')}</dt>
+              <dd className="mcp-mono">{commandLine(s.command, s.args)}</dd>
+              {s.cwd ? (
+                <>
+                  <dt>{t('工作文件夹')}</dt>
+                  <dd className="path-text" title={s.cwd} data-tip-clipped="">
+                    {s.cwd}
+                  </dd>
+                </>
+              ) : null}
+              <dt>{t('环境变量')}</dt>
+              <dd>{s.env.length ? s.env.map((e) => e.name).join(t('、')) : '—'}</dd>
+            </>
+          )}
           <dt>{t('工具')}</dt>
           <dd>{s.tools.length ? s.tools.join(t('、')) : '—'}</dd>
         </dl>
@@ -223,8 +255,27 @@ function Detail({ s, busy, api, onBack, onEdit, onRemove }: { s: McpServerView; 
   );
 }
 
-/** 环境变量: a row each, 名称 and 值 side by side; values are sealed (a saved one shows its mask, empty keeps it). */
-function EnvField({ rows, saved, onChange, error }: { rows: McpEnvDraft[]; saved: McpServerView['env']; onChange(rows: McpEnvDraft[]): void; error?: string | undefined }) {
+/**
+ * 环境变量 (or a web address's 请求头): a row each, 名称 and 值 side by side; values are sealed (a saved one shows its
+ * mask, empty keeps it).
+ */
+function EnvField({
+  rows,
+  saved,
+  onChange,
+  error,
+  title = t('环境变量'),
+  namePlaceholder = 'API_TOKEN',
+  nameLabel = t('变量名'),
+}: {
+  rows: McpEnvDraft[];
+  saved: McpServerView['env'];
+  onChange(rows: McpEnvDraft[]): void;
+  error?: string | undefined;
+  title?: string;
+  namePlaceholder?: string;
+  nameLabel?: string;
+}) {
   const edit = (i: number, patch: Partial<McpEnvDraft>) =>
     onChange(
       rows.map((r, j) => {
@@ -239,7 +290,7 @@ function EnvField({ rows, saved, onChange, error }: { rows: McpEnvDraft[]; saved
       stack
       title={
         <>
-          {t('环境变量')}
+          {title}
           <ProblemBeside problem={error} />
         </>
       }
@@ -251,7 +302,7 @@ function EnvField({ rows, saved, onChange, error }: { rows: McpEnvDraft[]; saved
             return (
               <span key={i} className="header-row">
                 <span className="header-cell header-name">
-                  <input className="input" value={r.name} placeholder="API_TOKEN" aria-label={t('变量名')} spellCheck={false} autoComplete="off" onChange={(e) => edit(i, { name: e.target.value })} />
+                  <input className="input" value={r.name} placeholder={namePlaceholder} aria-label={nameLabel} spellCheck={false} autoComplete="off" onChange={(e) => edit(i, { name: e.target.value })} />
                 </span>
                 <span className="header-cell header-value">
                   <input
@@ -259,13 +310,13 @@ function EnvField({ rows, saved, onChange, error }: { rows: McpEnvDraft[]; saved
                     type="password"
                     value={r.value ?? ''}
                     placeholder={mask ? t('{mask}（留空不修改）', { mask }) : t('值')}
-                    aria-label={t('{name} 的值', { name: r.name.trim() || t('环境变量') })}
+                    aria-label={t('{name} 的值', { name: r.name.trim() || title })}
                     spellCheck={false}
                     autoComplete="off"
                     onChange={(e) => edit(i, { value: e.target.value })}
                   />
                 </span>
-                <button type="button" className="icon-btn" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: r.name.trim() || t('环境变量') })} title={t('删除')}>
+                <button type="button" className="icon-btn" onClick={() => onChange(rows.filter((_, j) => j !== i))} aria-label={t('删除 {name}', { name: r.name.trim() || title })} title={t('删除')}>
                   <Icon name="trash" size={14} />
                 </button>
               </span>
@@ -294,10 +345,13 @@ function PasteMcp({ open, setOpen, onApply }: { open: boolean; setOpen(open: boo
       return;
     }
     const s = r.servers[0]!;
-    const rest = r.servers.length - 1 + r.skipped.length;
+    const rest = r.servers.length - 1;
+    const named = s.name ? { name: s.name } : {};
     onApply(
-      { ...(s.name ? { name: s.name } : {}), command: s.command, args: s.args.join('\n'), env: s.env.map((e) => ({ name: e.name, value: e.value })), cwd: s.cwd ?? '' },
-      rest ? t('另有 {n} 项未填入：{names}', { n: rest, names: [...r.servers.slice(1).map((x) => x.name), ...r.skipped].join(t('、')) }) : '',
+      s.url !== undefined
+        ? { ...named, kind: 'url', url: s.url, key: s.key ?? '', keySaved: false, headers: (s.headers ?? []).map((h) => ({ name: h.name, value: h.value })) }
+        : { ...named, kind: 'program', command: s.command, args: s.args.join('\n'), env: s.env.map((e) => ({ name: e.name, value: e.value })), cwd: s.cwd ?? '' },
+      rest ? t('另有 {n} 项未填入：{names}', { n: rest, names: r.servers.slice(1).map((x) => x.name).join(t('、')) }) : '',
     );
     setText('');
     setOpen(false);
@@ -352,7 +406,12 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
   const [pasting, setPasting] = useState(false);
-  const set = (patch: Partial<McpServerDraft>) => setDraft((d) => ({ ...d, ...patch }));
+  // 更多请求头: open when there are some
+  const [moreHeaders, setMoreHeaders] = useState(() => draft.headers.length > 0);
+  const set = (patch: Partial<McpServerDraft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    if (patch.headers?.length) setMoreHeaders(true);
+  };
   const others = [...taken, ...saved.filter((s) => s.name !== was?.name).map((s) => s.name)];
   const live = shown ? mcpDraftErrors(draft, others) : {};
   const shownErrors = { ...live, ...errors };
@@ -370,6 +429,13 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
   };
   const args = draftArgs(draft);
   const envNames = draft.env.map((e) => e.name.trim()).filter(Boolean);
+  const web = draft.kind === 'url';
+  // the confirmation shows the key and the headers by name and mask (a saved one as saved)
+  const typedKey = keyOf(draft.key);
+  const keyMask = typedKey ? maskOf(typedKey) : draft.keySaved ? was?.key : undefined;
+  const headerMasks = draft.headers
+    .filter((h) => h.name.trim())
+    .map((h) => ({ name: h.name.trim(), mask: h.value ? maskOf(h.value) : (was?.headers?.find((x) => x.name === h.name.trim())?.mask ?? '') }));
   return (
     <section className="plugin-detail mcp-editor" aria-label={was ? t('编辑「{name}」', { name: was.name }) : t('添加 MCP 服务')}>
       <Back label={t('MCP 服务')} onBack={onBack} />
@@ -401,25 +467,68 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
           submit();
         }}
       >
-        <TextField label={t('名称')} value={draft.name} onChange={(name) => set({ name })} error={shownErrors.name} placeholder="files" />
-        <TextField label={tc('field', '命令')} value={draft.command} onChange={(command) => set({ command })} error={shownErrors.command} placeholder="npx" mono />
-        <FormRow stack title={t('参数')}>
-          <textarea className="input mcp-args mcp-mono" wrap="off" rows={Math.min(8, Math.max(3, args.length + 1))} value={draft.args} placeholder={'-y\n@example/files\nD:\\Shared Files'} aria-label={t('参数')} spellCheck={false} onChange={(e) => set({ args: e.target.value })} />
-        </FormRow>
-        <EnvField rows={draft.env} saved={was?.env ?? []} onChange={(env) => set({ env })} error={shownErrors.env} />
-        <TextField
-          label={t('工作文件夹')}
-          value={draft.cwd}
-          onChange={(cwd) => set({ cwd })}
-          placeholder="D:\Projects"
-          after={
-            api.pickFolder ? (
-              <button type="button" className="btn btn-square" aria-label={t('选择文件夹')} title={t('选择文件夹')} onClick={() => void api.pickFolder?.().then((dir) => dir && set({ cwd: dir }))}>
-                <Icon name="folder" size={16} />
+        <FormRow title={t('类型')}>
+          <div className="segmented" role="radiogroup" aria-label={t('类型')}>
+            {KINDS.map((k) => (
+              <button key={k.value} type="button" role="radio" aria-checked={draft.kind === k.value} className={draft.kind === k.value ? 'segment is-on' : 'segment'} onClick={() => set({ kind: k.value })}>
+                {t(k.label)}
               </button>
-            ) : undefined
-          }
-        />
+            ))}
+          </div>
+        </FormRow>
+        <TextField label={t('名称')} value={draft.name} onChange={(name) => set({ name })} error={shownErrors.name} placeholder={web ? 'docs' : 'files'} />
+        {web ? (
+          <>
+            <TextField label={t('网址')} value={draft.url} onChange={(url) => set({ url })} error={shownErrors.url} placeholder="https://mcp.example.com/mcp" mono />
+            <FormRow title={t('密钥')} controlClassName={draft.keySaved ? 'mcp-with-button' : undefined}>
+              <input
+                className="input"
+                type="password"
+                value={draft.key}
+                placeholder={draft.keySaved && was?.key ? t('{mask}（留空不修改）', { mask: was.key }) : t('选填')}
+                aria-label={t('密钥')}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => set({ key: e.target.value })}
+              />
+              {draft.keySaved ? (
+                <button type="button" className="icon-btn" aria-label={t('删除密钥')} title={t('删除密钥')} onClick={() => set({ keySaved: false, key: '' })}>
+                  <Icon name="trash" size={14} />
+                </button>
+              ) : null}
+            </FormRow>
+            <div className="provider-more">
+              <button type="button" className="fold-head" aria-expanded={moreHeaders || !!shownErrors.headers} onClick={() => setMoreHeaders((o) => !o)}>
+                <span className="fold-label">{t('更多请求头')}</span>
+                <Icon name="chevronRight" size={14} className="fold-chevron" />
+              </button>
+            </div>
+            {moreHeaders || shownErrors.headers ? (
+              <EnvField rows={draft.headers} saved={was?.headers ?? []} onChange={(headers) => set({ headers })} error={shownErrors.headers} title={t('请求头')} namePlaceholder="X-API-Key" nameLabel={t('请求头名称')} />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <TextField label={tc('field', '命令')} value={draft.command} onChange={(command) => set({ command })} error={shownErrors.command} placeholder="npx" mono />
+            <FormRow stack title={t('参数')}>
+              <textarea className="input mcp-args mcp-mono" wrap="off" rows={Math.min(8, Math.max(3, args.length + 1))} value={draft.args} placeholder={'-y\n@example/files\nD:\\Shared Files'} aria-label={t('参数')} spellCheck={false} onChange={(e) => set({ args: e.target.value })} />
+            </FormRow>
+            <EnvField rows={draft.env} saved={was?.env ?? []} onChange={(env) => set({ env })} error={shownErrors.env} />
+            <TextField
+              label={t('工作文件夹')}
+              value={draft.cwd}
+              onChange={(cwd) => set({ cwd })}
+              placeholder="D:\Projects"
+              after={
+                api.pickFolder ? (
+                  <button type="button" className="btn btn-square" aria-label={t('选择文件夹')} title={t('选择文件夹')} onClick={() => void api.pickFolder?.().then((dir) => dir && set({ cwd: dir }))}>
+                    <Icon name="folder" size={16} />
+                  </button>
+                ) : undefined
+              }
+            />
+          </>
+        )}
         <FormRow title={t('工具执行')}>
           <ApprovalField value={draft.approval} onChange={(approval) => set({ approval })} />
         </FormRow>
@@ -443,25 +552,53 @@ function Editor({ was, saved, taken, api, onBack, onSaved }: { was: McpServerVie
         <ConfirmDialog
           title={was ? t('保存「{name}」？', { name: draft.name.trim() }) : t('添加「{name}」？', { name: draft.name.trim() })}
           detail={
-            <>
-              <CommandBox command={draft.command.trim()} args={args} />
-              {draft.cwd.trim() || envNames.length ? (
-                <dl className="detail-facts mcp-confirm-facts">
-                  {draft.cwd.trim() ? (
-                    <>
-                      <dt>{t('工作文件夹')}</dt>
-                      <dd>{draft.cwd.trim()}</dd>
-                    </>
-                  ) : null}
-                  {envNames.length ? (
-                    <>
-                      <dt>{t('环境变量')}</dt>
-                      <dd>{envNames.join(t('、'))}</dd>
-                    </>
-                  ) : null}
-                </dl>
-              ) : null}
-            </>
+            web ? (
+              <>
+                <div className="tool-command mcp-command">
+                  <div className="tool-command-box">
+                    <pre>
+                      <code>{draft.url.trim()}</code>
+                    </pre>
+                  </div>
+                </div>
+                {keyMask || headerMasks.length ? (
+                  <dl className="detail-facts mcp-confirm-facts">
+                    {keyMask ? (
+                      <>
+                        <dt>{t('密钥')}</dt>
+                        <dd className="mcp-mono">{keyMask}</dd>
+                      </>
+                    ) : null}
+                    {headerMasks.map((h) => (
+                      <Fragment key={h.name}>
+                        <dt className="mcp-mono">{h.name}</dt>
+                        <dd className="mcp-mono">{h.mask}</dd>
+                      </Fragment>
+                    ))}
+                  </dl>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <CommandBox command={draft.command.trim()} args={args} />
+                {draft.cwd.trim() || envNames.length ? (
+                  <dl className="detail-facts mcp-confirm-facts">
+                    {draft.cwd.trim() ? (
+                      <>
+                        <dt>{t('工作文件夹')}</dt>
+                        <dd>{draft.cwd.trim()}</dd>
+                      </>
+                    ) : null}
+                    {envNames.length ? (
+                      <>
+                        <dt>{t('环境变量')}</dt>
+                        <dd>{envNames.join(t('、'))}</dd>
+                      </>
+                    ) : null}
+                  </dl>
+                ) : null}
+              </>
+            )
           }
           confirmLabel={was ? t('保存') : t('添加')}
           onConfirm={() => void confirm()}
@@ -521,7 +658,7 @@ export function McpServers({ api, view: viewProp, onView }: McpServersProps) {
               <span className="plugin-item-title">
                 <span className="plugin-row-name">{s.name}</span>
               </span>
-              <span className="settings-hint plugin-item-desc mcp-mono">{commandLine(s.command, s.args)}</span>
+              <span className="settings-hint plugin-item-desc mcp-mono">{runsAs(s)}</span>
             </span>
             <RowState s={s} />
             <Icon name="chevronRight" size={14} className="plugin-item-go" />

@@ -3,13 +3,12 @@ import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { currentPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
 import { Icon } from '../ui/Icon';
 import { PlanStrip } from './PlanStrip';
-import { planProgress } from '@spica/protocol';
 import { AnswerSources, AnswerToolsContext, AskCard, ChildNoteCard, ConfirmCard, FileCards, HistoryCardsContext, RoundDoneContext, SourceCardsContext, ToolCardsContext, HistoryRefContext, MarkdownText, OpenSessionContext, SuggestCard, ThinkingBlock, ToolGroup } from './Blocks';
 import { Composer, type ComposerTools } from './Composer';
 import { answerText, MessageActions } from './MessageActions';
@@ -169,6 +168,7 @@ function Response({
   at,
   regen,
   after,
+  planAbove,
   cwd,
   lists,
   sources,
@@ -189,6 +189,8 @@ function Response({
   regen?: { state: RegenerateState; last: boolean } | undefined;
   /** How many items follow it in the conversation. */
   after: number;
+  /** The finished plan still shown above the message box (until the user writes again): not here as well yet. */
+  planAbove?: string | undefined;
 }) {
   // The answers 重新生成 left, oldest first, then this one; the newest shows unless another is picked.
   const all = [...(item.versions ?? []), { blocks: item.blocks, at: item.at }];
@@ -205,7 +207,8 @@ function Response({
   const newest = shown === all.length - 1;
   const view = all[shown]!;
   const blocks = view.blocks;
-  const segs = segments(blocks, live, finishedPlanIn(blocks));
+  const finished = finishedPlanIn(blocks);
+  const segs = segments(blocks, live, finished !== planAbove ? finished : undefined);
   const files = filesOf(blocks, cards, moved, lists);
   const tools = useContext(AnswerToolsContext);
   const webImages = webImagesFor(blocks, live);
@@ -449,11 +452,10 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
     ro.observe(foot);
     return () => ro.disconnect();
   }, [askId, ref]);
-  // The plan (update_plan): just above the message box while it is going; finished, it stays in the answer that
-  // finished it (Response: finishedPlanIn), each finished plan in its own answer.
-  const plan = currentPlan(transcript);
-  const planDocked = plan && planProgress(plan.steps).done < plan.steps.length;
-  const planStrip = planDocked ? <PlanStrip key="plan" steps={plan.steps} running={running} oneLine={!!openAsk} /> : null;
+  // The plan (update_plan): just above the message box while it is going, and once finished until the user writes
+  // again; then it stays in the answer that finished it (Response: finishedPlanIn), each finished plan in its own answer.
+  const plan = dockedPlan(transcript);
+  const planStrip = plan ? <PlanStrip key="plan" steps={plan.steps} running={running} oneLine={!!openAsk} /> : null;
   // Answers before the working-folder note: their files are where that note moved them (or left them).
   const moves = useMemo(() => changesAfter(items), [items]);
   const lastIndex = items.length - 1;
@@ -591,7 +593,7 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                     {noteText(item)}
                   </p>
                 );
-              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} />;
+              return <Response key={item.id} item={item} live={running && i === lastIndex} since={running && i === lastIndex ? transcript.run?.startedAt : undefined} after={lastIndex - i} regen={regen && session?.role === 'top' ? { state: regen, last: item.anchorId === regen.anchorId || items[i - 1]?.id === regen.anchorId } : undefined} actions={actions} cards={transcript.fileCards} lists={transcript.fileCardLists} sources={transcript.sourceCards} memoryCards={transcript.memoryCards} moved={moves.get(item.id)} cwd={session?.cwd} at={mark(item.id)} planAbove={plan?.callId} />;
             })}
             <StatusLine transcript={transcript} />
             {waiting.map((w) => (

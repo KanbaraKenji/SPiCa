@@ -59,12 +59,14 @@ export function demoMcpApi(start: 'some' | 'none' = 'some'): McpApi {
   return {
     list,
     async save(was, d) {
+      const web = d.kind === 'url';
       const s: McpServerView = {
         name: d.name.trim(),
-        command: d.command.trim(),
-        args: draftArgs(d),
-        env: d.env.filter((e) => e.name.trim()).map((e) => ({ name: e.name.trim(), mask: '****' })),
-        ...(d.cwd.trim() ? { cwd: d.cwd.trim() } : {}),
+        ...(web ? { url: d.url.trim(), headers: d.headers.filter((h) => h.name.trim()).map((h) => ({ name: h.name.trim(), mask: '****' })), ...(d.key.trim() || d.keySaved ? { key: '****' } : {}) } : {}),
+        command: web ? '' : d.command.trim(),
+        args: web ? [] : draftArgs(d),
+        env: web ? [] : d.env.filter((e) => e.name.trim()).map((e) => ({ name: e.name.trim(), mask: '****' })),
+        ...(d.cwd.trim() && !web ? { cwd: d.cwd.trim() } : {}),
         enabled: true,
         approval: d.approval,
         status: 'starting',

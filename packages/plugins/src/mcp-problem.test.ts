@@ -15,4 +15,16 @@ describe('why a service is not running', () => {
     expect(mcpProblem('MCP server "x" exited (code unknown)', [], 'uvx')).toEqual({ kind: 'exited', code: null });
     expect(mcpProblem('something else', [], 'uvx')).toEqual({ kind: 'other' });
   });
+
+  it('a web address: no key, a key not taken, not reachable, its certificate', () => {
+    const http = (s: number) => `MCP server "x" answered HTTP ${s} to initialize`;
+    expect(mcpProblem(http(401), [], '')).toEqual({ kind: 'needs-key' });
+    expect(mcpProblem(http(401), [], '', { keyGiven: true })).toEqual({ kind: 'bad-key' });
+    expect(mcpProblem(http(403), [], '', { keyGiven: true })).toEqual({ kind: 'bad-key' });
+    expect(mcpProblem(http(404), [], '')).toEqual({ kind: 'unreachable', status: 404 });
+    expect(mcpProblem('MCP server "x" could not be reached (net.dns): getaddrinfo ENOTFOUND mcp.example.com', [], '')).toEqual({ kind: 'unreachable' });
+    expect(mcpProblem('MCP server "x" could not be reached (tls.untrusted): self-signed certificate', [], '')).toEqual({ kind: 'certificate', reason: 'untrusted' });
+    expect(mcpProblem('MCP server "x" could not be reached (tls.expired): certificate has expired', [], '')).toEqual({ kind: 'certificate', reason: 'expired' });
+    expect(mcpProblem('MCP server "x" could not be reached (tls.name_mismatch): …', [], '')).toEqual({ kind: 'certificate', reason: 'name' });
+  });
 });

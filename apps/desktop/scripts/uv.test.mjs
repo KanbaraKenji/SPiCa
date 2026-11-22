@@ -23,7 +23,8 @@ function fakeZip() {
   return zip;
 }
 
-describe.runIf(process.platform === 'win32')('uv at build time', () => {
+// making a zip with tar.exe and taking it apart are other processes and the disk: slow when the computer is busy
+describe.runIf(process.platform === 'win32')('uv at build time', { timeout: 60_000 }, () => {
   it('pinned to the official release', () => {
     expect(uvUrl()).toBe(`https://github.com/astral-sh/uv/releases/download/${UV.version}/uv-x86_64-pc-windows-msvc.zip`);
     expect(UV.sha256).toMatch(/^[0-9a-f]{64}$/);

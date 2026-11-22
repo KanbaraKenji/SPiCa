@@ -406,6 +406,14 @@ export function currentPlan(t: Transcript): { callId: string; steps: PlanStep[];
   return undefined;
 }
 
+/** The plan above the message box: while it is going, and once finished until the user writes again. */
+export function dockedPlan(t: Transcript): { callId: string; steps: PlanStep[]; item: number } | undefined {
+  const plan = currentPlan(t);
+  if (!plan) return undefined;
+  const finished = plan.steps.every((s) => s.status === 'completed');
+  return !finished || !t.items.slice(plan.item + 1).some((it) => it.kind === 'user') ? plan : undefined;
+}
+
 /** The update_plan call an answer finished the plan with (its last plan has every step done): that list stays there. */
 export function finishedPlanIn(blocks: Block[]): string | undefined {
   for (let j = blocks.length - 1; j >= 0; j--) {
@@ -582,7 +590,11 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (b.name === SUGGEST_TOOL) r.blocks.push(asSuggest(b.id, b.input));
           else if (b.name === PLAN_TOOL) r.blocks.push(asPlan(b.id, b.input));
           else if (b.name === ASK_TOOL) r.blocks.push(asAsk(b.id, b.input));
-          else r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done' });
+          else {
+            // a call to a service the person added carries its name as written (stored with the call)
+            const server = m.meta?.toolInfo?.[b.id]?.server;
+            r.blocks.push({ type: 'tool', callId: b.id, name: b.name, input: b.input, state: 'done', ...(server ? { server } : {}) });
+          }
         }
       }
       mark(m);
@@ -826,7 +838,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'tool.call': {
       if (e.name === ASK_TOOL || e.name === SUGGEST_TOOL || e.name === PLAN_TOOL) return t;
       if (findBlock(items, 'tool', e.callId)) return t;
-      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending' });
+      lastResponse(items, respId).blocks.push({ type: 'tool', callId: e.callId, name: e.name, input: undefined, state: 'pending', ...(e.server ? { server: e.server } : {}) });
       return t;
     }
     case 'tool.start': {

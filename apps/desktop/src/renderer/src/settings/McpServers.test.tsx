@@ -65,6 +65,49 @@ describe('MCP 服务', () => {
     expect(screen.getByText('另有 1 项未填入：web')).toBeTruthy();
   });
 
+  it('网址: the switch shows 网址 and 密钥 (更多请求头 folded); http to another computer is refused; 保存 shows the address and masks only', async () => {
+    const api = demoMcpApi('none');
+    const save = vi.spyOn(api, 'save');
+    render(<Adding api={api} />);
+    fireEvent.click(await screen.findByRole('radio', { name: '网址' }));
+    expect(screen.queryByRole('textbox', { name: '命令' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: 'docs' } });
+    fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'http://mcp.example.com/mcp' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.getByText('只支持 https（本机地址可用 http）')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'https://mcp.example.com/mcp' } });
+    fireEvent.change(screen.getByLabelText('密钥'), { target: { value: 'dk-secret-value-0000-77aa' } });
+    expect(screen.queryByRole('textbox', { name: '请求头名称' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '更多请求头' }));
+    fireEvent.click(screen.getByRole('button', { name: '添加' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '请求头名称' }), { target: { value: 'X-Team' } });
+    fireEvent.change(screen.getByLabelText('X-Team 的值'), { target: { value: 'team-secret-docs' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    const ask = screen.getByRole('alertdialog');
+    expect(ask.querySelector('pre')?.textContent).toBe('https://mcp.example.com/mcp');
+    expect(ask.textContent).toContain('dk-s****77aa');
+    expect(ask.textContent).toContain('X-Team');
+    expect(ask.textContent).not.toMatch(/dk-secret|team-secret/);
+    fireEvent.click(within(ask).getByRole('button', { name: '添加' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0]![1]).toMatchObject({ kind: 'url', url: 'https://mcp.example.com/mcp', key: 'dk-secret-value-0000-77aa', headers: [{ name: 'X-Team', value: 'team-secret-docs' }] });
+    const page = await screen.findByRole('region', { name: 'docs' });
+    expect(page.textContent).toContain('https://mcp.example.com/mcp');
+  });
+
+  it('粘贴配置 with a web address: 网址, the Bearer key in 密钥, the other headers under 更多请求头', async () => {
+    render(<Adding api={demoMcpApi('none')} />);
+    fireEvent.click(await screen.findByRole('button', { name: '粘贴配置' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '配置文本' }), {
+      target: { value: JSON.stringify({ mcpServers: { docs: { type: 'http', url: 'https://mcp.example.com/mcp', headers: { Authorization: 'Bearer ex-key-1', 'X-Team': 'docs' } } } }) },
+    });
+    fireEvent.click(screen.getByRole('button', { name: '识别并填入' }));
+    expect(screen.getByRole('radio', { name: '网址' }).getAttribute('aria-checked')).toBe('true');
+    expect((screen.getByRole('textbox', { name: '网址' }) as HTMLInputElement).value).toBe('https://mcp.example.com/mcp');
+    expect((screen.getByLabelText('密钥') as HTMLInputElement).value).toBe('ex-key-1');
+    expect((screen.getByRole('textbox', { name: '请求头名称' }) as HTMLInputElement).value).toBe('X-Team');
+  });
+
   it('删除 asks, then the list', async () => {
     const api = demoMcpApi();
     render(<McpServers api={api} />);

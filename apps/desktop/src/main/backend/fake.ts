@@ -1607,6 +1607,40 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '\n\n旧报价已清理。' : '\n\n好的，没有运行。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/子任务/.test(text)) {
+        // Two sub-agents, each with its plan (update_plan), while the parent waits for them (wait_agents): the
+        // 等待子任务 row opened shows how far each one is. 报价汇总 four steps, slower; 测试报告核对 three.
+        const kids = [
+          { title: '报价汇总', steps: ['读四家报价单', '对比四家单价和交期', '标出缺的报价', '写成对比表'], ms: 2500 },
+          { title: '测试报告核对', steps: ['读测试报告', '对照需求逐条核对', '列出不符合的项'], ms: 1500 },
+        ];
+        const started: { id: string; title: string; steps: string[]; ms: number }[] = [];
+        for (const k of kids) {
+          const child = await this.createSession({ parentId: sessionId, title: k.title, role: 'worker' });
+          blocks.push(...(await this.#tool(sessionId, run, 'spawn_agent', { title: k.title, task: `${k.title}。` }, `Started sub-agent "${k.title}" with id ${child.id}. It is working now.`, 200)));
+          started.push({ id: child.id, ...k });
+        }
+        const work = async (k: (typeof started)[number]) => {
+          this.#append(k.id, 'user', 'user', [{ type: 'text', text: `${k.title}。` }], { author: 'parent' });
+          this.#setStatus(k.id, 'thinking');
+          const own: ContentBlock[] = [];
+          for (let i = 0; i <= k.steps.length; i++) {
+            const input = { plan: k.steps.map((step, j) => ({ step, status: j < i ? 'completed' : j === i ? 'in_progress' : 'pending' })) };
+            own.push(...(await this.#tool(k.id, run, 'update_plan', input, `Plan updated: ${i} of ${k.steps.length} steps completed.`, 100)));
+            this.#commitAssistant(k.id, own);
+            this.#setStatus(k.id, 'thinking');
+            if (i < k.steps.length) await this.#sleep(k.ms, signal);
+          }
+          this.#append(k.id, 'assistant', 'assistant', [{ type: 'text', text: `${k.title}做完了。` }]);
+          this.#setStatus(k.id, 'done');
+        };
+        const working = Promise.all(started.map(work));
+        const longest = Math.max(...started.map((k) => k.ms * k.steps.length + 400 * (k.steps.length + 1)));
+        blocks.push(...(await this.#tool(sessionId, run, 'wait_agents', { ids: started.map((k) => k.id) }, started.map((k) => `${k.title}: ${k.title}做完了。`).join('\n'), longest)));
+        await working;
+        const after = '两个子任务都做完了：报价对比表和测试报告的不符合项都已整理好。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/清单/.test(text)) {
         // The plan (update_plan) above the message box. 清单没做完: two of five steps done, then the round ends.
         // Otherwise: the plan, its steps done one by one, a question in the middle (the plan and the question card
