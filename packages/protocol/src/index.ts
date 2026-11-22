@@ -591,7 +591,12 @@ export interface GuardNote {
  * python_install: python_env would download Python or packages into the app's folder (asked in auto mode too;
  * `install` says what).
  */
-export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'python_install';
+/**
+ * other_project: read_file, list_dir, glob or grep in another project's folder (a sub-project's too): the project
+ * whose folder holds the path most closely is not the conversation's own nor one of its sub-projects, and the path
+ * is not in the conversation's folders; `outsideFolder` is that project's folder (始终允许 keeps it for reading).
+ */
+export type GuardCause = 'untrusted_turn' | 'outside_link' | 'sensitive_file' | 'plugin_view' | 'settings_change' | 'outside_folder' | 'other_project' | 'python_install';
 
 /**
  * What a python_env install waiting to be confirmed would download, worked out when it asks (nothing downloaded):

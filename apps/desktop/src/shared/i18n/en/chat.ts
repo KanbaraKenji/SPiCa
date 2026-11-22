@@ -78,6 +78,7 @@ export const EN_CHAT: Catalog = {
   确认: 'Confirmation',
   无法撤销: 'Cannot be undone',
   工作文件夹以外: 'Outside working folder',
+  其他项目: 'Another project',
   始终允许: 'Always allow',
   允许一次: 'Allow once',
   起始文件夹: 'Runs in',
