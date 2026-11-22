@@ -6,6 +6,8 @@
 //   workflows()                     what the core read from the workflow folder
 //   usageLog({ filter, file })      the core's usage log written to a file (设置 › 常规)
 //   browser_* tools                  the built-in browser for agents (they ask the main process; backend/browser-tools.ts)
+//   computer_* tools                 操作电脑: programs on this computer (they ask the main process; backend/computer-tools.ts)
+//   computerUse(on)                  设置 › 常规 › 操作电脑 switched (the tools are offered only while on)
 //   mcpHttpStart / Stop / State     Spica's MCP service over HTTP for scripts on this machine
 //                                   (设置 › 常规 › 开发者; loopback only, token in a file)
 //   userMcpSet / States / Download  the MCP services the person adds (设置 › 插件 › MCP 服务; @spica/plugins
@@ -20,6 +22,7 @@ import { RealPluginService } from '../main/plugins/service';
 import type { OfficialSource, PluginsCommand } from '../shared/plugins';
 import { APP_NAME } from '../shared/app-identity';
 import { browserHook, browserTools } from './browser-tools';
+import { registerComputer } from './computer-tools';
 import { getLocale, isLocale, setLocale, type Locale } from '../shared/i18n';
 
 export interface DesktopHostOptions {
@@ -37,6 +40,10 @@ export interface DesktopHostOptions {
   userConfig?: Record<string, PluginConfigInput>;
   /** The interface language when the core started (shared/i18n); the words of the plugin page follow it, and setLocale after. */
   locale?: Locale;
+  /** 操作电脑 is there in this run (main/computer/driver.ts computerMode): without it no computer_* tools at all. */
+  computerAvailable?: boolean;
+  /** 设置 › 常规 › 操作电脑 when the core started (computerUse after). */
+  computerUse?: boolean;
   /** The MCP services the person added, their variables' values opened by the main process (in memory only). */
   userMcp?: UserMcpConfig[];
   /** The app's own uv and its Python folder: uvx runs as it when the computer has none. */
@@ -104,6 +111,12 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
     const path = await bridge.host('images.fit', crop ? [src, dir, crop] : [src, dir]);
     return typeof path === 'string' ? path : undefined;
   };
+  // 操作电脑's tools: the main process decides what may be seen and touched (main/computer/agent.ts); none at all
+  // unless this run has it (SPICA_COMPUTER, main/computer/driver.ts computerMode)
+  let computerOn = options.computerUse === true;
+  const unregisterComputer = bridge
+    ? registerComputer(rt, (method, params) => bridge.host(method, params), { available: options.computerAvailable === true, enabled: () => computerOn })
+    : [];
 
   let http: McpHttpServer | undefined;
   const httpState = () => (http ? { url: http.url, port: http.port, tokenFile: options.mcpTokenFile ?? null } : null);
@@ -163,6 +176,10 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
         if (isLocale(locale)) setLocale(locale);
         return null;
       },
+      computerUse: (on: unknown) => {
+        computerOn = on === true;
+        return null;
+      },
       setUserAccount: async (account: unknown) => {
         await plugins.setUserAccount(typeof account === 'string' ? account : '');
         return null;
@@ -181,7 +198,7 @@ export async function attachBackend(rt: Runtime, options: DesktopHostOptions) {
       await userMcp.restartAll();
     },
     close: async () => {
-      for (const off of unregisterBrowser) off();
+      for (const off of [...unregisterBrowser, ...unregisterComputer]) off();
       await stopHttp();
       await userMcp.close();
       await plugins.close();

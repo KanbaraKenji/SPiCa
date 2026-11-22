@@ -42,3 +42,10 @@ Wrapper: Copyright (c) 2024 CloudPDF, Ji Chang; licensed under the MIT License.
 PDFium: Copyright 2014 PDFium Authors; licensed under the BSD 3-Clause License (or the Apache License,
 Version 2.0). The WebAssembly build includes third-party libraries that PDFium builds in (such as zlib,
 libpng, OpenJPEG and Anti-Grain Geometry), each under its own permissive licence.
+
+The library the installed app calls Windows with for 操作电脑
+--------------------------------------------------------------
+resources/koffi (koffi 3.3.7, with its Windows x64 native part @koromix/koffi-win32-x64)
+Copyright 2026 Niels Martignène
+Licensed under the MIT License (LICENSE.txt next to the library). Copied at build time by
+apps/desktop/scripts/koffi.mjs.

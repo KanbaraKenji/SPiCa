@@ -81,7 +81,7 @@ describe('reading in another project’s folder', () => {
     const { rt, events, t1, t10 } = await setup();
     const pm = rt.session(t1.managerSessionId)!;
     expect(await read(pm, join(t10.folder, 'notes.md'), 'r1')).toBe('awaiting_confirm');
-    await (await pm.confirm('r1', true, { allowFolder: true }))!;
+    await (await pm.confirm('r1', true, { always: true }))!;
     expect(pm.allowedReadFolders()).toEqual([t10.folder]);
     // allowed for reading only: a write there still asks (as a write outside)
     expect(pm.mayWriteIn(t10.folder)).toBe(false);

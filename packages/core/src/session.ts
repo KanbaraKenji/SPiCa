@@ -350,6 +350,7 @@ export class Session {
       const cfg = this.#record.config;
       const env = {
         providerId: cfg.providerId,
+        model: cfg.model,
         serverWebSearch: !!cfg.serverWebSearch,
         role: this.#record.role,
         ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -522,7 +523,7 @@ export class Session {
   }
 
   /** Approve or decline an action that needed confirmation. */
-  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean; always?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
     const p = this.#findPending(callId, 'confirm');
     this.#emit({ type: 'confirm.resolved', callId, approved });
     const outside = p.item.kind === 'confirm' ? p.item.outsideFolder : undefined;
@@ -539,7 +540,8 @@ export class Session {
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
-    if (outside && options.allowFolder) {
+    const always = options.always === true || options.allowFolder === true;
+    if (outside && always) {
       if (reading) this.allowReadFolder(outside);
       else this.allowWriteFolder(outside);
     }
@@ -550,13 +552,13 @@ export class Session {
     this.#runAbort = ac;
     const draft: ToolCallDraft = { callId, name: p.item.toolName, input: p.item.input, irreversible: !!tool?.irreversible };
     const res = tool
-      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0))
+      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0), options.always ? { always: true } : {})
       : { content: `Unknown tool: ${p.item.toolName}`, isError: true };
     this.#runAbort = undefined;
     // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
     // write that went through as "asking did not work"), and whether the folder was kept
-    const kept = outside && options.allowFolder && !tooWideToAllow(outside);
-    const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
+    const kept = outside && always && (reading || !tooWideToAllow(outside));
+    const note = outside ? `[The user allowed this on a confirmation card: ${reading ? 'reading' : 'writing'} in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
     this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
@@ -704,6 +706,7 @@ export class Session {
     }
     const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -860,6 +863,7 @@ export class Session {
       // 1. Assemble context by segment and let plugins change the request.
       const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -906,7 +910,7 @@ export class Session {
           return end('error', message);
         }
       }
-      const messages = keepRecentImages(allowed === false ? flat.messages.map(withoutImages) : flat.messages);
+      const messages = keepRecentImages(allowed === false ? flat.messages.map(withoutImages) : flat.messages, (name) => this.#rt.tools.get(name)?.keepImages);
       const sentImages = messages.flatMap((m) => m.content).filter((b): b is Extract<ContentBlock, { type: 'image' }> => b.type === 'image');
       const request: ModelRequest = {
         model: draft.params.model,
@@ -1171,6 +1175,7 @@ export class Session {
     const cfg = this.#record.config;
     const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -1337,6 +1342,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     draft: ToolCallDraft,
     signal: AbortSignal,
     hctx: HookContext,
+    confirmed: Pick<ToolContext, 'always'> = {},
   ): Promise<{ content: string; isError: boolean; cards?: ToolCallCards }> {
     this.#emit({ type: 'tool.start', callId: draft.callId, name: draft.name, input: draft.input, ...this.#toolInfo(draft.name, draft.input) });
     // Card events are also kept with the call, so history can rebuild them.
@@ -1353,6 +1359,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       extractors: this.#rt.extractors,
       services: this.#rt.services(this),
       callId: draft.callId,
+      ...confirmed,
       mediaDir: this.#rt.mediaDir(this.id),
       ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
       ...this.#imageContext(),
@@ -2110,19 +2117,38 @@ function refusesImages(err: unknown): boolean {
 /**
  * Keep the newest images within REQUEST_IMAGE_LIMITS; older ones become a line saying they were left out. Only images
  * from before the model's last answer were sent before: one after it left out is said to be not sent, never "shown".
+ * Images a tool returned whose `keepImages` names a group: only the newest of that group (screenshots of the computer).
  */
-function keepRecentImages(messages: Message[]): Message[] {
+function keepRecentImages(messages: Message[], keepOf: (tool: string) => Tool['keepImages'] = () => undefined): Message[] {
   let count = 0;
   let bytes = 0;
+  const groups = new Map<string, number>();
   const out = [...messages];
   const lastAnswer = out.findLastIndex((m) => m.role === 'assistant');
   for (let i = out.length - 1; i >= 0; i--) {
     const m = out[i]!;
     if (!m.content.some((b) => b.type === 'image')) continue;
     const content = [...m.content];
+    // which tool each image came from: the line put before a call's images (#appendToolResults)
+    const from: (string | undefined)[] = [];
+    let tool: string | undefined;
+    for (const b of content) {
+      if (b.type === 'text') tool = /^\[Images returned by (\S+) /.exec(b.text)?.[1];
+      from.push(tool);
+    }
     for (let j = content.length - 1; j >= 0; j--) {
       const b = content[j]!;
       if (b.type !== 'image') continue;
+      const owner = from[j];
+      const keep = owner ? keepOf(owner) : undefined;
+      if (keep) {
+        const n = (groups.get(keep.group) ?? 0) + 1;
+        groups.set(keep.group, n);
+        if (n > keep.newest) {
+          content[j] = { type: 'text', text: `[image ${b.name ?? ''}: an older screenshot, left out of this request; the newest are kept]` };
+          continue;
+        }
+      }
       const size = Math.ceil(b.bytes / 3) * 4;
       if (count + 1 > REQUEST_IMAGE_LIMITS.maxImages || bytes + size > REQUEST_IMAGE_LIMITS.maxBase64Bytes) {
         content[j] = {

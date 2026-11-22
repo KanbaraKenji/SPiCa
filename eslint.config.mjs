@@ -13,6 +13,8 @@ export default tseslint.config(
       'apps/*/release/**',
       // libraries bundled for the Agent's scripts (apps/desktop/scripts/node-libs.mjs)
       'apps/*/node-libs/**',
+      // koffi as the installed app carries it, copied from node_modules (apps/desktop/scripts/koffi.mjs)
+      'apps/*/koffi/**',
       'branding/**',
       '.venv/**',
       '.idea/**',
