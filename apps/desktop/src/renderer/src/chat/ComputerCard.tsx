@@ -4,6 +4,7 @@
 // N 个程序), as wide as its words; pressing it shows the programs under it.
 import { useState } from 'react';
 import { SpicaStatusIcon } from '@spica/brand/react';
+import { onlyThisConversation } from '../../../shared/computer-use';
 import { N_, t } from '../../../shared/i18n';
 import type { ComputerBlock, ComputerCardApp } from '../store/computer-card';
 import { AllowSplit } from './AllowSplit';
@@ -19,8 +20,11 @@ function Tag({ app }: { app: ComputerCardApp }) {
   return null;
 }
 
-/** The programs, one a row: icon, name and tag, then where it is (and a shared program's window). */
-function AppList({ apps }: { apps: ComputerCardApp[] }) {
+/**
+ * The programs, one a row: icon, name and tags, then where it is (and a shared program's window). `always`: allowed
+ * with 始终允许, so the shared and high-risk ones say 允许一次 (they count for this conversation only).
+ */
+function AppList({ apps, always = false }: { apps: ComputerCardApp[]; always?: boolean }) {
   return (
     <div className="computer-apps">
       {apps.map((a) => {
@@ -32,6 +36,7 @@ function AppList({ apps }: { apps: ComputerCardApp[] }) {
               <div className="computer-app-name">
                 <span>{a.name}</span>
                 <Tag app={a} />
+                {always && onlyThisConversation(a) ? <span className="computer-tag">{t('允许一次')}</span> : null}
               </div>
               {where ? (
                 <p className="card-sub" title={where}>
@@ -76,7 +81,16 @@ export function ComputerCard({ block, onDecide }: { block: ComputerBlock; onDeci
     );
   }
   const always = block.always ?? chosen;
-  const words = block.cancelled ? t(CARD_STOPPED) : block.approved ? (always ? t('已始终允许 {n} 个程序', { n }) : t('已允许一次 {n} 个程序', { n })) : t('已拒绝 {n} 个程序', { n });
+  const once = always ? block.apps.filter(onlyThisConversation).length : 0;
+  const words = block.cancelled
+    ? t(CARD_STOPPED)
+    : !block.approved
+      ? t('已拒绝 {n} 个程序', { n })
+      : !always || once === n
+        ? t('已允许一次 {n} 个程序', { n })
+        : once
+          ? t('已始终允许 {n} 个程序，允许一次 {m} 个', { n: n - once, m: once })
+          : t('已始终允许 {n} 个程序', { n });
   const ok = block.approved === true;
   return (
     <section className={['card', 'confirm-card', 'is-done', 'computer-card', 'is-line', block.cancelled ? 'is-stopped' : ''].filter(Boolean).join(' ')} aria-label={t('确认')}>
@@ -85,7 +99,7 @@ export function ComputerCard({ block, onDecide }: { block: ComputerBlock; onDeci
         <span>{words}</span>
         <Icon className={open ? 'computer-line-chevron is-open' : 'computer-line-chevron'} name="chevronRight" size={14} />
       </button>
-      {open ? <AppList apps={block.apps} /> : null}
+      {open ? <AppList apps={block.apps} always={ok && always === true} /> : null}
     </section>
   );
 }

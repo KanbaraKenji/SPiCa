@@ -9,6 +9,7 @@
 // images, and not for sessions that run with nobody at the window.
 import { keepMedia, validateInput, type Hooks, type Runtime, type Tool, type ToolContext, type ToolOutput } from '@spica/core';
 import type { ImageBlock } from '@spica/protocol';
+import { onlyThisConversation } from '../shared/computer-use';
 
 export type HostCall = (method: string, params: unknown[]) => Promise<unknown>;
 
@@ -78,7 +79,7 @@ export function accessText(p: Prepared, granted: { always: boolean } | undefined
         : a.state === 'elevated'
           ? 'runs as administrator: Windows does not let Spica operate it'
           : a.state === 'ask' && granted
-            ? `approved${granted.always && !a.shared ? ' for every conversation' : ' for this conversation'} — ${TIER_WORDS[a.tier]}${risk}`
+            ? `approved${granted.always && !onlyThisConversation(a) ? ' for every conversation' : ' for this conversation'} — ${TIER_WORDS[a.tier]}${risk}`
             : `already approved — ${TIER_WORDS[a.tier]}${risk}`;
     lines.push(`- ${a.name} (${a.exe}): ${state}`);
   }

@@ -45,7 +45,8 @@ describe('ComputerCard', () => {
   });
 
   it('answered: one line (已始终允许 / 已允许一次 / 已拒绝 / 已中断); pressing it shows the programs', () => {
-    const { rerender } = render(<ComputerCard block={{ ...waiting, approved: true, always: true }} onDecide={vi.fn()} />);
+    const plain = apps.filter((a) => !a.highRisk);
+    const { rerender } = render(<ComputerCard block={{ ...waiting, apps: [...plain, { ...plain[0]!, name: 'Excel 2', exe: 'C:\\x.exe' }], approved: true, always: true }} onDecide={vi.fn()} />);
     const line = screen.getByRole('button', { name: /已始终允许 3 个程序/ });
     expect(document.querySelector('.computer-card.is-line')).not.toBeNull();
     expect(document.querySelector('.computer-apps')).toBeNull();
@@ -54,10 +55,20 @@ describe('ComputerCard', () => {
     expect(document.querySelectorAll('.computer-app')).toHaveLength(3);
     rerender(<ComputerCard block={{ ...waiting, approved: true, always: false }} onDecide={vi.fn()} />);
     expect(screen.getByRole('button', { name: /已允许一次 3 个程序/ })).toBeTruthy();
+    expect([...document.querySelectorAll('.computer-app')].map((r) => r.textContent)).toEqual(['Microsoft ExcelC:\\Office\\EXCEL.EXE', '文件资源管理器高风险C:\\Windows\\explorer.exe', 'Microsoft Edge只看C:\\Edge\\msedge.exe']);
     rerender(<ComputerCard block={{ ...waiting, approved: false }} onDecide={vi.fn()} />);
     expect(screen.getByRole('button', { name: /已拒绝 3 个程序/ })).toBeTruthy();
     rerender(<ComputerCard block={{ ...waiting, cancelled: true }} onDecide={vi.fn()} />);
     expect(document.querySelector('.computer-card.is-stopped')?.textContent).toContain('已中断');
+  });
+
+  it('始终允许 with a high-risk or shared program: those count for this conversation only, and say so', () => {
+    const mixed: ComputerBlock['apps'] = [...apps, { name: 'Python', exe: 'C:\\Python\\python.exe', tier: 'full', shared: true, title: 'tool window' }];
+    const { rerender } = render(<ComputerCard block={{ ...waiting, apps: mixed, approved: true, always: true }} onDecide={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /已始终允许 2 个程序，允许一次 2 个/ }));
+    expect([...document.querySelectorAll('.computer-app-name')].map((r) => r.textContent)).toEqual(['Microsoft Excel', '文件资源管理器高风险允许一次', 'Microsoft Edge只看', 'Python允许一次']);
+    rerender(<ComputerCard block={{ ...waiting, apps: [apps[1]!], approved: true, always: true }} onDecide={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /已允许一次 1 个程序/ })).toBeTruthy();
   });
 });
 

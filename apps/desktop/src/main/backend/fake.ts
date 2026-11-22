@@ -1522,7 +1522,7 @@ export class FakeBackend implements AgentBackend {
         waiting = undefined;
         const tiers: Record<string, string> = { full: 'full control', view: 'view only (screenshots; no clicks or typing)' };
         const result = ok
-          ? apps.map((a) => `- ${a.name} (${a.exe}): approved for ${this.#always.has(callId) ? 'every' : 'this'} conversation — ${tiers[a.tier]}${a.highRisk ? ', high risk' : ''}`).join('\n')
+          ? apps.map((a) => `- ${a.name} (${a.exe}): approved for ${this.#always.has(callId) && !a.highRisk ? 'every' : 'this'} conversation — ${tiers[a.tier]}${a.highRisk ? ', high risk' : ''}`).join('\n')
           : 'The user declined this action. Do not retry it unless the user asks.';
         this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result.slice(0, 160), durationMs: 20 });
         this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);

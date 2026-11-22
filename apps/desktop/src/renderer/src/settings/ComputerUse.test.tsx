@@ -23,7 +23,7 @@ describe('操作电脑 settings', () => {
   it('on: the programs always allowed (each removable), the restricted ones (fixed, and added by exe name)', async () => {
     const onChange = vi.fn();
     const pickFiles = vi.fn(async () => ['D:\\Games\\Game.EXE', 'D:\\notes.txt']);
-    render(<ComputerUse settings={with_({ enabled: true, always: [{ exe: 'C:\\Windows\\System32\\notepad.exe', name: '记事本' }], denied: ['old.exe'] })} onChange={onChange} pickFiles={pickFiles} />);
+    render(<ComputerUse settings={with_({ enabled: true, always: [{ exe: 'C:\\Windows\\System32\\notepad.exe', name: '记事本' }, { exe: 'C:\\Windows\\explorer.exe', name: '文件资源管理器' }], denied: ['old.exe'] })} onChange={onChange} pickFiles={pickFiles} />);
     expect(titles()).toEqual([
       '操作电脑',
       '允许 Agent 操作电脑',
@@ -39,9 +39,10 @@ describe('操作电脑 settings', () => {
       'old.exe',
     ]);
     fireEvent.click(screen.getByRole('button', { name: '移除 记事本' }));
-    expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [], denied: ['old.exe'] } });
+    // a high-risk program is never listed (始终允许 counts for one conversation for it)
+    expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [{ exe: 'C:\\Windows\\explorer.exe', name: '文件资源管理器' }], denied: ['old.exe'] } });
     fireEvent.click(screen.getByRole('button', { name: '添加' }));
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [{ exe: 'C:\\Windows\\System32\\notepad.exe', name: '记事本' }], denied: ['old.exe', 'game.exe'] } }));
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ computerUse: { enabled: true, always: [{ exe: 'C:\\Windows\\System32\\notepad.exe', name: '记事本' }, { exe: 'C:\\Windows\\explorer.exe', name: '文件资源管理器' }], denied: ['old.exe', 'game.exe'] } }));
   });
 });
 

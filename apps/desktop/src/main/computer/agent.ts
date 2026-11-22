@@ -11,7 +11,7 @@
 import { crop, encodePng, fitForModel, greyOut, maskScreen, resize, type Bitmap, type Rect } from './bitmap';
 import { windowAt, type Driver, type WindowInfo } from './driver';
 import { clickSteps, keySteps, type Button, type InputStep } from './input';
-import { allows, exeName, ruleFor, type Rule, type Tier } from '../../shared/computer-use';
+import { allows, exeName, onlyThisConversation, ruleFor, type Rule, type Tier } from '../../shared/computer-use';
 
 /** A program the person allowed always (设置 › 始终允许的程序). */
 export interface AlwaysApp {
@@ -115,7 +115,8 @@ export class ComputerAgent {
   #granted(sessionId: string, exe: string): boolean {
     const key = exe.toLowerCase();
     if (this.#once.get(sessionId)?.has(key)) return true;
-    return this.#store.always().some((a) => a.exe.toLowerCase() === key);
+    // a shared or high-risk program in 始终允许的程序 (kept there before it counted for one conversation) is asked again
+    return !onlyThisConversation(ruleFor(exe)) && this.#store.always().some((a) => a.exe.toLowerCase() === key);
   }
 
   /** The tier a window may be operated at in this conversation: blocked when not allowed. */
@@ -181,7 +182,7 @@ export class ComputerAgent {
 
   /**
    * The card was allowed: what prepare kept for this call, each checked again (a program that became restricted in
-   * between is left out). always: into 始终允许的程序, except programs that share one exe (this conversation only).
+   * between is left out). always: into 始终允许的程序, except shared and high-risk programs (this conversation only).
    */
   grant(sessionId: string, args: Record<string, unknown>): { granted: PreparedApp[]; always: boolean } {
     const callId = typeof args.callId === 'string' ? args.callId : '';
@@ -193,7 +194,7 @@ export class ComputerAgent {
     const once = this.#once.get(sessionId) ?? new Set<string>();
     const forever: AlwaysApp[] = [];
     for (const a of granted) {
-      if (always && !a.shared) forever.push({ exe: a.exe, name: a.name, ...(a.icon ? { icon: a.icon } : {}) });
+      if (always && !onlyThisConversation(a)) forever.push({ exe: a.exe, name: a.name, ...(a.icon ? { icon: a.icon } : {}) });
       else once.add(a.exe.toLowerCase());
     }
     this.#once.set(sessionId, once);

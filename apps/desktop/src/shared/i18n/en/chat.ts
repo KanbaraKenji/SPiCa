@@ -350,5 +350,6 @@ export const EN_CHAT: Catalog = {
   '操作 {n} 个程序': { one: 'Operate {n} program', other: 'Operate {n} programs' },
   '已始终允许 {n} 个程序': { one: 'Always allowed {n} program', other: 'Always allowed {n} programs' },
   '已允许一次 {n} 个程序': { one: 'Allowed {n} program once', other: 'Allowed {n} programs once' },
+  '已始终允许 {n} 个程序，允许一次 {m} 个': { one: 'Always allowed {n} program, {m} once', other: 'Always allowed {n} programs, {m} once' },
   '已拒绝 {n} 个程序': { one: 'Denied {n} program', other: 'Denied {n} programs' },
 };

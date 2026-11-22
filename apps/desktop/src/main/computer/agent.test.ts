@@ -154,6 +154,24 @@ describe('approval', () => {
     expect((await agent.prepare('s9', { apps: ['notepad'], callId: 'c2' })).ask).toBe(false);
     expect((await agent.prepare('s9', { apps: ['python'], callId: 'c3' })).ask).toBe(true);
   });
+  it('始终允许 on a high-risk program counts for this conversation only: never kept, asked again in the next', async () => {
+    const EXPLORER = 'C:\\Windows\\explorer.exe';
+    const { agent, driver, always } = setup([NOTEPAD]);
+    driver.open(EXPLORER);
+    const p = await agent.prepare('s1', { apps: ['notepad', 'explorer'], callId: 'c1' });
+    expect(p.apps[1]).toMatchObject({ exe: EXPLORER, highRisk: true, state: 'ask' });
+    expect(agent.grant('s1', { callId: 'c1', always: true }).granted.map((a) => a.exe)).toEqual([NOTEPAD, EXPLORER]);
+    expect(always().map((a) => a.exe)).toEqual([NOTEPAD]);
+    expect((await agent.prepare('s1', { apps: ['explorer'], callId: 'c2' })).ask).toBe(false);
+    expect((await agent.prepare('s9', { apps: ['notepad'], callId: 'c3' })).ask).toBe(false);
+    expect((await agent.prepare('s9', { apps: ['explorer'], callId: 'c4' })).ask).toBe(true);
+  });
+  it('a high-risk program already in 始终允许的程序 is still asked for', async () => {
+    const EXPLORER = 'C:\\Windows\\explorer.exe';
+    const { agent, driver } = setup([], { always: [{ exe: EXPLORER, name: '文件资源管理器' }] });
+    driver.open(EXPLORER);
+    expect((await agent.prepare('s1', { apps: ['explorer'], callId: 'c1' })).ask).toBe(true);
+  });
   it('what is granted comes from what was prepared for that call, never from the input', async () => {
     const { agent } = setup([NOTEPAD]);
     expect(() => agent.grant('s1', { callId: 'unknown', always: true, apps: ['notepad'] })).toThrow(/no longer known/);

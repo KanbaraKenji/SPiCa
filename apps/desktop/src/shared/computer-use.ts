@@ -8,7 +8,7 @@
 //            without run_command's confirmation)
 //   full     everything
 // highRisk: allowed, marked 高风险 on the card (Explorer, Settings). shared: one exe runs many programs (java,
-// python, node, Store apps), so allowing one allows them all: allowed for this conversation only, never always.
+// python, node, Store apps), so allowing one allows them all. Both: allowed for this conversation only, never always.
 // Shared with 设置 › 常规 › 受限的程序, which lists the groups below as they are.
 import { N_ } from './i18n';
 
@@ -18,6 +18,11 @@ export interface Rule {
   tier: Tier;
   highRisk?: boolean;
   shared?: boolean;
+}
+
+/** 始终允许 on the card counts for this conversation only (never kept in 始终允许的程序): shared and high-risk programs. */
+export function onlyThisConversation(rule: { shared?: boolean; highRisk?: boolean }): boolean {
+  return rule.shared === true || rule.highRisk === true;
 }
 
 /** Browsers: screenshots only. */

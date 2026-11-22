@@ -157,7 +157,7 @@ describe('computer tools', () => {
       ),
     ).toBe(
       [
-        '- A (A.exe): approved for every conversation — full control, high risk',
+        '- A (A.exe): approved for this conversation — full control, high risk',
         '- Python (python.exe): approved for this conversation — full control',
         '- Edge (msedge.exe): already approved — view only (screenshots; no clicks or typing)',
         '- TWS (tws.exe): restricted: it cannot be operated',
