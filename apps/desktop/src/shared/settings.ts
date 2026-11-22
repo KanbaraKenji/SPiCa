@@ -86,6 +86,43 @@ export interface MailPrefs {
 /** Choices offered for the mail interval, in minutes. */
 export const MAIL_INTERVALS = [5, 15, 30, 60] as const;
 
+/**
+ * 设置 › 常规 › 操作电脑: whether the agent may operate programs on this computer (off until switched on), the
+ * programs allowed for every conversation (始终允许 on an approval card), and exe names the person added to
+ * 受限的程序 (never operated). The fixed restricted programs are in main/computer/restricted.ts.
+ */
+export interface ComputerUsePrefs {
+  enabled: boolean;
+  /** icon: the program's small icon (a PNG data URL) as it was when allowed. */
+  always: { exe: string; name: string; icon?: string }[];
+  denied: string[];
+}
+
+export const DEFAULT_COMPUTER_USE: ComputerUsePrefs = { enabled: false, always: [], denied: [] };
+
+/** Saved 操作电脑 settings made valid: at most 200 programs each, duplicates (by path, any case) dropped. */
+export function computerUseValue(v: unknown): ComputerUsePrefs {
+  const o = v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  const seen = new Set<string>();
+  const always = (Array.isArray(o.always) ? o.always : [])
+    .map((a) => (a && typeof a === 'object' ? (a as Record<string, unknown>) : {}))
+    .map((a) => ({
+      exe: typeof a.exe === 'string' ? a.exe.trim().slice(0, 500) : '',
+      name: typeof a.name === 'string' ? a.name.trim().slice(0, 200) : '',
+      icon: typeof a.icon === 'string' && a.icon.startsWith('data:image/png;base64,') && a.icon.length <= 20_000 ? a.icon : '',
+    }))
+    .filter((a) => a.exe && !seen.has(a.exe.toLowerCase()) && seen.add(a.exe.toLowerCase()))
+    .map((a) => ({ exe: a.exe, name: a.name || a.exe, ...(a.icon ? { icon: a.icon } : {}) }))
+    .slice(0, 200);
+  const names = new Set<string>();
+  const denied = (Array.isArray(o.denied) ? o.denied : [])
+    .filter((d): d is string => typeof d === 'string')
+    .map((d) => d.trim().slice(0, 200))
+    .filter((d) => d && !names.has(d.toLowerCase()) && names.add(d.toLowerCase()))
+    .slice(0, 200);
+  return { enabled: o.enabled === true, always, denied };
+}
+
 export interface ShellSettings {
   skin: SkinChoice;
   customSkins: Skin[];
@@ -158,6 +195,7 @@ export interface ShellSettings {
    * (defaultCallName). Only shown in the window: plugins get the account, never this.
    */
   callName: string;
+  computerUse: ComputerUsePrefs;
 }
 
 /** The longest account accepted. */
@@ -267,6 +305,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   agentMessageLimit: 10,
   account: '',
   callName: '',
+  computerUse: DEFAULT_COMPUTER_USE,
 };
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -368,7 +407,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { computerUse: computerUseValue(v.computerUse), account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

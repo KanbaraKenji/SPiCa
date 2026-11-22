@@ -147,3 +147,23 @@ describe('approval mode', () => {
     expect(() => s.setApprovalMode('yolo' as 'auto')).toThrow(/unknown approval mode/);
   });
 });
+
+describe('始终允许 on a confirmation', () => {
+  it('the tool is told when the person chose it, and not on a plain approval', async () => {
+    const rt = makeRuntime(gw, { cwd: dir });
+    const seen: (boolean | undefined)[] = [];
+    rt.tools.register({ ...irreversible([]), execute: async (_i, ctx) => (seen.push(ctx.always), { content: 'published' }) }, 'p');
+    const api = createAgentApi(rt);
+    const s = rt.createSession();
+    gw.enqueue({ toolCalls: [{ id: 'p1', name: 'publish', args: {} }] }, { text: 'ok' }, { toolCalls: [{ id: 'p2', name: 'publish', args: {} }] }, { text: 'ok' });
+    await api.send(s.id, 'publish');
+    await until(() => s.pending().length > 0);
+    await api.confirm(s.id, 'p1', true, { always: true });
+    await until(() => s.status === 'idle' && seen.length === 1);
+    await api.send(s.id, 'again');
+    await until(() => s.pending().length > 0);
+    await api.confirm(s.id, 'p2', true);
+    await until(() => seen.length === 2);
+    expect(seen).toEqual([true, undefined]);
+  });
+});

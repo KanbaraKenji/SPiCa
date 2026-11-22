@@ -33,6 +33,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/main/index.ts'),
           backend: resolve(__dirname, 'src/backend/entry.ts'),
+          // 操作电脑's watch for the person's Escape key, a small process of its own (src/main/computer/escape-watch.ts)
+          'escape-watch': resolve(__dirname, 'src/main/computer/escape-watch.ts'),
         },
       },
     },

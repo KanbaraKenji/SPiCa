@@ -75,6 +75,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   for (const line of sourceLines(deploy)) console.log(`[dist] ${line}`);
   run(join(dirname(fileURLToPath(import.meta.url)), 'node-libs.mjs'), []);
   run(join(dirname(fileURLToPath(import.meta.url)), 'uv.mjs'), []);
+  run(join(dirname(fileURLToPath(import.meta.url)), 'koffi.mjs'), []);
   run(join(packageDir('electron-vite'), 'bin', 'electron-vite.js'), ['build']);
   run(join(packageDir('electron-builder'), 'cli.js'), ['--win', '--publish', 'never', ...extra]);
 }

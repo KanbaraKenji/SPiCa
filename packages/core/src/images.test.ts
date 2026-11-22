@@ -95,6 +95,26 @@ describe('images', () => {
     expect(body.match(/left out of this request to keep it small/g)).toHaveLength(4);
     await rt.close();
   });
+  it('a tool whose images are screenshots of one group: only the newest of the group go again', async () => {
+    const rt = makeRuntime(gw, { cwd: dir, mediaDir: join(dir, 'media') });
+    let n = 0;
+    rt.tools.register({
+      spec: { name: 'screen_shot', description: 'a picture', inputSchema: { type: 'object', properties: {} } },
+      readOnly: true,
+      keepImages: { group: 'screen', newest: 2 },
+      async execute(_input, ctx) {
+        const kept = prepareImage(write(`shot-${n++}.png`, png(10 + n, 10)), ctx.mediaDir!);
+        return kept.ok ? { content: 'shot', images: [{ type: 'image', ...kept.image }] } : { content: 'no', isError: true };
+      },
+    });
+    gw.enqueue(...[1, 2, 3, 4].map((i) => ({ toolCalls: [{ id: `s${i}`, name: 'screen_shot', args: {} }] })), { text: 'done' });
+    const s = rt.createSession();
+    await s.send('look').done;
+    const body = JSON.stringify(gw.requests.at(-1)!.body);
+    expect(body.match(/"type":"image_url"/g)).toHaveLength(2);
+    expect(body.match(/an older screenshot, left out of this request/g)).toHaveLength(2);
+    await rt.close();
+  });
 });
 
 describe('images in a conversation', () => {

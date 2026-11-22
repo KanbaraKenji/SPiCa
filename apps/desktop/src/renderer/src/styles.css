@@ -6844,6 +6844,102 @@ section.plugins-part > .plugins-part-title {
   border-radius: 0;
 }
 
+/* 操作电脑's approval card (chat/ComputerCard.tsx). The programs under the card's row, one a row: the icon's left edge
+   in line with the title's words (12px, as the head's), the same 12px at the right; the name with its tag
+   (只看 / 只能点 in grey, 高风险 red as 无法撤销), where it is in grey under it, cut at its end. */
+.computer-card > .computer-apps {
+  padding: 4px 12px 6px;
+  border-top: 1px solid var(--spica-border);
+}
+
+.computer-app {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.computer-app-icon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  /* centred on the name's line */
+  margin-top: calc((var(--lh-body) - 16px) / 2);
+  color: var(--spica-muted);
+}
+
+.computer-app-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.computer-app-name {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.computer-app-text > .card-sub {
+  margin: 0;
+}
+
+.computer-tag {
+  flex: none;
+  color: var(--spica-muted);
+}
+
+/* Answered: one line as an answered question card's (the mark, the words), as wide as they are, with the way to
+   the programs at its end; open, the programs under it as on the waiting card. */
+.card.computer-card.is-line {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.computer-line {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--spica-ink);
+  cursor: default;
+}
+
+.computer-line:focus-visible {
+  outline: 2px solid var(--spica-accent);
+  outline-offset: -2px;
+}
+
+.computer-line-chevron {
+  flex: none;
+  color: var(--spica-muted);
+  transition: transform 0.12s ease;
+}
+
+.computer-line-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.computer-card.is-stopped .computer-line,
+.computer-card.is-stopped .computer-line .spica-status-icon {
+  color: var(--spica-danger);
+}
+
+.computer-app-name > img,
+.setting-title .computer-app-name img {
+  flex: none;
+}
+
+.computer-app-name:has(> img) {
+  align-items: center;
+  gap: 8px;
+}
+
 /* A download for the app's Python (python_env): one row per item (name and version, where from, size), the
    total last; in line with the card's title, as a call's arguments. */
 .confirm-card > .download-list {
