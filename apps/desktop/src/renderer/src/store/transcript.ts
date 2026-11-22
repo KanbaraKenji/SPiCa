@@ -6,6 +6,7 @@ import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
+import { whenText } from '../schedule/model';
 
 export { humanError } from '../../../shared/errors';
 
@@ -162,6 +163,9 @@ function noteItem(m: Message): Item | undefined {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
     return { kind: 'note', id: m.id, text: empty ? NO_REPORT_WORDS : child.text, child: empty ? { ...child, text: NO_REPORT_WORDS } : child };
   }
+  // A run a 定时任务 started (mock-up): which one, and when.
+  const run = m.meta?.scheduleRun as { title?: unknown; at?: unknown } | undefined;
+  if (run && typeof run.title === 'string' && typeof run.at === 'string') return { kind: 'note', id: m.id, text: `${t('定时任务「{title}」', { title: run.title })} · ${whenText(run.at, new Date())}` };
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
 }

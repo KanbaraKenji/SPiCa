@@ -49,6 +49,7 @@ import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
+import { buildScheduleSeed } from './fake-schedule-seed';
 import { buildSeed, fakeCard } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
@@ -72,6 +73,8 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
+  /** The 定时任务 mock-up's conversations too (SPICA_DEMO_SCHEDULE=1). */
+  demoSchedule?: boolean;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -256,6 +259,12 @@ export class FakeBackend implements AgentBackend {
       for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && (!s.cwd || s.cwd === this.#legacyCwd) });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
       for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
+      if (options.demoSchedule) {
+        const more = buildScheduleSeed(this.#now());
+        for (const s of more.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: false });
+        for (const [id, list] of Object.entries(more.messages)) this.#messages.set(id, list);
+        for (const [id, list] of Object.entries(more.pending)) this.#pending.set(id, list);
+      }
       this.#ids = 1000;
       for (const p of FAKE_PROJECTS) {
         const pm = this.#sessions.get(p.managerSessionId);

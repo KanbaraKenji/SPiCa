@@ -73,16 +73,26 @@ export interface AppProps {
   mail?: MailStore;
 }
 
-type View = 'chat' | 'inbox' | 'plugin';
+type View = 'chat' | 'inbox' | 'plugin' | 'schedule';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
 
 /** What the core's standing top-level agent is called until someone renames it. */
 
+import type { ScheduleItem, ScheduleLayout, ScheduleScene } from './schedule/model';
+import { demoRunCards, demoSchedules } from './schedule/demo';
+import { SchedulePage, ScheduleSettings } from './schedule/SchedulePage';
+import { RunCards, ScheduleDetail } from './schedule/ScheduleViews';
+
+/** The demo conversations the 定时任务 mock-up's runs are in (main/backend/fake-schedule-seed.ts). */
+const SCHEDULE_RUN_IDS = { report: 'sch-run-report', orders: 'sch-run-orders', sameChat: 'sch-chat-same', sameWaiting: 'sch-chat-waiting', newChat: 'sch-chat-new', listChat: 'sch-chat-list' };
+
 export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppProps) {
   const { settings } = useShell(shell);
   const state = useAgent(agent);
+  const agentRef = useRef(agent);
+  agentRef.current = agent;
   const [mailStore] = useState(() => mailProp ?? new MailStore(bridge));
   const mail = useMail(mailStore);
   useEffect(() => {
@@ -92,6 +102,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
+  // 定时任务 mock-up: off until the screenshot script picks a placement (window.__spicaShots.schedule).
+  const [sched, setSched] = useState<null | { layout: ScheduleLayout; creating: boolean }>(null);
+  const [schedNow] = useState(() => new Date());
+  const [schedItems, setSchedItems] = useState<ScheduleItem[]>(() => demoSchedules(schedNow, SCHEDULE_RUN_IDS));
+  const toggleSched = (id: string, on: boolean) => setSchedItems((l) => l.map((s) => (s.id === id ? { ...s, enabled: on } : s)));
   // Settings: a dialog over whatever is open; it opens again on the section (and 插件's tab) it was left at.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('general');
@@ -326,6 +341,27 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         setSettingsOpen(tab !== null);
         setView(v === 'inbox' ? 'inbox' : 'chat');
       },
+      schedule: (layout, scene) => {
+        const l = layout as ScheduleLayout;
+        const sc = scene as ScheduleScene;
+        setSched({ layout: l, creating: sc === 'create' && l !== 'chat' });
+        setSettingsOpen(false);
+        const open = (id: string) => {
+          setView('chat');
+          void agentRef.current.open(id);
+        };
+        if (l === 'sidebar') {
+          if (sc === 'create' || sc === 'list') setView('schedule');
+          else if (sc === 'result') open(SCHEDULE_RUN_IDS.report);
+          else setView('inbox');
+        } else if (l === 'settings') {
+          if (sc === 'create' || sc === 'list') {
+            setSettingsTab('schedule');
+            setSettingsOpen(true);
+            setView('chat');
+          } else open(sc === 'result' ? SCHEDULE_RUN_IDS.report : SCHEDULE_RUN_IDS.orders);
+        } else open(sc === 'create' ? SCHEDULE_RUN_IDS.newChat : sc === 'list' ? SCHEDULE_RUN_IDS.listChat : sc === 'waiting' ? SCHEDULE_RUN_IDS.sameWaiting : SCHEDULE_RUN_IDS.sameChat);
+      },
     };
     return () => {
       delete window.__spicaShots;
@@ -363,7 +399,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
     return out;
   }, [state.projects, sessions]);
-  const inboxCount = mail.items.filter(needsYou).length;
+  const schedCards = useMemo(() => (sched ? demoRunCards(schedItems) : []), [sched, schedItems]);
+  const inboxCount = mail.items.filter(needsYou).length + schedCards.length;
   // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
   const doneNews = useMemo(() => unseenDone(sessions, settings.doneNews ?? []), [sessions, settings.doneNews]);
   const statusBefore = useRef<Map<string, SessionInfo['status']> | null>(null);
@@ -382,6 +419,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const session = sessions.find((s) => s.id === state.activeId);
   const parent = session?.parentId ? sessions.find((s) => s.id === session.parentId) : undefined;
   const transcript = agent.transcript(state.activeId);
+  const schedOfSession = sched && state.activeId ? schedItems.find((s) => s.sessionId === state.activeId || s.runs.some((r) => r.sessionId === state.activeId)) : undefined;
   // The project the open session belongs to: its manager, or any sub-agent below it.
   const project = useMemo(() => {
     if (!session) return undefined;
@@ -1041,7 +1079,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   );
   // The preview over the whole conversation is a layer of Esc too (back beside it).
   useEscape(rightMax, () => setRightMax(false));
-  const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? t('收件箱') : view === 'schedule' ? t('定时任务') : view === 'plugin' ? (openPluginView?.title ?? '') : (session?.title ?? '');
 
   // The details' content: docked beside the conversation, or in the small card over it (infoFloat).
   const detailsBody = (
@@ -1077,6 +1115,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         activity={project ? (state.activity[project.id] ?? []) : []}
         hideHeading={panelPages.length > 0}
         onStopJob={(jobId) => void agent.stopJob(jobId)}
+        {...(schedOfSession ? { extra: <ScheduleDetail item={schedOfSession} now={schedNow} onToggle={(on) => toggleSched(schedOfSession.id, on)} onOpenRun={openSession} /> } : {})}
       />
       )}
     </>
@@ -1167,6 +1206,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         },
       })}
       unseenDone={doneNews}
+      {...(sched?.layout === 'sidebar'
+        ? {
+            schedule: {
+              open: view === 'schedule',
+              onOpen: () => {
+                setView((v) => (v === 'schedule' ? 'chat' : 'schedule'));
+                setFloating(null);
+              },
+            },
+          }
+        : {})}
     />
   );
 
@@ -1307,8 +1357,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 <p>{t('插件页面不可用（插件已停用或已卸载）。')}</p>
               </div>
             )
+          ) : view === 'schedule' ? (
+            <SchedulePage items={schedItems} now={schedNow} creating={sched?.creating ?? false} onCreating={(c) => setSched((s) => (s ? { ...s, creating: c } : s))} onToggle={toggleSched} onOpenRun={openSession} />
           ) : view === 'inbox' ? (
             <InboxView
+              {...(schedCards.length ? { before: <RunCards cards={schedCards} now={schedNow} onOpen={openSession} onResume={(id) => toggleSched(id, true)} />, beforeCount: schedCards.length } : {})}
               mail={mail}
               mock={pluginMock}
               prefs={settings.mail}
@@ -1564,6 +1617,9 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       ) : null}
       {settingsOpen ? (
         <SettingsView
+          {...(sched?.layout === 'settings'
+            ? { schedule: <ScheduleSettings items={schedItems} now={schedNow} creating={sched.creating} onCreating={(c) => setSched((s) => (s ? { ...s, creating: c } : s))} onToggle={toggleSched} onOpenRun={openSession} /> }
+            : {})}
           shell={shell}
           providers={bridge.providers}
           plugins={pluginsApi}

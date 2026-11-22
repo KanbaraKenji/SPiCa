@@ -21,7 +21,7 @@ import { matches, SettingsSearchContext } from './Group';
 import type { UpdateState } from '../../../shared/updates';
 import { N_, t } from '../../../shared/i18n';
 
-export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'about';
+export type SettingsTab = 'general' | 'account' | 'appearance' | 'models' | 'usage' | 'memory' | 'plugins' | 'schedule' | 'about';
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'general', label: N_('常规') },
@@ -31,6 +31,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
   { id: 'usage', label: N_('用量') },
   { id: 'memory', label: N_('记忆') },
   { id: 'plugins', label: N_('插件') },
+  { id: 'schedule', label: N_('定时任务') },
   { id: 'about', label: N_('关于') },
 ];
 
@@ -39,7 +40,7 @@ const TABS: { id: SettingsTab; label: string }[] = [
  * picture he sent 2026-11-12): you (账号); how Spica works for you (常规, 外观, 记忆); what it works with (模型,
  * 插件); then 关于 on its own.
  */
-const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory'], ['models', 'usage', 'plugins'], ['about']];
+const NAV_GROUPS: SettingsTab[][] = [['account'], ['general', 'appearance', 'memory', 'schedule'], ['models', 'usage', 'plugins'], ['about']];
 
 /** Each section's mark before its name (Claude's column has one). */
 const NAV_ICON: Record<SettingsTab, IconName> = {
@@ -50,6 +51,7 @@ const NAV_ICON: Record<SettingsTab, IconName> = {
   models: 'model',
   usage: 'chart',
   plugins: 'plugin',
+  schedule: 'clock',
   about: 'info',
 };
 
@@ -92,11 +94,13 @@ export interface SettingsViewProps {
   memory?: Omit<MemoryProps, 'enabled' | 'onEnabled'>;
   /** 用量 (absent: no section). */
   usage?: UsageApi;
+  /** 定时任务 (the mock-up's settings placement; absent: no section). */
+  schedule?: ReactNode;
 }
 
-export function SettingsView({ reveal, shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage, mcp }: SettingsViewProps) {
+export function SettingsView({ reveal, shell, providers, plugins, version, update, onCheckUpdate, onInstallUpdate, tab, onTab, pluginsTab, onPluginsTab, onClose, workflows, pickFolder, onBackendRestarted, projects, exportUsageLog, showInFolder, mailModel, networkState, pickFiles, localConnect, previewPages, clearBrowsingData, pluginPages, memory, usage, mcp, schedule }: SettingsViewProps) {
   const { settings } = useShell(shell);
-  const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage));
+  const tabs = TABS.filter((tab) => (tab.id !== 'memory' || memory) && (tab.id !== 'usage' || usage) && (tab.id !== 'schedule' || schedule));
   const box = useRef<HTMLDivElement>(null);
   // The keyboard starts in the dialog (no ring on a section until Tab is pressed) and stays in it. Esc closes it
   // once what was opened inside (a confirm box, a menu, a field being edited) is closed (ui/escape.ts).
@@ -174,6 +178,8 @@ export function SettingsView({ reveal, shell, providers, plugins, version, updat
         {...(onPluginsTab ? { onTab: onPluginsTab } : {})}
         {...(focusPlugin ? { focus: focusPlugin } : {})}
       />
+    ) : id === 'schedule' ? (
+      schedule
     ) : id === 'about' ? (
       <About
         version={version}

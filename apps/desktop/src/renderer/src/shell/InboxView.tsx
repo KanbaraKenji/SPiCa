@@ -1,7 +1,7 @@
 // 收件箱: mail the core fetched through a mail plugin and sorted into projects.
 // Each mail shows where it went and why; the user accepts, ignores or moves
 // it. Only suggestions: nothing here sends, moves or marks mail.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { MailItem } from '@spica/protocol';
 import { byReceived, mailTime, needsYou, reasonOf, surenessOf, verdictOf } from '../../../shared/mail';
 import type { MailPrefs } from '../../../shared/settings';
@@ -35,6 +35,9 @@ export interface InboxViewProps {
   onDismissProblem(): void;
   /** For tests and screenshots. */
   now?: Date;
+  /** Cards above the mail, under 待确认 (the 定时任务 mock-up's runs waiting for the user); `beforeCount` of them. */
+  before?: ReactNode;
+  beforeCount?: number;
 }
 
 type Filter = 'todo' | 'all';
@@ -186,6 +189,7 @@ export function InboxView(props: InboxViewProps) {
           </div>
         ) : (
           <div className="mail-list">
+            {filter === 'todo' ? props.before : null}
             {shown.map((m) => (
               <MailCard key={m.id} item={m} props={props} onMoveMenu={(item, anchor) => setMenu((now) => (now?.anchor === anchor ? null : { item, anchor }))} />
             ))}
