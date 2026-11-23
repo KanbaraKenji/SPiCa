@@ -32,7 +32,7 @@ describe('mcpDraftErrors', () => {
     const w = { ...emptyMcpDraft(), name: 'docs', kind: 'url' as const };
     expect(mcpDraftErrors({ ...w, url: '' }, []).url).toBe('必填');
     expect(mcpDraftErrors({ ...w, url: 'mcp.example.com' }, []).url).toBe('网址无效');
-    expect(mcpDraftErrors({ ...w, url: 'http://mcp.example.com/mcp' }, []).url).toBe('只支持 https（本机和内网地址可用 http）');
+    expect(mcpDraftErrors({ ...w, url: 'http://mcp.example.com/mcp' }, []).url).toBe('只支持 https（本机和内网可用 http）');
     expect(mcpDraftErrors({ ...w, url: 'http://127.0.0.1:8931/mcp' }, [])).toEqual({});
     expect(mcpDraftErrors({ ...w, url: 'https://mcp.example.com/mcp' }, [])).toEqual({});
     expect(mcpDraftErrors({ ...w, url: 'https://x.example.com', headers: [{ name: 'X-A' }, { name: 'x-a' }] }, []).headers).toContain('x-a');
@@ -46,7 +46,7 @@ describe('mcpDraftErrors', () => {
       expect(mcpDraftErrors({ ...w, url }, []), url).toEqual({});
     }
     for (const url of ['http://203.0.113.7/mcp', 'http://172.32.0.1/mcp', 'http://mcp.corp/mcp', 'http://[2001:db8::1]/mcp']) {
-      expect(mcpDraftErrors({ ...w, url }, []).url, url).toBe('只支持 https（本机和内网地址可用 http）');
+      expect(mcpDraftErrors({ ...w, url }, []).url, url).toBe('只支持 https（本机和内网可用 http）');
     }
   });
   it('says a variable named twice', () => {

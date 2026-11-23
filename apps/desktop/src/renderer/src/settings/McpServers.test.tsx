@@ -74,9 +74,9 @@ describe('MCP 服务', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: 'docs' } });
     fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'http://mcp.example.com/mcp' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    expect(screen.getByText('只支持 https（本机和内网地址可用 http）')).toBeTruthy();
+    expect(screen.getByText('只支持 https（本机和内网可用 http）')).toBeTruthy();
     fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'http://10.0.0.5:8795/mcp' } });
-    expect(screen.queryByText('只支持 https（本机和内网地址可用 http）')).toBeNull();
+    expect(screen.queryByText('只支持 https（本机和内网可用 http）')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'https://mcp.example.com/mcp' } });
     fireEvent.change(screen.getByLabelText('密钥'), { target: { value: 'dk-secret-value-0000-77aa' } });
     expect(screen.queryByRole('textbox', { name: '请求头名称' })).toBeNull();

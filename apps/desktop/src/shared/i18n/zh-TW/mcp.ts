@@ -49,7 +49,7 @@ export const ZH_TW_MCP: Catalog = {
   证书与网址不符: '憑證與網址不符',
   证书不受信任: '憑證不受信任',
   网址无效: '網址無效',
-  '只支持 https（本机和内网地址可用 http）': '僅支援 https（本機和內網位址可用 http）',
+  '只支持 https（本机和内网可用 http）': '僅支援 https（本機和內網可用 http）',
   '请求头名称「{name}」无效': '請求標頭名稱「{name}」無效',
   '「Authorization」与「密钥」重复': '「Authorization」與「金鑰」重複',
 };

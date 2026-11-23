@@ -178,7 +178,7 @@ export function mcpUrlError(text: string): string | undefined {
   }
   if (u.protocol === 'https:') return undefined;
   if (u.protocol === 'http:' && isLocalHost(u.hostname)) return undefined;
-  return u.protocol === 'http:' ? t('只支持 https（本机和内网地址可用 http）') : t('网址无效');
+  return u.protocol === 'http:' ? t('只支持 https（本机和内网可用 http）') : t('网址无效');
 }
 
 /** The key as it is sent: what was typed, without a "Bearer " the person put before it. */
