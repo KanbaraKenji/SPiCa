@@ -18,15 +18,19 @@
 // covered, not floated over the window) and come back by themselves when there is room. Their switch is kept; their
 // button cannot be pressed meanwhile and says why.
 //
-// As the window narrows (or a panel is dragged wider), in order:
+// The sidebar goes by the window's width alone: it is docked only while the conversation right of it (the right
+// panels not counted) keeps SIDEBAR_KEEPS_MAIN (600). Short of that it shrinks, down to SIDEBAR_MIN (200), then goes:
+// its icon column stays, its toggle floats it over the window, its switch is kept and it comes back by itself when
+// there is room. The right panels never push it out; dragging it wider stops where the conversation would have 600.
+//
+// Right of the sidebar (or its icon column), as the window narrows (or a panel is dragged wider), in order:
 //   1. the conversation is squeezed (its text wraps again) down to 440;
 //   2. the details go;
 //   3. the conversation is squeezed to 440 again, then the preview lies over its right part (kept at its 440
 //      layout, cut off) until 160 of it shows; dragging the preview stops there;
 //   4. the preview gets narrower, down to PREVIEW_MIN (320);
 //   5. the preview goes (his words: 「任何位置修改宽度不满足主页第"0"宽度时，预览最先被隐藏」; a file opened then floats
-//      it; it comes back when there is room);
-//   6. the sidebar shrinks, then goes (pressing its toggle floats it, as before).
+//      it; it comes back when there is room).
 // The details go only once the conversation is at 440, not before: the conversation takes whatever room is left, so
 // any earlier point would be a width picked out of nothing.
 //
@@ -47,6 +51,8 @@ export const PREVIEW_WIDTH = PANEL_LIMITS.preview.initial;
 export const PREVIEW_MIN = PANEL_LIMITS.preview.min;
 /** The conversation is laid out at least this wide; nothing squeezes it further (the preview covers it instead). */
 export const MAIN_ROOM_WIDTH = 440;
+/** The sidebar is docked only while the conversation right of it (the right panels not counted) keeps this much. */
+export const SIDEBAR_KEEPS_MAIN = 600;
 /** While the preview lies over the conversation, at least this much of the conversation still shows. */
 export const MAIN_SHOWN_MIN = 160;
 /** The column of icons left where the sidebar was while it is not docked (styles.css .panel-rail). */
@@ -97,9 +103,9 @@ export interface Widths {
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
-/** The sidebar's width when docked: what was chosen, giving way only to keep the conversation at 440. */
+/** The sidebar's width when docked: what was chosen, giving way only to keep the conversation at 600. */
 function sidebarWidth(viewportWidth: number, wanted: number): number {
-  return clamp(wanted, SIDEBAR_MIN, viewportWidth - MAIN_ROOM_WIDTH);
+  return clamp(wanted, SIDEBAR_MIN, viewportWidth - SIDEBAR_KEEPS_MAIN);
 }
 
 /** The docked preview in the room right of the sidebar: as chosen, at most what leaves 160 of the conversation. */
@@ -108,7 +114,8 @@ function previewWidth(room: number, wanted: number): number {
 }
 
 export function computeLayout(viewportWidth: number, open: Open, floating: Floating = null, wanted: Wanted = USUAL): Layout {
-  const leftDocked = open.left && viewportWidth - MAIN_ROOM_WIDTH >= SIDEBAR_MIN;
+  // The sidebar: by the window's width alone (the right panels give way in what it leaves, never push it out).
+  const leftDocked = open.left && viewportWidth - SIDEBAR_KEEPS_MAIN >= SIDEBAR_MIN;
   const room = viewportWidth - (leftDocked ? sidebarWidth(viewportWidth, wanted.left) : RAIL_WIDTH);
   // The preview: at its narrowest with the least of the conversation showing, or it is the first to go.
   const previewDocked = open.preview && room >= PREVIEW_MIN + MAIN_SHOWN_MIN;
