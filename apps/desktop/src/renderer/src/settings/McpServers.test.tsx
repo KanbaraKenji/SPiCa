@@ -65,7 +65,7 @@ describe('MCP 服务', () => {
     expect(screen.getByText('另有 1 项未填入：web')).toBeTruthy();
   });
 
-  it('网址: the switch shows 网址 and 密钥 (更多请求头 folded); http to another computer is refused; 保存 shows the address and masks only', async () => {
+  it('网址: the switch shows 网址 and 密钥 (更多请求头 folded); http outside this computer and the local network is refused; 保存 shows the address and masks only', async () => {
     const api = demoMcpApi('none');
     const save = vi.spyOn(api, 'save');
     render(<Adding api={api} />);
@@ -74,7 +74,9 @@ describe('MCP 服务', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '名称' }), { target: { value: 'docs' } });
     fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'http://mcp.example.com/mcp' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
-    expect(screen.getByText('只支持 https（本机地址可用 http）')).toBeTruthy();
+    expect(screen.getByText('只支持 https（本机和内网地址可用 http）')).toBeTruthy();
+    fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'http://10.0.0.5:8795/mcp' } });
+    expect(screen.queryByText('只支持 https（本机和内网地址可用 http）')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '网址' }), { target: { value: 'https://mcp.example.com/mcp' } });
     fireEvent.change(screen.getByLabelText('密钥'), { target: { value: 'dk-secret-value-0000-77aa' } });
     expect(screen.queryByRole('textbox', { name: '请求头名称' })).toBeNull();

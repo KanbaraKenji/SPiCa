@@ -49,7 +49,7 @@ export const EN_MCP: Catalog = {
   证书与网址不符: 'Certificate does not match the URL',
   证书不受信任: 'Certificate not trusted',
   网址无效: 'Invalid URL',
-  '只支持 https（本机地址可用 http）': 'https only (http for this computer)',
+  '只支持 https（本机和内网地址可用 http）': 'https only (http on this computer or LAN)',
   '请求头名称「{name}」无效': 'Invalid request header name “{name}”',
   '「Authorization」与「密钥」重复': '“Authorization” repeats “Key”',
 };
