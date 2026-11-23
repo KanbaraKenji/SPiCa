@@ -16,6 +16,7 @@ import {
   previewFloats,
   previewMaxWidth,
   RAIL_WIDTH,
+  SIDEBAR_KEEPS_MAIN,
   SIDEBAR_MIN,
   SIDEBAR_WIDTH,
   toggleAction,
@@ -38,7 +39,7 @@ function shown(width: number, layout: Layout, w: Widths): number {
 
 describe('the numbers the table below is worked out from', () => {
   it('are what the design says', () => {
-    expect([SIDEBAR_WIDTH, SIDEBAR_MIN, PREVIEW_WIDTH, PREVIEW_MIN, INFO_WIDTH, MAIN_ROOM_WIDTH, MAIN_SHOWN_MIN, RAIL_WIDTH]).toEqual([264, 200, 640, 320, 300, 440, 160, 52]);
+    expect([SIDEBAR_WIDTH, SIDEBAR_MIN, SIDEBAR_KEEPS_MAIN, PREVIEW_WIDTH, PREVIEW_MIN, INFO_WIDTH, MAIN_ROOM_WIDTH, MAIN_SHOWN_MIN, RAIL_WIDTH]).toEqual([264, 200, 600, 640, 320, 300, 440, 160, 52]);
   });
 });
 
@@ -49,12 +50,22 @@ type Row = [width: number, sidebar: boolean, preview: boolean, details: boolean,
 const TABLE: Row[] = [
   //  width  left   prev   info    left prev info      left  prev  info   conv  cover
   [480, true, true, true, [h, h, h], ['-', '-', '-'], 428, 0],
-  // 700: the preview is the first to go (the sidebar still there).
-  [700, true, true, true, [d, h, h], [260, '-', '-'], 440, 0],
-  // 744: the preview at its narrowest, 160 of the conversation showing.
-  [744, true, true, true, [d, d, h], [264, 320, '-'], 160, 280],
+  // 532: right of the icon column the preview at its narrowest, 160 of the conversation showing; 531: it goes.
+  [532, true, true, true, [h, d, h], ['-', 320, '-'], 160, 280],
+  [531, true, true, true, [h, h, h], ['-', '-', '-'], 479, 0],
+  // 700: no sidebar (under 800 it has not 600 of the conversation beside it at its narrowest); the preview has its room.
+  [700, true, true, true, [h, d, h], ['-', 488, '-'], 160, 280],
+  // 799: the sidebar has just gone; 800: at its narrowest (200), 600 right of it, the preview giving way in there.
+  [799, true, true, true, [h, d, h], ['-', 587, '-'], 160, 280],
+  [800, true, true, true, [d, d, h], [200, 440, '-'], 160, 280],
+  // 864: the sidebar back at its width (264 + 600).
+  [864, true, true, true, [d, d, h], [264, 440, '-'], 160, 280],
   [900, true, true, true, [d, d, h], [264, 476, '-'], 160, 280],
-  // 900 without a preview: the sidebar fits with the conversation at 440 or more, the details do not.
+  // Nothing on the right: the sidebar shrinks under 864, is at 200 at 800 and goes under it.
+  [863, true, false, false, [d, h, h], [263, '-', '-'], 600, 0],
+  [800, true, false, false, [d, h, h], [200, '-', '-'], 600, 0],
+  [799, true, false, false, [h, h, h], ['-', '-', '-'], 747, 0],
+  // 900 without a preview: the sidebar fits with the conversation at 600 or more, the details do not.
   [900, true, false, true, [d, h, h], [264, '-', '-'], 636, 0],
   [900, false, false, true, [h, h, d], ['-', '-', 300], 548, 0],
   // 1280: no room for the details beside the preview: they are not there; the preview covers a little.
@@ -105,7 +116,7 @@ describe('sidebar, conversation, details, preview (against the right edge), by w
     }
   });
 
-  it('as the window narrows: squeezed to 440, the details go, squeezed and covered to 160, the preview at 320, the preview goes, then the sidebar', () => {
+  it('as the window narrows: squeezed to 440, the details go, squeezed and covered to 160; the sidebar goes by the window alone; then right of its icon column the preview narrows to 320 and goes', () => {
     const order: string[] = [];
     let before = computeLayout(2000, all);
     for (let width = 2000; width >= 480; width--) {
@@ -114,16 +125,21 @@ describe('sidebar, conversation, details, preview (against the right edge), by w
       before = now;
     }
     expect(order).toEqual([
-      `info@${SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + INFO_WIDTH + PREVIEW_WIDTH - 1}`, `preview@${SIDEBAR_WIDTH + MAIN_SHOWN_MIN + PREVIEW_MIN - 1}`, `left@${SIDEBAR_MIN + MAIN_ROOM_WIDTH - 1}`,
-      // With the sidebar gone (its icon column stays) there is room for the preview again, until that too is short.
+      `info@${SIDEBAR_WIDTH + MAIN_ROOM_WIDTH + INFO_WIDTH + PREVIEW_WIDTH - 1}`,
+      // With the sidebar there, 600 are always right of it: the preview keeps its place (narrower) until the sidebar goes.
+      `left@${SIDEBAR_MIN + SIDEBAR_KEEPS_MAIN - 1}`,
+      // With the sidebar gone (its icon column stays) the preview has more room again, until that too is short.
       `preview@${RAIL_WIDTH + MAIN_SHOWN_MIN + PREVIEW_MIN - 1}`,
     ]);
     const at = (width: number) => {
       const layout = computeLayout(width, all);
       const w = panelWidths(width, layout, wanted);
-      return { conv: shown(width, layout, w), preview: w.preview };
+      return { conv: shown(width, layout, w), preview: w.preview, left: layout.left === d ? w.left : 0 };
     };
-    expect([at(1644).conv, at(1344).conv, at(1064).conv, at(744).preview]).toEqual([440, 440, 160, 320]);
+    expect([at(1644).conv, at(1344).conv, at(1064).conv]).toEqual([440, 440, 160]);
+    // the preview narrows with the window until the sidebar shrinks (864), stays at 440 while it does, takes the
+    // sidebar's room once it goes (799), and is at its narrowest at 532
+    expect([864, 832, 800, 799, 532].map((x) => [at(x).left, at(x).preview])).toEqual([[264, 440], [232, 440], [200, 440], [0, 587], [0, 320]]);
   });
 
   it('dragging the preview wider: the details go once the conversation would have less than 440; it stops at 160', () => {
@@ -137,10 +153,47 @@ describe('sidebar, conversation, details, preview (against the right edge), by w
     expect(w.cover).toBe(MAIN_ROOM_WIDTH - MAIN_SHOWN_MIN);
   });
 
-  it('dragging the sidebar wider: the preview gives way, and is the first to go', () => {
-    expect(panelWidths(1000, computeLayout(1000, open(true, true, false), null, { left: 440, preview: 900 }), { left: 440, preview: 900 }).preview).toBe(400);
+  it('dragging the sidebar wider: it stops where the conversation would have less than 600; the preview gives way in what is left, it does not go', () => {
+    const wide = { left: 440, preview: 900 };
+    const l = computeLayout(1000, open(true, true, false), null, wide);
+    expect([l.left, l.preview]).toEqual([d, d]);
+    expect(panelWidths(1000, l, wide)).toMatchObject({ left: 1000 - SIDEBAR_KEEPS_MAIN, preview: SIDEBAR_KEEPS_MAIN - MAIN_SHOWN_MIN });
     const tight = computeLayout(900, open(true, true, false), null, { left: 440, preview: 640 });
-    expect([tight.left, tight.preview]).toEqual([d, h]);
+    expect([tight.left, tight.preview]).toEqual([d, d]);
+    expect(panelWidths(900, tight, { left: 440, preview: 640 }).left).toBe(300);
+    // nothing on the right: the same stop
+    expect(panelWidths(1000, computeLayout(1000, open(true, false, false), null, wide), wide).left).toBe(400);
+  });
+});
+
+describe('the sidebar: by the window’s width alone, docked only with 600 of the conversation right of it', () => {
+  const on = open(true, false, false);
+  const at = (width: number, o: Open = on) => {
+    const layout = computeLayout(width, o);
+    return layout.left === d ? panelWidths(width, layout, wanted).left : layout.left;
+  };
+
+  it('shrinks to 200 first, then goes; its switch is kept, its toggle floats it, and it is back by itself when there is room', () => {
+    const full = SIDEBAR_WIDTH + SIDEBAR_KEEPS_MAIN;
+    const least = SIDEBAR_MIN + SIDEBAR_KEEPS_MAIN;
+    expect([at(1200), at(full), at(full - 1), at(least), at(least - 1), at(480)]).toEqual([264, 264, 263, 200, h, h]);
+    expect(toggleAction('left', least - 1, on, null)).toEqual({ open: on, floating: 'left' });
+    expect(computeLayout(least - 1, on, 'left').left).toBe('floating');
+    expect(computeLayout(least, on, null).left).toBe(d);
+  });
+
+  it('the right panels never push it out: docked or not, the same with any of them open', () => {
+    for (let width = 480; width <= 2000; width += 3) {
+      const alone = computeLayout(width, on).left;
+      for (const [pre, info] of [[true, true], [true, false], [false, true]] as const) {
+        for (const monitor of [undefined, true]) {
+          const o: Open = { ...open(true, pre, info), ...(monitor ? { monitor } : {}) };
+          const layout = computeLayout(width, o);
+          expect(layout.left).toBe(alone);
+          if (layout.left === d) expect(width - panelWidths(width, layout, wanted).left).toBeGreaterThanOrEqual(SIDEBAR_KEEPS_MAIN);
+        }
+      }
+    }
   });
 });
 
@@ -178,8 +231,10 @@ describe('floating panels (the sidebar and the preview; the details never float)
     expect(panelWidths(220, computeLayout(220, all, 'left'), { left: 320, preview: 640 }).left).toBe(SIDEBAR_MIN);
   });
   it('opening a file floats the preview only when it does not fit beside 160 of the conversation', () => {
-    expect(previewFloats(SIDEBAR_WIDTH + PREVIEW_MIN + MAIN_SHOWN_MIN, open(true, false, true))).toBe(false);
-    expect(previewFloats(SIDEBAR_WIDTH + PREVIEW_MIN + MAIN_SHOWN_MIN - 1, open(true, false, true))).toBe(true);
+    // a window that narrow has the sidebar's icon column (with the sidebar docked the preview always fits)
+    expect(previewFloats(RAIL_WIDTH + PREVIEW_MIN + MAIN_SHOWN_MIN, open(true, false, true))).toBe(false);
+    expect(previewFloats(RAIL_WIDTH + PREVIEW_MIN + MAIN_SHOWN_MIN - 1, open(true, false, true))).toBe(true);
+    expect(previewFloats(SIDEBAR_MIN + SIDEBAR_KEEPS_MAIN, open(true, false, true))).toBe(false);
   });
 });
 
