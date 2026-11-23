@@ -134,6 +134,7 @@
 | **定** 启动时弹出窗口，停在新对话（开机自启那次也一样，不只待在托盘） | `main/` | 对应测试 |
 | **定** 设置是大弹窗，一组一个框，框里用细线分行；插件市场只在这个弹窗里 | `settings/**` | `renderer-styles.test.ts`「the rows in a box…」 |
 | **定** 对话再长，输入框也留在窗口里 | `.body`、`.main` 的 `min-height: 0` | 同文件的断言 |
+| **暂定** 对话里的卡和行不比内容列宽。按内容定宽的（答完或中断的提问卡、做完的清单、答完的操作电脑卡、回答里的表格）最宽到内容列为止，提问卡和清单另有 560 的上限；放不下的单行在末尾截断加省略号（提问卡的问题行、确认卡的标题悬停看全），别的字折行 | `styles.css` 的 `.card.ask-card`、`.plan-strip.is-record`、`.card.computer-card.is-line`、`.md .md-table` | `renderer-styles.test.ts`「what in the conversation is as wide as its words…」 |
 
 ## 8. 改界面时的做法
 
