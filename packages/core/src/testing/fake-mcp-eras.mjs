@@ -16,9 +16,18 @@ const tools = [{ name: 'hello', description: 'Says hello', inputSchema: { type: 
 const modern = kind === 'modern' || kind === 'needs' || kind === 'slow';
 const started = Date.now();
 
+// slow: what comes in its first 600 ms waits, then is handled in the order it came (one timer for all of it: a timer
+// each, set to the same moment, may fire in another order on a busy machine)
+const held = [];
+let holding = kind === 'slow';
+if (holding) {
+  setTimeout(() => {
+    holding = false;
+    for (const line of held.splice(0)) handle(line);
+  }, Math.max(0, 600 - (Date.now() - started)));
+}
 createInterface({ input: process.stdin }).on('line', (line) => {
-  const wait = kind === 'slow' ? 600 - (Date.now() - started) : 0;
-  if (wait > 0) return void setTimeout(() => handle(line), wait);
+  if (holding) return void held.push(line);
   handle(line);
 });
 
