@@ -469,7 +469,11 @@ export function RunCards({ items, now, onOpen, onResume }: { items: ScheduleInfo
                 <SpicaStatusIcon name={paused ? 'error' : 'waiting'} size={14} />
                 {paused ? t('连续 {n} 次失败', { n: s.failures }) : t('等待确认')}
               </span>
-              {paused && run ? <span className="mail-reason">{runReason(run)}</span> : null}
+              {paused && run ? (
+                <span className="mail-reason" title={run.detail}>
+                  {runReason(run)}
+                </span>
+              ) : null}
             </div>
             <div className="mail-actions">
               {paused ? (

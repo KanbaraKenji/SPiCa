@@ -1,6 +1,7 @@
 // 定时任务: how a task's times are said, in this computer's time zone (the core keeps them; nothing here runs them).
 import type { ScheduleInfo, ScheduleRepeat, ScheduleRun } from '@spica/protocol';
 import { N_, t } from '../../../shared/i18n';
+import { knownError } from '../../../shared/errors';
 
 const WEEKDAYS = [N_('周日'), N_('周一'), N_('周二'), N_('周三'), N_('周四'), N_('周五'), N_('周六')];
 export const WEEKDAY_SHORT = [N_('日'), N_('一'), N_('二'), N_('三'), N_('四'), N_('五'), N_('六')];
@@ -72,6 +73,7 @@ export function runReason(r: ScheduleRun): string {
     case 'max_turns':
       return t('达到轮数上限');
     default:
-      return r.detail || t('运行出错');
+      // the core's words for a known error (余额不足, 模型不存在…), else plainly 运行出错; the whole text is on hover
+      return (r.detail && knownError(r.detail)) || t('运行出错');
   }
 }
