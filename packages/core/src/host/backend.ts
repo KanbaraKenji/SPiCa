@@ -484,6 +484,8 @@ export async function startBackend(cfg: BackendConfig, host: BackendHost = {}): 
     if (cfg.mail?.enabled === true) runtime.mail.start();
     // 自动整理 checks now and then (it only tidies when switched on)
     runtime.memory.startAutoTidy();
+    // scheduled tasks: the clock runs while the app does (nothing is registered with the system)
+    runtime.schedules.start();
     const mcpTools = extensions.flatMap((e) => e.mcpTools ?? []);
     let mcpHttp: McpHttpServer | undefined;
     if (cfg.mcpHttp) {

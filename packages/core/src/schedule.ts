@@ -1,0 +1,279 @@
+// Scheduled tasks: a prompt the core sends by itself at set times, in a new conversation each time or back in the
+// conversation it was set up in.
+//
+// The clock is one timer that looks at the table every minute (and once soon after start, and when the shell says the
+// computer woke up). Nothing is registered with the system: closed, the app runs nothing. A run due while the app was
+// closed or the computer slept runs once when it is back (only the latest one, however many were missed); a run due
+// while the previous one still waits for the user is skipped. Runs are started the way the mail pipeline starts its
+// own: createSession + send with author 'runtime'. A run that meets a confirmation stops there, as any conversation
+// does, and waits for the user. Failing SCHEDULE_FAILURES_TO_PAUSE times in a row turns the task off.
+import { SCHEDULE_FAILURES_TO_PAUSE, type RunEndReason, type ScheduleInfo, type ScheduleInput, type ScheduleRepeat, type ScheduleRun } from '@spica/protocol';
+import type { CoreEvent } from './events.ts';
+import { isoNow } from './events.ts';
+import type { Runtime } from './runtime.ts';
+import { newId } from './util.ts';
+
+/** How often the table is looked at. */
+export const SCHEDULE_TICK_MS = 60_000;
+/** The first look after start (the window and the plugins come up first). */
+const FIRST_TICK_MS = 5_000;
+/** Started this much after it was due: it was missed (app closed, computer asleep) and runs late. */
+const LATE_MS = 2 * 60_000;
+
+const HM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** The words wrong with a task as given, or null. */
+export function scheduleProblem(input: ScheduleInput): string | null {
+  if (!input.title?.trim()) return 'title is empty';
+  if (!input.prompt?.trim()) return 'prompt is empty';
+  const t = input.trigger;
+  if (!t || t.type !== 'time') return 'trigger must be { type: "time", repeat }';
+  const r = t.repeat as ScheduleRepeat | undefined;
+  if (!r) return 'trigger.repeat is missing';
+  if (r.kind === 'daily') return HM.test(r.time) ? null : 'time must be HH:MM';
+  if (r.kind === 'weekly') {
+    if (!HM.test(r.time)) return 'time must be HH:MM';
+    return Array.isArray(r.days) && r.days.length && r.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) ? null : 'days must be 0 (Sunday) to 6';
+  }
+  if (r.kind === 'interval') return Number.isInteger(r.minutes) && r.minutes >= 1 && r.minutes <= 7 * 24 * 60 ? null : 'minutes must be 1 to 10080';
+  if (r.kind === 'once') return Number.isNaN(Date.parse(r.at)) ? 'at must be a date and time' : null;
+  return 'repeat.kind must be daily, weekly, interval or once';
+}
+
+/**
+ * The first time strictly after `after` the repeat fires, in this computer's time zone; null for a one-off already
+ * past. An interval counts from `after` (the last run, or when it was set up or turned on).
+ */
+export function nextRun(repeat: ScheduleRepeat, after: Date): Date | null {
+  if (repeat.kind === 'once') {
+    const at = new Date(repeat.at);
+    return at.getTime() > after.getTime() ? at : null;
+  }
+  if (repeat.kind === 'interval') return new Date(after.getTime() + repeat.minutes * 60_000);
+  const m = HM.exec(repeat.time);
+  if (!m) return null;
+  const [h, min] = [Number(m[1]), Number(m[2])];
+  const days = repeat.kind === 'weekly' ? repeat.days : [0, 1, 2, 3, 4, 5, 6];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(after.getFullYear(), after.getMonth(), after.getDate() + i, h, min, 0, 0);
+    if (d.getTime() > after.getTime() && days.includes(d.getDay())) return d;
+  }
+  return null;
+}
+
+/** How a run's conversation ended, as the task's run: done, waiting for the user, or failed. */
+function outcome(reason: RunEndReason): ScheduleRun['status'] {
+  if (reason === 'completed' || reason === 'max_turns') return 'done';
+  if (reason === 'awaiting_confirm' || reason === 'awaiting_answer') return 'waiting';
+  return 'failed';
+}
+
+export class Scheduler {
+  readonly #rt: Runtime;
+  readonly #now: () => Date;
+  #timer: ReturnType<typeof setInterval> | undefined;
+  #first: ReturnType<typeof setTimeout> | undefined;
+  #off: (() => void) | undefined;
+  #ticking = false;
+
+  constructor(rt: Runtime, opts: { now?: () => Date } = {}) {
+    this.#rt = rt;
+    this.#now = opts.now ?? (() => new Date());
+  }
+
+  get running(): boolean {
+    return this.#timer !== undefined;
+  }
+
+  /** Starts the clock. Runs left running by an app that quit are over: failed, 'interrupted'. */
+  start(): void {
+    if (this.#timer) return;
+    for (const r of this.#rt.store.listScheduleRuns({ status: 'running' })) {
+      this.#finish(r, 'failed', 'interrupted');
+    }
+    this.#off = this.#rt.events.on((e) => this.#seen(e));
+    this.#timer = setInterval(() => void this.check(), SCHEDULE_TICK_MS);
+    this.#timer.unref?.();
+    this.#first = setTimeout(() => void this.check(), FIRST_TICK_MS);
+    this.#first.unref?.();
+  }
+
+  stop(): void {
+    if (this.#timer) clearInterval(this.#timer);
+    if (this.#first) clearTimeout(this.#first);
+    this.#timer = undefined;
+    this.#first = undefined;
+    this.#off?.();
+    this.#off = undefined;
+  }
+
+  /** The tasks, each with its last run. */
+  list(): ScheduleInfo[] {
+    return this.#rt.store.listSchedules().map((s) => this.#withLast(s));
+  }
+
+  get(id: string): ScheduleInfo | undefined {
+    const s = this.#rt.store.getSchedule(id);
+    return s && this.#withLast(s);
+  }
+
+  runs(filter: { scheduleId?: string; status?: ScheduleRun['status']; limit?: number } = {}): ScheduleRun[] {
+    return this.#rt.store.listScheduleRuns(filter);
+  }
+
+  /** Adds a task, or with `id` changes one; its next run is worked out from now. Throws on a task that cannot run. */
+  save(input: ScheduleInput & { id?: string }, by: 'user' | 'agent' = 'user'): ScheduleInfo {
+    const problem = scheduleProblem(input);
+    if (problem) throw new Error(problem);
+    const now = this.#now();
+    const before = input.id ? this.#rt.store.getSchedule(input.id) : undefined;
+    if (input.id && !before) throw new Error(`no scheduled task ${input.id}`);
+    const next = nextRun(input.trigger.repeat, now);
+    const s: ScheduleInfo = {
+      id: before?.id ?? newId('sch'),
+      title: input.title.trim(),
+      prompt: input.prompt.trim(),
+      trigger: { type: 'time', repeat: input.trigger.repeat },
+      ...(input.cwd?.trim() ? { cwd: input.cwd.trim() } : {}),
+      ...(input.providerId ? { providerId: input.providerId } : {}),
+      ...(input.model ? { model: input.model } : {}),
+      ...((input.sessionId ?? before?.sessionId) ? { sessionId: input.sessionId ?? before?.sessionId } : {}),
+      enabled: next !== null,
+      nextAt: next ? isoNow(next) : null,
+      failures: 0,
+      createdBy: before?.createdBy ?? by,
+      createdAt: before?.createdAt ?? isoNow(now),
+      updatedAt: isoNow(now),
+    };
+    this.#rt.store.upsertSchedule(s);
+    return this.#changed(s);
+  }
+
+  remove(id: string): boolean {
+    if (!this.#rt.store.getSchedule(id)) return false;
+    this.#rt.store.deleteSchedule(id);
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.deleted', id });
+    return true;
+  }
+
+  /** On: the next run from now, the failures forgotten. Off: no next run. */
+  setEnabled(id: string, enabled: boolean): ScheduleInfo {
+    const s = this.#rt.store.getSchedule(id);
+    if (!s) throw new Error(`no scheduled task ${id}`);
+    const now = this.#now();
+    const next = enabled ? nextRun(s.trigger.repeat, now) : null;
+    const out: ScheduleInfo = { ...s, enabled: enabled && next !== null, nextAt: next ? isoNow(next) : null, failures: enabled ? 0 : s.failures, updatedAt: isoNow(now) };
+    delete out.pausedAfterFailures;
+    this.#rt.store.upsertSchedule(out);
+    return this.#changed(out);
+  }
+
+  /** 立即运行: a run now, its times as they were. */
+  runNow(id: string): ScheduleRun {
+    const s = this.#rt.store.getSchedule(id);
+    if (!s) throw new Error(`no scheduled task ${id}`);
+    return this.#fire(s, this.#now(), false);
+  }
+
+  /** Looks for runs due now (every minute, after start, when the computer wakes). */
+  async check(): Promise<void> {
+    if (this.#ticking) return;
+    this.#ticking = true;
+    try {
+      const now = this.#now();
+      for (const s of this.#rt.store.listSchedules()) {
+        if (!s.enabled || !s.nextAt || Date.parse(s.nextAt) > now.getTime()) continue;
+        const due = new Date(s.nextAt);
+        const late = now.getTime() - due.getTime() > LATE_MS;
+        // the next one from now: however many were missed, one runs
+        const next = s.trigger.repeat.kind === 'once' ? null : nextRun(s.trigger.repeat, now);
+        const moved: ScheduleInfo = { ...s, nextAt: next ? isoNow(next) : null, enabled: next !== null, updatedAt: isoNow(now) };
+        this.#rt.store.upsertSchedule(moved);
+        this.#fire(moved, due, late);
+      }
+    } finally {
+      this.#ticking = false;
+    }
+  }
+
+  #withLast(s: ScheduleInfo): ScheduleInfo {
+    const last = this.#rt.store.listScheduleRuns({ scheduleId: s.id, limit: 1 })[0];
+    return last ? { ...s, lastRun: last } : s;
+  }
+
+  #changed(s: ScheduleInfo): ScheduleInfo {
+    const out = this.#withLast(s);
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.changed', schedule: out });
+    return out;
+  }
+
+  #fire(s: ScheduleInfo, due: Date, late: boolean): ScheduleRun {
+    const now = this.#now();
+    const base = { id: newId('run'), scheduleId: s.id, dueAt: isoNow(due), startedAt: isoNow(now), ...(late ? { late: true } : {}) };
+    // the previous run still going or waiting for the user: this one is skipped
+    const prev = this.#rt.store.listScheduleRuns({ scheduleId: s.id, limit: 1 })[0];
+    if (prev && (prev.status === 'running' || prev.status === 'waiting')) {
+      const run: ScheduleRun = { ...base, status: 'skipped', endedAt: isoNow(now), reason: 'previous_waiting', ...(prev.sessionId ? { sessionId: prev.sessionId } : {}) };
+      this.#rt.store.upsertScheduleRun(run);
+      this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.run', run });
+      this.#changed(s);
+      return run;
+    }
+    let run: ScheduleRun = { ...base, status: 'running' };
+    try {
+      const same = s.sessionId ? this.#rt.session(s.sessionId) : undefined;
+      const session =
+        same ??
+        this.#rt.createSession({
+          title: s.title,
+          ...(s.cwd ? { cwd: s.cwd } : {}),
+          ...(s.providerId ? { providerId: s.providerId } : {}),
+          ...(s.model ? { model: s.model } : {}),
+        });
+      run = { ...run, sessionId: session.id };
+      this.#rt.store.upsertScheduleRun(run);
+      session.send(s.prompt, { author: 'runtime', meta: { scheduleRun: { scheduleId: s.id, runId: run.id, title: s.title, dueAt: run.dueAt, ...(late ? { late: true } : {}) } } });
+    } catch (err) {
+      return this.#finish(run, 'failed', 'error', err instanceof Error ? err.message : String(err));
+    }
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.run', run });
+    this.#changed(this.#rt.store.getSchedule(s.id) ?? s);
+    return run;
+  }
+
+  /** A conversation's run ended: the scheduled run in it (going, or waiting for the user) ends with it. */
+  #seen(e: CoreEvent): void {
+    if (e.type !== 'run.end' || !e.sessionId) return;
+    const run = this.#rt.store.listScheduleRuns({ sessionId: e.sessionId, limit: 5 }).find((r) => r.status === 'running' || r.status === 'waiting');
+    if (!run) return;
+    const status = outcome(e.reason);
+    if (status === 'waiting' && run.status === 'waiting') return;
+    this.#finish(run, status, e.reason, e.detail);
+  }
+
+  #finish(run: ScheduleRun, status: ScheduleRun['status'], reason?: string, detail?: string): ScheduleRun {
+    const now = this.#now();
+    const out: ScheduleRun = {
+      ...run,
+      status,
+      ...(status === 'waiting' ? {} : { endedAt: isoNow(now) }),
+      ...(status === 'failed' && reason ? { reason } : {}),
+      ...(status === 'failed' && detail ? { detail } : {}),
+    };
+    if (status !== 'failed') {
+      delete out.reason;
+      delete out.detail;
+    }
+    this.#rt.store.upsertScheduleRun(out);
+    this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.run', run: out });
+    const s = this.#rt.store.getSchedule(run.scheduleId);
+    if (s && (status === 'done' || status === 'failed')) {
+      const failures = status === 'failed' ? s.failures + 1 : 0;
+      const pause = failures >= SCHEDULE_FAILURES_TO_PAUSE && s.enabled;
+      const next: ScheduleInfo = { ...s, failures, updatedAt: isoNow(now), ...(pause ? { enabled: false, nextAt: null, pausedAfterFailures: true } : {}) };
+      this.#rt.store.upsertSchedule(next);
+      this.#changed(next);
+    } else if (s) this.#changed(s);
+    return out;
+  }
+}

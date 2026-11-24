@@ -168,5 +168,26 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async mailFeedback(mailId, fb) {
       return rt.mail.feedback(mailId, fb);
     },
+    async listSchedules() {
+      return rt.schedules.list();
+    },
+    async saveSchedule(input) {
+      return rt.schedules.save(input, 'user');
+    },
+    async deleteSchedule(id) {
+      return rt.schedules.remove(id);
+    },
+    async setScheduleEnabled(id, enabled) {
+      return rt.schedules.setEnabled(id, enabled);
+    },
+    async runSchedule(id) {
+      return rt.schedules.runNow(id);
+    },
+    async listScheduleRuns(filter) {
+      return rt.schedules.runs(filter ?? {});
+    },
+    async checkSchedules() {
+      await rt.schedules.check();
+    },
   };
 }

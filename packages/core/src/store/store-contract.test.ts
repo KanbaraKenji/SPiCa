@@ -297,3 +297,40 @@ describe('replaced answers (regenerate)', () => {
     store.close();
   });
 });
+
+describe('scheduled tasks', () => {
+  it('both stores keep tasks and runs alike (newest run first, by task, status and conversation), also after reopening; a task goes with its runs', () => {
+    const path = join(dir, 'db-sch', 'spica.db');
+    mkdirSync(join(dir, 'db-sch'), { recursive: true });
+    const stores = [new MemoryStore(), new SqliteStore(path)];
+    const task = { id: 'sch_a', title: '每日报表', prompt: 'p', trigger: { type: 'time' as const, repeat: { kind: 'daily' as const, time: '09:00' } }, cwd: 'D:\工作', enabled: true, nextAt: '2026-11-23T09:00:00.000+08:00', failures: 0, createdBy: 'user' as const, createdAt: '2026-11-22T08:00:00.000+08:00', updatedAt: '2026-11-22T08:00:00.000+08:00' };
+    const each = (s: Store) => {
+      s.upsertSchedule(task);
+      s.upsertSchedule({ ...task, id: 'sch_b', createdAt: '2026-11-22T08:01:00.000+08:00' });
+      s.upsertSchedule({ ...task, failures: 1, lastRun: { id: 'x', scheduleId: 'sch_a', dueAt: '', startedAt: '', status: 'done' } });
+      s.upsertScheduleRun({ id: 'r1', scheduleId: 'sch_a', dueAt: '2026-11-21T09:00:00.000+08:00', startedAt: '2026-11-21T09:00:01.000+08:00', status: 'done', sessionId: 's1' });
+      s.upsertScheduleRun({ id: 'r2', scheduleId: 'sch_a', dueAt: '2026-11-22T09:00:00.000+08:00', startedAt: '2026-11-22T09:00:01.000+08:00', status: 'running', sessionId: 's2' });
+      s.upsertScheduleRun({ id: 'r2', scheduleId: 'sch_a', dueAt: '2026-11-22T09:00:00.000+08:00', startedAt: '2026-11-22T09:00:01.000+08:00', status: 'waiting', sessionId: 's2' });
+      s.upsertScheduleRun({ id: 'r3', scheduleId: 'sch_b', dueAt: '2026-11-22T09:00:00.000+08:00', startedAt: '2026-11-22T09:00:02.000+08:00', status: 'failed', reason: 'error' });
+      return { list: s.listSchedules(), one: s.getSchedule('sch_a'), runs: s.listScheduleRuns(), ofA: s.listScheduleRuns({ scheduleId: 'sch_a', limit: 1 }), waiting: s.listScheduleRuns({ status: 'waiting' }), inS1: s.listScheduleRuns({ sessionId: 's1' }) };
+    };
+    const [mem, sql] = stores.map(each);
+    expect(sql).toEqual(mem);
+    expect(mem!.list.map((t) => t.id)).toEqual(['sch_a', 'sch_b']);
+    expect(mem!.one).toMatchObject({ failures: 1 });
+    expect(mem!.one?.lastRun).toBeUndefined();
+    expect(mem!.runs.map((r) => r.id)).toEqual(['r3', 'r2', 'r1']);
+    expect(mem!.ofA.map((r) => r.id)).toEqual(['r2']);
+    expect(mem!.waiting.map((r) => r.id)).toEqual(['r2']);
+    expect(mem!.inS1.map((r) => r.id)).toEqual(['r1']);
+    (stores[1] as SqliteStore).close();
+    const reopened = new SqliteStore(path);
+    expect(reopened.listScheduleRuns()).toEqual(mem!.runs);
+    for (const s of [stores[0]!, reopened]) {
+      s.deleteSchedule('sch_a');
+      expect(s.listSchedules().map((t) => t.id)).toEqual(['sch_b']);
+      expect(s.listScheduleRuns().map((r) => r.id)).toEqual(['r3']);
+    }
+    reopened.close();
+  });
+});
