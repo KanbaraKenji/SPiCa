@@ -45,7 +45,7 @@ describe('the store', () => {
     const store = new SchedulesStore({ agent, onAgentEvent: (l) => ((emit = l), () => undefined) });
     await store.reload();
     expect(store.state.get()).toMatchObject({ loaded: true, items: [{ id: 'sch_1' }] });
-    const ev = (body: object) => emit({ seq: 1, at: '', sessionId: '', parentChain: [], ...body } as CoreEvent);
+    const ev = (body: object) => emit({ seq: 1, at: '', sessionId: '', parentChain: [], ...body } as unknown as CoreEvent);
     ev({ type: 'schedule.changed', schedule: task({ id: 'sch_2', title: '周报', lastRun: run({ scheduleId: 'sch_2', status: 'waiting' }) }) });
     ev({ type: 'schedule.changed', schedule: task({ enabled: false, nextAt: null, failures: 3, pausedAfterFailures: true, lastRun: run({ status: 'failed', reason: 'error' }) }) });
     expect(store.state.get().items.map((s) => s.title)).toEqual(['每日报表', '周报']);

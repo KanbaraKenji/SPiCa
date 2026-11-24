@@ -55,6 +55,7 @@ export const EN_SCHEDULE: Catalog = {
   没有定时任务: 'No scheduled tasks',
   '一次 · {when}': 'Once · {when}',
   '一次 · 下次 {when}': 'Once · next {when}',
+  对话已删除: 'Conversation deleted',
   应用退出时中断: 'Stopped when the app quit',
   '重复操作，已停止': 'Stopped on a repeated step',
   上次运行在等待确认: 'The last run is waiting for confirmation',
