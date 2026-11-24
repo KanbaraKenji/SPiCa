@@ -735,6 +735,25 @@ describe('files under an answer: cards when few, a list when many', () => {
   const files = (n: number) => Array.from({ length: n }, (_, i) => file(i + 1, i === 2 ? 'png' : 'pdf'));
   const actions = { reveal: vi.fn(), imageUrl: async () => 'blob:x' };
 
+  it('a file the result carried that was not kept (an MCP tool’s embedded file): why, nothing to open or reveal; as a card and in a list', () => {
+    const notSaved = (path: string) => ({ ...file(9), path, card: { ...file(9).card, path, name: path.split('\\').pop()!, kind: 'other' as const, origin: 'produced' as const, notSaved: 'too_large' as const } });
+    const onOpen = vi.fn();
+    render(<FileCards files={[file(1), notSaved('D:\\规格书\\archive.bin')]} onOpen={onOpen} actions={actions} />);
+    const card = document.querySelectorAll('.file-card')[1]!;
+    expect(card.classList.contains('is-not-saved')).toBe(true);
+    expect(card.querySelector('.file-card-sub')?.textContent).toBe('Not saved · over 50 MB');
+    expect(card.querySelector<HTMLButtonElement>('.file-card-main')!.disabled).toBe(true);
+    expect(within(card as HTMLElement).queryByRole('button', { name: '打开所在文件夹' })).toBeNull();
+    fireEvent.click(card.querySelector('.file-card-main')!);
+    expect(onOpen).not.toHaveBeenCalled();
+    cleanup();
+    render(<FileCards files={[...files(4), notSaved('D:\\规格书\\archive.bin')]} onOpen={onOpen} actions={actions} />);
+    const row = document.querySelectorAll('.file-row')[4]!;
+    expect(row.querySelector('.file-row-did')?.textContent).toBe('Not saved · over 50 MB');
+    expect(row.querySelector<HTMLButtonElement>('.file-row-main')!.disabled).toBe(true);
+    expect(within(row as HTMLElement).queryByRole('button', { name: '打开所在文件夹' })).toBeNull();
+  });
+
   it('up to 4: cards, as before', () => {
     render(<FileCards files={files(4)} onOpen={vi.fn()} actions={actions} />);
     expect(document.querySelectorAll('.file-card')).toHaveLength(4);

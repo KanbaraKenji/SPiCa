@@ -1159,6 +1159,8 @@ export function filesOf(blocks: readonly Block[], cards: Record<string, FileCard
  * says what was read instead, fileCardLine): Created, Edited, Made, or for a command's cards, changed while it ran.
  */
 export function fileCardVerb(f: FileRef): string | null {
+  // a file the result carried that was not kept: why (an MCP tool's embedded file)
+  if (f.card?.notSaved) return `Not saved · ${NOT_SAVED[f.card.notSaved]}`;
   const origin = f.card?.origin;
   const command = f.category === 'command' || f.tool === 'run_command';
   if (origin === 'created') return command ? 'Created while the command ran' : 'Created';
@@ -1166,6 +1168,8 @@ export function fileCardVerb(f: FileRef): string | null {
   if (origin === 'produced') return 'Made';
   return null;
 }
+
+const NOT_SAVED: Record<NonNullable<FileCardMeta['notSaved']>, string> = { too_large: 'over 50 MB', bad_data: 'invalid data', write_failed: 'write failed', no_folder: 'no folder' };
 
 const KIND_LABEL: Record<FileCardMeta['kind'], string> = { pdf: 'PDF', docx: 'Word', xlsx: 'Excel', csv: 'CSV', pptx: 'PPT', text: N_('文本'), other: N_('文件') };
 
