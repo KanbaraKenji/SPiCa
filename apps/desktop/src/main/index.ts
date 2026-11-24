@@ -475,7 +475,7 @@ const backend: AgentBackend =
           },
         },
       })
-    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, coordDemo: !app.isPackaged && process.env.SPICA_DEMO_COORD === '1', demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
+    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, coordDemo: !app.isPackaged && process.env.SPICA_DEMO_COORD === '1' ? () => settings.get().managerConfirms : undefined, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 // A development run says where it keeps things (SPICA_USER_DATA moves all of it), so a check can see it.
 if (!app.isPackaged) console.log(`[spica] data: ${app.getPath('userData')} · documents: ${app.getPath('documents')} · app's Python: ${pythonRoot()}`);

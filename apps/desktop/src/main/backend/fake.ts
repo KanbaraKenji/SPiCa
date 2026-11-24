@@ -73,8 +73,8 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
-  /** The demo of 由项目经理确认子任务的操作 (fake-coord.ts): its project, and the manager answering cards. */
-  coordDemo?: boolean;
+  /** The demo of 由项目经理确认子任务的操作 (fake-coord.ts): its project; the manager answers cards while this says the setting is on. */
+  coordDemo?: (() => boolean) | undefined;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -296,7 +296,7 @@ export class FakeBackend implements AgentBackend {
       }
     }
     if (options.coordDemo) {
-      this.#coordDemo = true;
+      this.#coordDemo = options.coordDemo;
       const seed = coordSeed(this.#now());
       for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: false });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
@@ -307,7 +307,7 @@ export class FakeBackend implements AgentBackend {
     for (const s of this.#sessions.values()) s.regenerate = this.#regenerateState(s.id);
   }
 
-  #coordDemo = false;
+  #coordDemo: (() => boolean) | undefined;
   readonly #coordAsked = new Set<string>();
 
   /** The demo's manager answers a card handed to it a few seconds after the card is first shown, unless the user did. */
@@ -511,7 +511,11 @@ export class FakeBackend implements AgentBackend {
   }
 
   async getPending(sessionId: string): Promise<PendingItem[]> {
-    if (this.#coordDemo) this.#coordAnswer(sessionId, this.#pending.get(sessionId) ?? []);
+    if (this.#coordDemo) {
+      // the setting off: nothing is handed to the manager, the cards are as without it
+      if (!this.#coordDemo()) return structuredClone((this.#pending.get(sessionId) ?? []).map((p) => (p.kind === 'confirm' && p.delegated ? (({ delegated: _, ...rest }) => rest)(p) : p)));
+      this.#coordAnswer(sessionId, this.#pending.get(sessionId) ?? []);
+    }
     return structuredClone(this.#pending.get(sessionId) ?? []);
   }
 

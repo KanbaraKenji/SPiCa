@@ -181,12 +181,12 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
                 </>
               ) : null}
               {perProject ? (
-                <>
+                <div className="detail-switch">
                   <dt>{t('确认子任务的操作')}</dt>
-                  <dd className="detail-switch">
+                  <dd>
                     <Switch on={managerConfirms} label={t('由项目经理确认子任务的操作')} onChange={setManagerConfirms} />
                   </dd>
-                </>
+                </div>
               ) : null}
             </dl>
           </section>

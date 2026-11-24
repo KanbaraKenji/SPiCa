@@ -9809,8 +9809,12 @@ input[type='radio']:disabled {
   font-weight: 400;
 }
 
-/* 详情栏 › 确认子任务的操作 (per-project placement, shown for a choice): the switch in the row's line. */
-.detail-facts dd.detail-switch {
+/* 详情栏 › 确认子任务的操作 (per-project placement, shown for a choice): a row of its own, the switch at the right
+   end, so its label does not widen the names' column. */
+.detail-facts > .detail-switch {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
