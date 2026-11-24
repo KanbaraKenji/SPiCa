@@ -5,10 +5,12 @@
 //   legacy  2025-06-18 Streamable HTTP: initialize first, Mcp-Session-Id, JSON answers
 //   sse     2024-11-05 HTTP+SSE: GET opens a stream whose first event names where to POST; answers on the stream
 // `key`: every request must carry Authorization: Bearer <key> (401 otherwise). `tls`: { cert, key } PEM, served
-// over https. Run as a program: node fake-mcp-http.mjs <era> <port> [key] (prints the address); FAKE_MCP_TLS=<folder
-// with cert.pem and key.pem> serves it over https.
+// over https. `files`: also export_documents (fake-mcp-files.mjs: files inside the result). Run as a program: node
+// fake-mcp-http.mjs <era> <port> [key] [--files] (prints the address); FAKE_MCP_TLS=<folder with cert.pem and
+// key.pem> serves it over https.
 import { createServer as createHttp } from 'node:http';
 import { createServer as createHttps } from 'node:https';
+import { exportDocuments, FILES_TOOL } from './fake-mcp-files.mjs';
 
 const MODERN = '2026-07-28';
 const LEGACY = '2025-06-18';
@@ -20,7 +22,7 @@ const TOOL = {
 const answer = (args) => ({ content: [{ type: 'text', text: `${args?.room ?? 'room'}: 23.5 °C` }] });
 
 /**
- * @param {{ era: 'modern' | 'legacy' | 'sse'; key?: string; tls?: { cert: string | Buffer; key: string | Buffer }; port?: number }} o
+ * @param {{ era: 'modern' | 'legacy' | 'sse'; key?: string; tls?: { cert: string | Buffer; key: string | Buffer }; port?: number; files?: boolean }} o
  */
 export async function startFakeMcpHttp(o) {
   /** Every request as it came: method, path, headers (lowercase), body. */
@@ -46,7 +48,8 @@ export async function startFakeMcpHttp(o) {
       if (era === 'modern') return rpcError(id, -32601, 'Method not found');
       return { jsonrpc: '2.0', id, result: { protocolVersion: era === 'sse' ? '2024-11-05' : LEGACY, capabilities: { tools: {} }, serverInfo: { name: 'fake-http', version: '1.0.0' } } };
     }
-    if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: [TOOL] } };
+    if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: o.files ? [TOOL, FILES_TOOL] : [TOOL] } };
+    if (method === 'tools/call' && o.files && params?.name === FILES_TOOL.name) return exportDocuments(params.arguments).then((result) => ({ jsonrpc: '2.0', id, result }));
     if (method === 'tools/call') {
       if (params?.name !== TOOL.name) return rpcError(id, -32602, `Unknown tool: ${params?.name}`);
       return { jsonrpc: '2.0', id, result: answer(params.arguments) };
@@ -58,7 +61,7 @@ export async function startFakeMcpHttp(o) {
     let raw = '';
     req.setEncoding('utf8');
     req.on('data', (d) => (raw += d));
-    req.on('end', () => {
+    req.on('end', async () => {
       const headers = { ...req.headers };
       seen.push({ method: req.method, path: req.url, headers, body: raw });
       if (o.key && headers.authorization !== `Bearer ${o.key}`) return send(res, 401, undefined, { 'www-authenticate': 'Bearer' });
@@ -78,7 +81,7 @@ export async function startFakeMcpHttp(o) {
           if (!stream) return send(res, 404, undefined);
           const msg = JSON.parse(raw);
           res.writeHead(202).end();
-          if (msg.id !== undefined && msg.method) stream.write(`event: message\ndata: ${JSON.stringify(handle(msg, 'sse'))}\n\n`);
+          if (msg.id !== undefined && msg.method) stream.write(`event: message\ndata: ${JSON.stringify(await handle(msg, 'sse'))}\n\n`);
           return;
         }
         return send(res, 405, undefined);
@@ -102,7 +105,7 @@ export async function startFakeMcpHttp(o) {
         if (headers['mcp-protocol-version'] !== version || headers['mcp-method'] !== msg.method) return send(res, 400, rpcError(msg.id ?? null, -32020, 'Header mismatch'));
         const room = msg.params?.arguments?.room;
         if (msg.method === 'tools/call' && (headers['mcp-name'] !== msg.params?.name || (room !== undefined && headers['mcp-param-room'] !== room))) return send(res, 400, rpcError(msg.id ?? null, -32020, 'Header mismatch'));
-        const out = handle(msg, 'modern');
+        const out = await handle(msg, 'modern');
         if (msg.method === 'tools/call') {
           // an event stream: a progress report, then the answer
           res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -118,12 +121,12 @@ export async function startFakeMcpHttp(o) {
       if (msg.method === 'initialize') {
         const sid = `s-${nextSession++}`;
         sessions.add(sid);
-        return send(res, 200, handle(msg, 'legacy'), { 'mcp-session-id': sid });
+        return send(res, 200, await handle(msg, 'legacy'), { 'mcp-session-id': sid });
       }
       if (!sessions.has(headers['mcp-session-id'])) return send(res, headers['mcp-session-id'] ? 404 : 400, { jsonrpc: '2.0', id: null, error: { code: -32000, message: 'Bad Request: Server not initialized' } });
       if (msg.id === undefined) return send(res, 202, undefined);
       if (headers['mcp-protocol-version'] !== LEGACY) return send(res, 400, rpcError(msg.id, -32000, 'Bad MCP-Protocol-Version'));
-      return send(res, 200, handle(msg, 'legacy'));
+      return send(res, 200, await handle(msg, 'legacy'));
     });
   });
   await new Promise((r) => server.listen(o.port ?? 0, '127.0.0.1', r));
@@ -143,11 +146,13 @@ export async function startFakeMcpHttp(o) {
 }
 
 if (import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/').replace(/^\//, '')}`) {
-  const [era = 'modern', port = '0', key] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const files = args.includes('--files');
+  const [era = 'modern', port = '0', key] = args.filter((a) => a !== '--files');
   // FAKE_MCP_TLS: a folder with cert.pem and key.pem (a throwaway certificate): served over https
   const tlsDir = process.env.FAKE_MCP_TLS;
   const { readFileSync } = await import('node:fs');
   const tls = tlsDir ? { cert: readFileSync(`${tlsDir}/cert.pem`), key: readFileSync(`${tlsDir}/key.pem`) } : undefined;
-  const s = await startFakeMcpHttp({ era, port: Number(port), ...(key ? { key } : {}), ...(tls ? { tls } : {}) });
+  const s = await startFakeMcpHttp({ era, port: Number(port), ...(key ? { key } : {}), ...(tls ? { tls } : {}), files });
   console.log(s.url);
 }
