@@ -21,6 +21,8 @@ export class ShellStore {
   readonly legacyDefaultCwd: string | undefined;
   /** Whether 开机时启动 works in this copy (ShellState.autostart). */
   readonly autostart: AutostartSupport;
+  /** 操作电脑 is there in this run (ShellState.computerUse). */
+  readonly computerUse: boolean;
   /** The automatic account (ShellState.autoAccount); the one in force is effectiveAccount(settings, this). */
   readonly autoAccount: string;
   /** Windows' languages (ShellState.systemLanguages), for 语言 跟随系统. */
@@ -31,6 +33,7 @@ export class ShellStore {
     this.demo = initial.demo;
     this.legacyDefaultCwd = initial.legacyDefaultCwd;
     this.autostart = initial.autostart ?? 'unsupported';
+    this.computerUse = initial.computerUse === true;
     this.autoAccount = initial.autoAccount ?? '';
     this.systemLanguages = initial.systemLanguages ?? [];
     // The language first: the first paint is already in it.

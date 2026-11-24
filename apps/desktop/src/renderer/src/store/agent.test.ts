@@ -140,14 +140,14 @@ describe('AgentStore', () => {
     const backend = new FakeBackend({ speed: 0 });
     const store = new AgentStore({ agent: backend, onAgentEvent: (l) => backend.onEvent(l) });
     await store.init();
-    await vi.waitFor(() => expect(store.state.get().projects.length).toBe(2));
+    await vi.waitFor(() => expect(store.state.get().projects.length).toBe(8));
     expect(await store.renameProject('p-budget', '  ')).toBe('请填写项目名称。');
     expect(await store.renameProject('p-budget', '2027 年度预算')).toBeNull();
     expect(store.state.get().sessions.find((x) => x.id === 's-pm-2')?.title).toBe('2027 年度预算');
     await store.open('s-w-4');
     expect(await store.deleteProject('p-budget')).toBeNull();
     const v = store.state.get();
-    expect(v.projects.map((p) => p.id)).toEqual(['p-review']);
+    expect(v.projects.map((p) => p.id)).toEqual(['p-review', 'p-models', 'p-t1', 'p-l1', 'p-l2', 'p-games', 'p-game']);
     expect(v.sessions.some((x) => x.id === 's-pm-2' || x.id === 's-w-4')).toBe(false);
     // The open conversation was in it: back to the assistant.
     expect(v.activeId).toBe(v.topId);

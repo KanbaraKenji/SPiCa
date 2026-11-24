@@ -220,4 +220,8 @@ export const EN_MAIN: Catalog = {
   运行脚本: 'Run a script',
   上传文件: 'Upload files',
   '{field}：{text}': '{field}: {text}',
+  // the bar of 操作电脑
+  '正在操作「{app}」': 'Operating “{app}”',
+  正在操作电脑: 'Operating the computer',
+  '截图 {n} 张 · 约 {tokens} token': { one: '{n} screenshot · about {tokens} tokens', other: '{n} screenshots · about {tokens} tokens' },
 };

@@ -3,7 +3,7 @@
 // conversation; the arrow after its name only expands or collapses.
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { ContextMenu, type MenuItem } from '../ui/ContextMenu';
-import type { SessionInfo } from '@spica/protocol';
+import type { ProjectInfo, SessionInfo } from '@spica/protocol';
 import { Icon } from '../ui/Icon';
 import { letterBadge } from '../ui/badge';
 import { StatusSlot } from '../ui/StatusMark';
@@ -19,6 +19,8 @@ export interface SidebarProps {
   onNewChat(): void;
   /** Absent when the backend cannot create projects. */
   onNewProject?: () => void;
+  /** 新子项目 on a project's menu. Absent: not offered. */
+  onNewSubProject?: (projectId: string) => void;
   onSettings(): void;
   settingsOpen: boolean;
   /**
@@ -65,6 +67,15 @@ export interface SidebarProps {
   onAccount?: (where: AccountMenuTo) => void;
   /** A page other than a conversation fills the main area (a plugin's page): no row is the current one. */
   elsewhere?: boolean;
+  /**
+   * The projects as the backend lists them. With it, 项目 lists projects and their sub-projects: a project holding
+   * sub-projects opens its page (onOpenProject); a sub-project (and a project with a conversation of its own and no
+   * sub-projects) is one row, its manager's conversation. Sub-tasks are not rows: they are in the details.
+   */
+  projectInfos?: ProjectInfo[];
+  onOpenProject?: (projectId: string) => void;
+  /** The project whose page is open (its row is the current one). */
+  projectPageId?: string | null;
 }
 
 /** Where an item of the account's menu opens the settings. */
@@ -132,21 +143,25 @@ function descendantsOf(id: string, childrenOf: Map<string, SessionInfo[]>): Sess
 const TREE_INDENT = 20;
 const TREE_LINE = 16;
 
-function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreeProps }) {
-  const kids = tree.childrenOf.get(s.id) ?? [];
-  const all = kids.length ? descendantsOf(s.id, tree.childrenOf) : [];
+/**
+ * A row. `leaf` (a sub-project's row): its sub-tasks are not rows under it; they count in its status place, as a
+ * collapsed row's do, and it is the current row while one of them is open.
+ */
+function Node({ s, depth, tree, leaf }: { s: SessionInfo; depth: number; tree: TreeProps; leaf?: SessionInfo[] }) {
+  const kids = leaf ? [] : (tree.childrenOf.get(s.id) ?? []);
+  const all = leaf ?? (kids.length ? descendantsOf(s.id, tree.childrenOf) : []);
   // Rows with something going on below them (or the open session) start expanded.
   const open =
     s.id in tree.expanded ? tree.expanded[s.id] === true : tree.openByDefault.has(s.id) || all.some((k) => isRunning(k.status) || k.id === tree.activeId);
-  const active = !tree.settingsOpen && s.id === tree.activeId;
+  const active = !tree.settingsOpen && (s.id === tree.activeId || Boolean(leaf?.some((k) => k.id === tree.activeId)));
   // One status place per row: its own most pressing state (anything else it has is said on hover);
   // collapsed, the most pressing of it and everything below it, with the counts on hover.
   // A project's row is the project, not a conversation: it shows no state, its own or of what is below it.
   // What goes on in a project is on the rows under it (a project with something running or waiting opens itself).
-  const isProject = s.role === 'manager';
+  const isProject = s.role === 'manager' && !leaf;
   const said = (x: SessionInfo, isActive: boolean) => slotsOf(x, { active: isActive, unseenDone: tree.unseenDone.has(x.id) });
   const own = isProject ? [] : said(s, active);
-  const below = !isProject && kids.length && !open ? all.flatMap((k) => said(k, !tree.settingsOpen && k.id === tree.activeId)) : [];
+  const below = !isProject && (leaf ? all.length : kids.length && !open) ? all.flatMap((k) => said(k, !tree.settingsOpen && k.id === tree.activeId)) : [];
   const slot = topSlot([...own, ...below]);
   const name = s.title ?? '';
   const menuOpen = tree.menuFor === s.id;
@@ -230,12 +245,104 @@ function Node({ s, depth, tree }: { s: SessionInfo; depth: number; tree: TreePro
   );
 }
 
+/**
+ * A project's row as the row menu takes it (rename, pin, delete, 新子项目 act on the project): a project holding
+ * sub-projects has a menu like one with a conversation of its own.
+ */
+export function projectRowSession(p: ProjectInfo): SessionInfo {
+  return { id: p.id, parentId: null, parentChain: [], role: 'manager', projectId: p.id, title: p.name, status: 'idle', providerId: '', model: '', cwd: p.folder, costUsd: 0, createdAt: p.createdAt, updatedAt: p.updatedAt };
+}
+
+/**
+ * A project holding sub-projects. Its name opens the project's page; the arrow shows or hides its sub-projects
+ * (shown at first), each one row: its manager's conversation. Its menu (right-click, F2, 更多 while its page is open)
+ * is a project's.
+ */
+function ProjectRow({ p, subs, tree, current, onOpenProject, leafOf }: { p: ProjectInfo; subs: SessionInfo[]; tree: TreeProps; current: boolean; onOpenProject(id: string): void; leafOf(s: SessionInfo): SessionInfo[] }) {
+  const open = p.id in tree.expanded ? tree.expanded[p.id] === true : true;
+  // The page is open (no conversation row is the current one then), or its own conversation or something it sent out.
+  const own = p.managerSessionId;
+  const active =
+    current ||
+    (!tree.settingsOpen && Boolean(own) && (tree.activeId === own || descendantsOf(own, tree.childrenOf).some((k) => k.id === tree.activeId)));
+  const toggle = () => tree.setExpanded(p.id, !open);
+  const s = projectRowSession(p);
+  const menuOpen = tree.menuFor === p.id;
+  const more = active && tree.toggleMenu && tree.hasMenu(s) && tree.editing !== p.id ? tree.toggleMenu : null;
+  return (
+    <>
+      <div
+        className={['tree-row', active ? 'is-active' : '', menuOpen ? 'is-menu-open' : ''].filter(Boolean).join(' ')}
+        onContextMenu={(e) => {
+          if (!tree.startRename || !tree.hasMenu(s) || tree.editing === p.id) return;
+          e.preventDefault();
+          tree.startRename(s, { x: e.clientX, y: e.clientY });
+        }}
+      >
+        {tree.editing === p.id ? (
+          <RenameField initial={p.name} onDone={(v) => tree.finishRename(s, v)} />
+        ) : (
+        <>
+        <button
+          type="button"
+          className="tree-open"
+          onClick={() => onOpenProject(p.id)}
+          onDoubleClick={() => {
+            if (tree.startRename && tree.canRename(s)) tree.startRename(s);
+          }}
+          onKeyDown={(e) => {
+            if (subs.length && (e.key === 'ArrowRight' || e.key === 'ArrowLeft') && open !== (e.key === 'ArrowRight')) {
+              e.preventDefault();
+              toggle();
+            } else if (e.key === 'F2' && tree.startRename && tree.hasMenu(s)) {
+              e.preventDefault();
+              tree.startRename(s);
+            }
+          }}
+          aria-current={active ? 'page' : undefined}
+          title={p.name}
+          data-tip-clipped=".tree-title"
+        >
+          <span className="tree-title">{p.name}</span>
+        </button>
+        {subs.length ? (
+          <button type="button" className="tree-twisty" aria-label={open ? t('收起 {name}', { name: p.name }) : t('展开 {name}', { name: p.name })} title={open ? tc('tree', '收起') : tc('tree', '展开')} aria-expanded={open} onClick={toggle}>
+            <Icon name={open ? 'chevronDown' : 'chevronRight'} size={12} />
+          </button>
+        ) : null}
+        {tree.pinned.has(p.id) ? (
+          <span className="tree-pin" title={t('已置顶')} onClick={() => onOpenProject(p.id)}>
+            <Icon name="pin" size={12} />
+          </span>
+        ) : null}
+        </>
+        )}
+        {more ? (
+          <button type="button" className="tree-more" aria-label={t('更多')} title={t('更多')} aria-haspopup="menu" aria-expanded={menuOpen} onClick={(e) => more(s, e.currentTarget)}>
+            <Icon name="more" size={16} />
+          </button>
+        ) : null}
+      </div>
+      {open && subs.length ? (
+        <div className="tree-kids" style={{ '--tree-line-x': `${TREE_LINE}px` } as CSSProperties}>
+          {subs.map((k) => (
+            <div key={k.id} className="tree-branch">
+              <Node s={k} depth={1} tree={tree} leaf={leafOf(k)} />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function Sidebar({
   sessions,
   activeId,
   onOpen,
   onNewChat,
   onNewProject,
+  onNewSubProject,
   onSettings,
   settingsOpen,
   onRename,
@@ -253,6 +360,9 @@ export function Sidebar({
   account = '',
   onAccount,
   elsewhere = false,
+  projectInfos,
+  onOpenProject,
+  projectPageId = null,
 }: SidebarProps) {
   const me = account ? letterBadge(account, account) : null;
   /** The account's menu: the button it opens above, and how wide the bottom row is drawn (the menu is no narrower). */
@@ -307,9 +417,47 @@ export function Sidebar({
     for (const list of childrenOf.values()) list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     return { chats, projects, childrenOf };
   }, [sessions, pinOrder]);
+  // Projects, each a project holding sub-projects or a conversation of its own (as before).
+  const projectList = useMemo(() => {
+    if (!projectInfos) return null;
+    const byId = new Map(sessions.map((x) => [x.id, x]));
+    const active = projectInfos.filter((p) => p.status === 'active');
+    const rank = (id: string) => pinOrder.get(id) ?? Infinity;
+    const tops = active.filter((p) => !p.parentId);
+    type Row = { kind: 'holder'; p: ProjectInfo; subs: SessionInfo[]; at: string } | { kind: 'chat'; s: SessionInfo; at: string; id: string };
+    const rows: Row[] = [];
+    for (const p of tops) {
+      const subs = active
+        .filter((c) => c.parentId === p.id)
+        .map((c) => byId.get(c.managerSessionId))
+        .filter((x): x is SessionInfo => Boolean(x))
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      if (!p.managerSessionId || subs.length) rows.push({ kind: 'holder', p, subs, at: [p.updatedAt, ...subs.map((x) => x.updatedAt)].sort().at(-1)! });
+      else {
+        const s = byId.get(p.managerSessionId);
+        if (s) rows.push({ kind: 'chat', s, at: s.updatedAt, id: p.id });
+      }
+    }
+    // A manager the backend lists no project for (started by another manager): a row of its own, as before.
+    const listed = new Set(active.map((p) => p.managerSessionId));
+    for (const s of projects) if (!listed.has(s.id)) rows.push({ kind: 'chat', s, at: s.updatedAt, id: s.projectId ?? s.id });
+    const idOf = (r: Row) => (r.kind === 'holder' ? r.p.id : r.id);
+    return rows.sort((a, b) => rank(idOf(a)) - rank(idOf(b)) || b.at.localeCompare(a.at));
+  }, [projectInfos, sessions, projects, pinOrder]);
+  /** A sub-project's sub-tasks, at any depth (its row's status place counts them). */
+  const leafOf = (s: SessionInfo) => descendantsOf(s.id, childrenOf);
 
   // One set of rules with the name in the title bar (row-menu).
-  const actions: RowActions = { pinned, ...(onRename ? { onRename } : {}), ...(onPin ? { onPin } : {}), ...(onRenameProject ? { onRenameProject } : {}), ...(onDeleteProject ? { onDeleteProject } : {}), ...(onDeleteChat ? { onDeleteChat } : {}) };
+  const subIds = new Set((projectInfos ?? []).filter((p) => p.parentId).map((p) => p.id));
+  const actions: RowActions = {
+    pinned,
+    ...(onRename ? { onRename } : {}),
+    ...(onPin ? { onPin } : {}),
+    ...(onRenameProject ? { onRenameProject } : {}),
+    ...(onDeleteProject ? { onDeleteProject } : {}),
+    ...(onDeleteChat ? { onDeleteChat } : {}),
+    ...(onNewSubProject ? { onNewSubProject, isSubProject: (pid: string) => subIds.has(pid) } : {}),
+  };
   const [expanded, setExpandedState] = useState<Record<string, boolean>>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ s: SessionInfo; x: number; y: number; anchor?: HTMLElement } | null>(null);
@@ -328,7 +476,7 @@ export function Sidebar({
     pinned: new Set(pinned),
     hasMenu: (s) => hasRowMenu(s, actions),
     canRename: (s) => canRename(s, actions),
-    ...(onRename || onPin || onRenameProject || onDeleteProject || onDeleteChat
+    ...(onRename || onPin || onRenameProject || onDeleteProject || onDeleteChat || onNewSubProject
       ? {
           startRename: (s: SessionInfo, at?: { x: number; y: number }) => {
             if (at) setMenu({ s, ...at });
@@ -357,6 +505,11 @@ export function Sidebar({
     let at = activeId ? byIdNow.get(activeId) : undefined;
     while (at?.parentId && at.role !== 'manager') at = byIdNow.get(at.parentId);
     if (at) setListTab(at.role === 'manager' ? 'projects' : 'chats');
+  }
+  const [followedPage, setFollowedPage] = useState<string | null>(null);
+  if (projectPageId !== followedPage) {
+    setFollowedPage(projectPageId);
+    if (projectPageId) setListTab('projects');
   }
   if (compact) {
     // Only actions here; the lists (对话, 项目) come with the full sidebar, slid out by resting on this column.
@@ -447,9 +600,15 @@ export function Sidebar({
           </section>
         ) : (
           <section className="tree-section">
-            {projects.map((p) => (
-              <Node key={p.id} s={p} depth={0} tree={tree} />
-            ))}
+            {projectList
+              ? projectList.map((r) =>
+                  r.kind === 'holder' ? (
+                    <ProjectRow key={r.p.id} p={r.p} subs={r.subs} tree={tree} current={projectPageId === r.p.id} onOpenProject={(id) => onOpenProject?.(id)} leafOf={leafOf} />
+                  ) : (
+                    <Node key={r.s.id} s={r.s} depth={0} tree={tree} leaf={leafOf(r.s)} />
+                  ),
+                )
+              : projects.map((p) => <Node key={p.id} s={p} depth={0} tree={tree} />)}
             {onNewProject ? (
               <button type="button" className="side-action side-new-project" onClick={onNewProject}>
                 <Icon name="plus" />

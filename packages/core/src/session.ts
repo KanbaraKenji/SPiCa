@@ -171,6 +171,7 @@ export class Session {
       updatedAt: r.updatedAt,
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
       ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
+      ...(r.config.resident ? { resident: true } : {}),
       approvalMode: r.config.approvalMode ?? 'manual',
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
@@ -294,6 +295,27 @@ export class Session {
     return this.#run !== undefined || this.#hasPending();
   }
 
+  /**
+   * Where files a tool hands to the user go (an MCP tool's embedded file): the working folder when one was chosen,
+   * else the project's folder; none when the conversation still works in the folder the app gave it (or the one all
+   * conversations shared in earlier versions), where the user would not look: the tool keeps them in the media
+   * folder then. A sub-agent works in its parent's folder, so the folder the app gave is the top conversation's.
+   */
+  handOverDir(): string | undefined {
+    const cfg = this.#record.config;
+    let top = this.#record;
+    for (let p = top.parentId ? this.#rt.store.getSession(top.parentId) : undefined; p; p = p.parentId ? this.#rt.store.getSession(p.parentId) : undefined) top = p;
+    const given = [this.#rt.ownFolder(top.id), this.#rt.ownFolder(this.id), this.#rt.legacyDefaultCwd];
+    if (!given.some((f) => samePath(cfg.cwd, f))) return cfg.cwd;
+    const project = cfg.projectId ? this.#rt.store.getProject(cfg.projectId) : undefined;
+    return project?.folder || undefined;
+  }
+
+  #handOver(): { handOverDir?: string } {
+    const dir = this.handOverDir();
+    return dir ? { handOverDir: dir } : {};
+  }
+
   /** The working folder changed (the runtime moved the files; see Runtime.setSessionCwd). */
   setCwd(cwd: string): SessionInfo {
     this.#record = { ...this.#record, config: { ...this.#record.config, cwd } };
@@ -349,6 +371,7 @@ export class Session {
       const cfg = this.#record.config;
       const env = {
         providerId: cfg.providerId,
+        model: cfg.model,
         serverWebSearch: !!cfg.serverWebSearch,
         role: this.#record.role,
         ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -365,8 +388,9 @@ export class Session {
       const args = (given ?? {}) as Record<string, unknown>;
       const g = this.#guardState();
       const guard = { ...g, tainted: g.tainted || met.tainted, outsideHosts: new Set([...g.outsideHosts, ...met.hosts]) };
-      const outsideFolder = this.#outsideFolder(tool, args);
-      const cause = this.#guardCause(tool, args, guard) ?? (outsideFolder ? 'outside_folder' : undefined);
+      const written = this.#outsideFolder(tool, args);
+      const read = written ? undefined : this.#otherProjectFolder(tool, args);
+      const cause = this.#guardCause(tool, args, guard) ?? (written ? 'outside_folder' : read ? 'other_project' : undefined);
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       let confirmedBy: 'user' | undefined;
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
@@ -414,6 +438,7 @@ export class Session {
           services: this.#rt.services(this),
           callId: draft.callId,
           mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
           ...this.#imageContext(),
           ...(confirmedBy ? { confirmedBy } : {}),
           emit: (body) => this.#emit(body),
@@ -497,6 +522,19 @@ export class Session {
 
   /** Stop the run. Pending questions and confirmations are cancelled. */
   abort(reason = 'aborted by user'): void {
+    // a sub-agent kept for later jobs is ended by stopping it: no longer kept (also after a restart), stopped
+    if (this.#record.config.resident) {
+      const { resident: _r, ...config } = this.#record.config;
+      void _r;
+      this.#record = { ...this.#record, config };
+      this.#rt.store.upsertSession(this.#record);
+      if (!this.#run && !this.#hasPending()) {
+        this.#setStatus('aborted');
+        this.#emit({ type: 'session.updated', info: this.info() });
+        return;
+      }
+      this.#emit({ type: 'session.updated', info: this.info() });
+    }
     if (this.#run) {
       this.#runAbort?.abort(Object.assign(new Error(reason), { name: 'AbortError' }));
       return;
@@ -520,12 +558,16 @@ export class Session {
   }
 
   /** Approve or decline an action that needed confirmation. */
-  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean; always?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
     const p = this.#findPending(callId, 'confirm');
     this.#emit({ type: 'confirm.resolved', callId, approved });
     const outside = p.item.kind === 'confirm' ? p.item.outsideFolder : undefined;
+    const reading = p.item.kind === 'confirm' && p.item.cause === 'other_project';
     if (!approved) {
-      const text = outside
+      const text = outside && reading
+        ? `The user did not allow reading in ${outside}, another project's folder. Do not retry it. ` +
+          'If you need it, tell the user and ask them to allow that folder (they can, on the confirmation).'
+        : outside
         ? `The user did not allow writing in ${outside}, which is outside the folders of this conversation. Do not retry it. ` +
           'If the change is needed there, tell the user and ask them to allow that folder (they can, on the confirmation).'
         : 'The user declined this action. Do not retry it unless the user asks.';
@@ -533,7 +575,11 @@ export class Session {
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
-    if (outside && options.allowFolder) this.allowWriteFolder(outside);
+    const always = options.always === true || options.allowFolder === true;
+    if (outside && always) {
+      if (reading) this.allowReadFolder(outside);
+      else this.allowWriteFolder(outside);
+    }
     // Mark as no longer pending before running so a crash does not re-ask.
     this.#rt.store.deletePending(this.id, callId);
     const tool = this.#rt.tools.get(p.item.toolName);
@@ -541,13 +587,13 @@ export class Session {
     this.#runAbort = ac;
     const draft: ToolCallDraft = { callId, name: p.item.toolName, input: p.item.input, irreversible: !!tool?.irreversible };
     const res = tool
-      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0))
+      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0), options.always ? { always: true } : {})
       : { content: `Unknown tool: ${p.item.toolName}`, isError: true };
     this.#runAbort = undefined;
     // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
     // write that went through as "asking did not work"), and whether the folder was kept
-    const kept = outside && options.allowFolder && !tooWideToAllow(outside);
-    const note = outside ? `[The user allowed this on a confirmation card: writing in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
+    const kept = outside && always && (reading || !tooWideToAllow(outside));
+    const note = outside ? `[The user allowed this on a confirmation card: ${reading ? 'reading' : 'writing'} in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
     this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
@@ -648,6 +694,7 @@ export class Session {
           services: this.#rt.services(this),
           callId: newId('att'),
           mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
           ...this.#imageContext(),
           emit: (body) => {
             if (body.type === 'file.card') file = body.file;
@@ -695,6 +742,7 @@ export class Session {
     }
     const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -815,7 +863,8 @@ export class Session {
     const end = (reason: RunEndReason, detail?: string): RunResult => {
       this.#ending = true; // the button state goes out with the last status, before run.end
       const status: SessionStatus =
-        reason === 'completed' && this.#record.role === 'worker'
+        // a worker kept for later jobs (resident) waits for the next one: idle, not done
+        reason === 'completed' && this.#record.role === 'worker' && !this.#record.config.resident
           ? 'done'
           : reason === 'completed' || reason === 'max_turns'
           ? 'idle'
@@ -850,6 +899,7 @@ export class Session {
       // 1. Assemble context by segment and let plugins change the request.
       const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -896,7 +946,7 @@ export class Session {
           return end('error', message);
         }
       }
-      const messages = keepRecentImages(allowed === false ? flat.messages.map(withoutImages) : flat.messages);
+      const messages = keepRecentImages(allowed === false ? flat.messages.map(withoutImages) : flat.messages, (name) => this.#rt.tools.get(name)?.keepImages);
       const sentImages = messages.flatMap((m) => m.content).filter((b): b is Extract<ContentBlock, { type: 'image' }> => b.type === 'image');
       const request: ModelRequest = {
         model: draft.params.model,
@@ -1161,6 +1211,7 @@ export class Session {
     const cfg = this.#record.config;
     const env = {
       providerId: cfg.providerId,
+      model: cfg.model,
       serverWebSearch: !!cfg.serverWebSearch,
       role: this.#record.role,
       ...(cfg.projectId ? { projectId: cfg.projectId } : {}),
@@ -1238,8 +1289,13 @@ export class Session {
         ? await tool.previewInstall((input ?? {}) as Record<string, unknown>).catch((): InstallPreview => ({ packages: [], packageHost: '' }))
         : undefined;
       // outside content in play: the user confirms, whatever hooks or plugin settings say
-      const outsideFolder = install ? undefined : this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
-      const cause = install ? 'python_install' : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (outsideFolder ? 'outside_folder' : undefined));
+      const written = install ? undefined : this.#outsideFolder(tool, (input ?? {}) as Record<string, unknown>);
+      // reading in another project's folder (not a write, nothing to install): asked as a write outside is
+      const read = install || written ? undefined : this.#otherProjectFolder(tool, (input ?? {}) as Record<string, unknown>);
+      const outsideFolder = written ?? read;
+      const cause = install
+        ? 'python_install'
+        : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (written ? 'outside_folder' : read ? 'other_project' : undefined));
       // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
       if ((decision.action === 'confirm' && !autoApproved) || cause) {
@@ -1322,6 +1378,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     draft: ToolCallDraft,
     signal: AbortSignal,
     hctx: HookContext,
+    confirmed: Pick<ToolContext, 'always'> = {},
   ): Promise<{ content: string; isError: boolean; cards?: ToolCallCards }> {
     this.#emit({ type: 'tool.start', callId: draft.callId, name: draft.name, input: draft.input, ...this.#toolInfo(draft.name, draft.input) });
     // Card events are also kept with the call, so history can rebuild them.
@@ -1338,7 +1395,9 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       extractors: this.#rt.extractors,
       services: this.#rt.services(this),
       callId: draft.callId,
+      ...confirmed,
       mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
       ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
       ...this.#imageContext(),
       step: this.#stepper(draft, signal, hctx),
@@ -1732,6 +1791,54 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     return parent ? parent.#revokedFolders() : (this.#record.config.revokedFolders ?? []);
   }
 
+  /**
+   * The user allowed reading in another project's folder on a card (始终允许): no more asking for it in this
+   * conversation and every sub-agent of it, kept as the write folders are (with the conversation the user started).
+   */
+  allowReadFolder(folder: string): void {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) {
+      parent.allowReadFolder(folder);
+      return;
+    }
+    const cfg = this.#record.config;
+    if (cfg.readFolders?.includes(folder)) return;
+    this.#record = { ...this.#record, config: { ...cfg, readFolders: [...(cfg.readFolders ?? []), folder] } };
+    this.#rt.store.upsertSession(this.#record);
+  }
+
+  /** Other projects' folders the user allowed reading in on a card, kept with the conversation at the top of the chain. */
+  allowedReadFolders(): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.allowedReadFolders() : [...(this.#record.config.readFolders ?? [])];
+  }
+
+  /**
+   * For a read (read_file, list_dir, glob, grep) in another project's folder: that project's folder. The project
+   * is the one whose folder holds the path most closely (a sub-project's folder is inside its project's); no asking
+   * when that is the conversation's own project or one of its sub-projects, when the path is in the conversation's
+   * folders (where it may write: working folder, paths the user gave, folders allowed), or in a folder allowed
+   * for reading. A path in no project's folder is read as before.
+   */
+  #otherProjectFolder(tool: Tool, input: Record<string, unknown>): string | undefined {
+    if (!READ_TOOLS.has(tool.spec.name)) return undefined;
+    const p = typeof input.path === 'string' && input.path.trim() ? input.path : undefined;
+    if (!p) return undefined;
+    const target = isAbsolute(p) ? resolvePath(p) : resolvePath(this.#record.config.cwd, p);
+    const at = canonicalPath(target);
+    let best: { id: string; parentId?: string; folder: string; depth: number } | undefined;
+    for (const x of this.#rt.store.listProjects()) {
+      if (!x.folder) continue;
+      const root = canonicalPath(x.folder);
+      if (within(at, root) && (!best || root.length > best.depth)) best = { id: x.id, ...(x.parentId ? { parentId: x.parentId } : {}), folder: x.folder, depth: root.length };
+    }
+    if (!best) return undefined;
+    const own = this.#record.config.projectId;
+    if (own && (best.id === own || best.parentId === own)) return undefined;
+    if (inScope(target, [...this.writeRoots(), ...this.allowedReadFolders()])) return undefined;
+    return best.folder;
+  }
+
   /** The folders the user allowed on a card (始终允许), kept with the conversation at the top of the chain. */
   allowedWriteFolders(): string[] {
     const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
@@ -1755,16 +1862,23 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     if (parent) return parent.revokeWriteFolders(which);
     const cfg = this.#record.config;
     const kept = cfg.writeFolders ?? [];
+    const keptRead = cfg.readFolders ?? [];
     const want = which === 'all' ? undefined : canonicalPath(which.folder);
     const cards = kept.filter((f) => want === undefined || canonicalPath(f) === want);
+    const reads = keptRead.filter((f) => want === undefined || canonicalPath(f) === want);
     const given = this.givenWritePaths().filter((p) => want === undefined || within(canonicalPath(p), want));
-    const gone = [...new Set([...cards, ...given])];
+    const gone = [...new Set([...cards, ...reads, ...given])];
     if (!gone.length) return [];
     const upTo = this.#messages.reduce((n, m) => Math.max(n, m.seq), 0);
     const marks = which === 'all' ? given.map((p) => ({ folder: realPath(p), upTo })) : given.length ? [{ folder: realPath(which.folder), upTo }] : [];
     this.#record = {
       ...this.#record,
-      config: { ...cfg, writeFolders: kept.filter((f) => !cards.includes(f)), ...(marks.length ? { revokedFolders: [...(cfg.revokedFolders ?? []), ...marks] } : {}) },
+      config: {
+        ...cfg,
+        writeFolders: kept.filter((f) => !cards.includes(f)),
+        ...(keptRead.length ? { readFolders: keptRead.filter((f) => !reads.includes(f)) } : {}),
+        ...(marks.length ? { revokedFolders: [...(cfg.revokedFolders ?? []), ...marks] } : {}),
+      },
     };
     this.#rt.store.upsertSession(this.#record);
     return gone;
@@ -1928,6 +2042,9 @@ interface GuardState {
   userHosts: Set<string>;
 }
 
+/** The tools that read where they are pointed (`path`): asked before reading in another project's folder. */
+const READ_TOOLS = new Set(['read_file', 'list_dir', 'glob', 'grep']);
+
 /** Shown with the confirmation (the UI words it from `cause`; this text is for logs and the MCP service). */
 const GUARD_REASON: Record<GuardCause, string> = {
   untrusted_turn: 'the agent is acting on outside content (mail, web page, file or plugin data); irreversible actions need your confirmation',
@@ -1936,6 +2053,7 @@ const GUARD_REASON: Record<GuardCause, string> = {
   plugin_view: 'a plugin view asks to run an irreversible action',
   settings_change: 'a script connected to the app asks to change the settings',
   outside_folder: 'writes a file outside the folders of this conversation',
+  other_project: "reads in another project's folder",
   python_install: "downloads Python or packages into the app's folder",
 };
 
@@ -2036,19 +2154,38 @@ function refusesImages(err: unknown): boolean {
 /**
  * Keep the newest images within REQUEST_IMAGE_LIMITS; older ones become a line saying they were left out. Only images
  * from before the model's last answer were sent before: one after it left out is said to be not sent, never "shown".
+ * Images a tool returned whose `keepImages` names a group: only the newest of that group (screenshots of the computer).
  */
-function keepRecentImages(messages: Message[]): Message[] {
+function keepRecentImages(messages: Message[], keepOf: (tool: string) => Tool['keepImages'] = () => undefined): Message[] {
   let count = 0;
   let bytes = 0;
+  const groups = new Map<string, number>();
   const out = [...messages];
   const lastAnswer = out.findLastIndex((m) => m.role === 'assistant');
   for (let i = out.length - 1; i >= 0; i--) {
     const m = out[i]!;
     if (!m.content.some((b) => b.type === 'image')) continue;
     const content = [...m.content];
+    // which tool each image came from: the line put before a call's images (#appendToolResults)
+    const from: (string | undefined)[] = [];
+    let tool: string | undefined;
+    for (const b of content) {
+      if (b.type === 'text') tool = /^\[Images returned by (\S+) /.exec(b.text)?.[1];
+      from.push(tool);
+    }
     for (let j = content.length - 1; j >= 0; j--) {
       const b = content[j]!;
       if (b.type !== 'image') continue;
+      const owner = from[j];
+      const keep = owner ? keepOf(owner) : undefined;
+      if (keep) {
+        const n = (groups.get(keep.group) ?? 0) + 1;
+        groups.set(keep.group, n);
+        if (n > keep.newest) {
+          content[j] = { type: 'text', text: `[image ${b.name ?? ''}: an older screenshot, left out of this request; the newest are kept]` };
+          continue;
+        }
+      }
       const size = Math.ceil(b.bytes / 3) * 4;
       if (count + 1 > REQUEST_IMAGE_LIMITS.maxImages || bytes + size > REQUEST_IMAGE_LIMITS.maxBase64Bytes) {
         content[j] = {

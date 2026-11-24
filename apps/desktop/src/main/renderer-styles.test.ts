@@ -75,6 +75,16 @@ describe('styles', () => {
     expect(block('.turn-note')).toContain('overflow-wrap: anywhere');
   });
 
+  it('what in the conversation is as wide as its words is never wider than the content column (a question answered or stopped, a finished plan, an answered 操作电脑 card, a table)', () => {
+    // a long line is cut at its end (in full on hover) rather than pushing the card past the window's edge
+    expect(block('.card.ask-card')).toContain('max-width: min(560px, 100%)');
+    expect(block('.plan-strip.is-record')).toContain('max-width: min(560px, 100%)');
+    expect(block('.card.computer-card.is-line')).toContain('max-width: 100%');
+    expect(block('.md .md-table')).toContain('max-width: 100%');
+    expect(block('.ask-done-text')).toContain('min-width: 0');
+    expect(block('.ask-done-title')).toContain('text-overflow: ellipsis');
+  });
+
   it('stopped while it waited is red: 已中断 on a card (its mark too) and the answer’s （中断）, the colour of 无法撤销', () => {
     const rule = block('.card-answer.is-stopped,\n.card-answer.is-stopped .spica-status-icon,\n.turn-note.is-stopped');
     expect(rule).toContain('color: var(--spica-danger)');

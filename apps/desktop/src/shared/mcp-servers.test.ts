@@ -28,17 +28,26 @@ describe('mcpDraftErrors', () => {
     expect(mcpDraftErrors({ ...d, name: 'my files' }, []).name).toBeTruthy();
     expect(mcpDraftErrors({ ...d, name: 'Files' }, ['files']).name).toBe('名称已被使用');
   });
-  it('a web address: https, or http on this computer; headers not twice, nor Authorization beside the key', () => {
+  it('a web address: https, or http on this computer and the local network; headers not twice, nor Authorization beside the key', () => {
     const w = { ...emptyMcpDraft(), name: 'docs', kind: 'url' as const };
     expect(mcpDraftErrors({ ...w, url: '' }, []).url).toBe('必填');
     expect(mcpDraftErrors({ ...w, url: 'mcp.example.com' }, []).url).toBe('网址无效');
-    expect(mcpDraftErrors({ ...w, url: 'http://mcp.example.com/mcp' }, []).url).toBe('只支持 https（本机地址可用 http）');
+    expect(mcpDraftErrors({ ...w, url: 'http://mcp.example.com/mcp' }, []).url).toBe('只支持 https（本机和内网可用 http）');
     expect(mcpDraftErrors({ ...w, url: 'http://127.0.0.1:8931/mcp' }, [])).toEqual({});
     expect(mcpDraftErrors({ ...w, url: 'https://mcp.example.com/mcp' }, [])).toEqual({});
     expect(mcpDraftErrors({ ...w, url: 'https://x.example.com', headers: [{ name: 'X-A' }, { name: 'x-a' }] }, []).headers).toContain('x-a');
     expect(mcpDraftErrors({ ...w, url: 'https://x.example.com', key: 'k', headers: [{ name: 'Authorization' }] }, []).headers).toBe('「Authorization」与「密钥」重复');
     expect(mcpDraftErrors({ ...w, url: 'https://x.example.com', headers: [{ name: 'Bad Name' }] }, []).headers).toBeTruthy();
     expect(keyOf(' Bearer abc ')).toBe('abc');
+  });
+  it('http on the local network: private addresses pass; a public address, 172.32.x and a name other than localhost still need https', () => {
+    const w = { ...emptyMcpDraft(), name: 'docs', kind: 'url' as const, key: 'k' };
+    for (const url of ['http://10.0.0.5:8795/mcp', 'http://172.16.0.1/mcp', 'http://192.168.1.10:8080/mcp', 'http://[fd00::1]:8795/mcp', 'http://localhost:8931/mcp']) {
+      expect(mcpDraftErrors({ ...w, url }, []), url).toEqual({});
+    }
+    for (const url of ['http://203.0.113.7/mcp', 'http://172.32.0.1/mcp', 'http://mcp.corp/mcp', 'http://[2001:db8::1]/mcp']) {
+      expect(mcpDraftErrors({ ...w, url }, []).url, url).toBe('只支持 https（本机和内网可用 http）');
+    }
   });
   it('says a variable named twice', () => {
     expect(mcpDraftErrors({ ...d, env: [{ name: 'A' }, { name: 'a' }] }, []).env).toContain('a');
@@ -68,6 +77,12 @@ describe('parseMcpPaste', () => {
     expect(parseMcpPaste('{"command":"node","args":["s.js"]}')?.servers[0]).toEqual({ name: '', command: 'node', args: ['s.js'], env: [] });
     expect(parseMcpPaste('"files": {"command": "npx", "cwd": "D:\\\\x"},')?.servers[0]).toEqual({ name: 'files', command: 'npx', args: [], env: [], cwd: 'D:\\x' });
     expect(parseMcpPaste('{"servers":{"a":{"type":"stdio","command":"uvx","args":["pkg"]}}}')?.servers[0]?.command).toBe('uvx');
+  });
+  it('a service at a local-network http address fills a draft (as 识别并填入 does) with nothing wrong', () => {
+    const s = parseMcpPaste(JSON.stringify({ mcpServers: { tickets: { type: 'http', url: 'http://10.0.0.5:8795/mcp', headers: { Authorization: 'Bearer ex-key-1' } } } }))?.servers[0];
+    expect(s).toEqual({ name: 'tickets', command: '', args: [], env: [], url: 'http://10.0.0.5:8795/mcp', key: 'ex-key-1', headers: [] });
+    const draft = { ...emptyMcpDraft(), name: s!.name, kind: 'url' as const, url: s!.url!, key: s!.key ?? '', headers: (s!.headers ?? []).map((h) => ({ name: h.name, value: h.value })) };
+    expect(mcpDraftErrors(draft, [])).toEqual({});
   });
   it('is null for anything else', () => {
     expect(parseMcpPaste('npx -y something')).toBeNull();

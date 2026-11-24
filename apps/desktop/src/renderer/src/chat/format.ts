@@ -40,6 +40,7 @@ const LABELS: Record<string, string> = {
   send_email: N_('发送邮件'),
   ask_user: N_('提问'),
   spawn_agent: N_('创建子任务'),
+  stop_agent: N_('停止子任务'),
   message_agent: N_('发消息给子任务'),
   wait_agents: N_('等待子任务'),
   record_decision: N_('记录决定'),

@@ -322,9 +322,9 @@ export class AgentStore {
     await this.#card(id, callId, () => this.#api.answer(id, callId, answer));
   }
 
-  /** `allowFolder`: a write outside the conversation's folders, allowed for that folder from now on. */
-  async confirm(id: string, callId: string, approved: boolean, allowFolder = false): Promise<void> {
-    await this.#card(id, callId, () => (allowFolder ? this.#api.confirm(id, callId, approved, { allowFolder: true }) : this.#api.confirm(id, callId, approved)));
+  /** `always`: 始终允许, what the card keeps (a folder written outside the conversation's folders, 操作电脑's programs). */
+  async confirm(id: string, callId: string, approved: boolean, always = false): Promise<void> {
+    await this.#card(id, callId, () => (always ? this.#api.confirm(id, callId, approved, { always: true }) : this.#api.confirm(id, callId, approved)));
   }
 
   /** Answering a card the core no longer waits on (no pending ask / confirm): the card is marked cancelled, no notice. */
@@ -342,14 +342,14 @@ export class AgentStore {
   }
 
   /** Creates a project (the core attaches its manager) and opens the manager's conversation. Resolves to a problem in words, or null. */
-  async createProject(input: { name: string; folder?: string; brief?: string }, after?: (p: ProjectInfo) => Promise<void>): Promise<string | null> {
+  async createProject(input: { name: string; folder?: string; brief?: string; parentId?: string }, after?: (p: ProjectInfo) => Promise<void>): Promise<string | null> {
     if (!this.#api.createProject) return t('当前版本不支持创建项目。');
     try {
       const p = await this.#api.createProject(input);
       this.state.set((v) => ({ ...v, projects: [p, ...v.projects.filter((x) => x.id !== p.id)] }));
       if (after) await after(p);
       await this.#refreshSessions();
-      await this.open(p.managerSessionId);
+      if (p.managerSessionId) await this.open(p.managerSessionId);
       return null;
     } catch (err) {
       return friendlyError(err);

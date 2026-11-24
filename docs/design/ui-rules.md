@@ -126,6 +126,7 @@
 | **定** 监控台是右侧栏里的一栏（他定的「右侧栏」），在详情和预览之间；平时没有入口，在 设置 › 关于 点版本号 9 次才出现标题栏按钮（他定的） | `shell/layout.ts`、`settings/About.tsx` | `layout.test.ts`、`About.test.tsx` |
 | **定** 监控台标题行有「最大化」和「关闭」；监控台或预览栏一打开，详情立刻让出位置，再按详情按钮就以小卡浮在对话区右上角（他 2026-11-13 下午定的，照 Claude 的 Files）。监控台宽度固定 380、放不下不显示；再点 9 次版本号关掉入口（暂定） | `App.tsx`（`infoBlocked`、`infoFloat`、`.info-float`） | 人工（隐藏窗口走查） |
 | **定** 对话有两个宽度：排版最窄 440，被预览盖住时至少露出 160。任何时候保不住，预览最先收起 | `shell/layout.ts` 的 `MAIN_ROOM_WIDTH`、`MAIN_SHOWN_MIN` | `shell` 的测试 |
+| **定** 主界面空间不足时左侧栏自动收起：侧栏右边的对话区（不算右侧栏）留不到门槛时，侧栏先缩到 200，再收成图标列；按开关浮出来，开关状态不变，有地方了自己回来。只看窗口宽，右侧栏不会把它挤掉；往宽拖侧栏也拖到门槛为止。门槛 600 是**暂定**的 | `shell/layout.ts` 的 `SIDEBAR_KEEPS_MAIN` | `layout.test.ts`「the sidebar: by the window’s width alone…」 |
 | **定** 详情栏放不下时直接不显示，不盖在别的上面、不浮出；它的按钮变灰，悬停说原因；有地方了自己回来 | `shell/layout.ts` | `shell` 的测试 |
 | **定** 插件的面板页是详情栏顶上的页签，宽度同详情栏，不能拖、不能最大化 | `shell/**` | 人工 |
 | **定** 详情栏不因调用多而变长：「工具调用」一组：标题是能点的「工具调用 N ›」，下面只列正在跑的调用（进度环），不钉在底下；点标题在预览那一栏里看全部调用，展开一条和对话里同一个写法（CallDetail）；「文件」先列 5 条加「显示更多」，标题能收起、收起时写数量（他定的，照 Claude 的 Outputs） | `shell/DetailPanel.tsx`、`shell/ToolHistory.tsx` | `shell/ToolHistory.test.tsx`、`chat/Conversation.test.tsx` |
@@ -133,6 +134,7 @@
 | **定** 启动时弹出窗口，停在新对话（开机自启那次也一样，不只待在托盘） | `main/` | 对应测试 |
 | **定** 设置是大弹窗，一组一个框，框里用细线分行；插件市场只在这个弹窗里 | `settings/**` | `renderer-styles.test.ts`「the rows in a box…」 |
 | **定** 对话再长，输入框也留在窗口里 | `.body`、`.main` 的 `min-height: 0` | 同文件的断言 |
+| **暂定** 对话里的卡和行不比内容列宽。按内容定宽的（答完或中断的提问卡、做完的清单、答完的操作电脑卡、回答里的表格）最宽到内容列为止，提问卡和清单另有 560 的上限；放不下的单行在末尾截断加省略号（提问卡的问题行、确认卡的标题悬停看全），别的字折行 | `styles.css` 的 `.card.ask-card`、`.plan-strip.is-record`、`.card.computer-card.is-line`、`.md .md-table` | `renderer-styles.test.ts`「what in the conversation is as wide as its words…」 |
 
 ## 8. 改界面时的做法
 

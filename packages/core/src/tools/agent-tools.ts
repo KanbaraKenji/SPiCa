@@ -55,7 +55,9 @@ export const spawnAgentTool: Tool = {
     name: 'spawn_agent',
     description:
       'Start a sub-agent session for one piece of work. It runs in parallel and the user can open it and talk to it. ' +
-      'Returns its id immediately; use wait_agents to collect its report.',
+      'Returns its id immediately; use wait_agents to collect its report. resident: true keeps it for later jobs of the ' +
+      'same kind (e.g. following up on something over days): it reports each job as usual and then waits; give it the ' +
+      'next job with message_agent instead of starting a new one.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -63,6 +65,7 @@ export const spawnAgentTool: Tool = {
         task: { type: 'string', description: 'Complete instructions; the sub-agent does not see your conversation.' },
         role: { type: 'string', description: '"worker" (default) or "manager" (for a project manager).' },
         cwd: { type: 'string', description: 'Working folder for the sub-agent (default: yours).' },
+        resident: { type: 'boolean', description: 'Keep it for later jobs (default false: one piece of work).' },
       },
       required: ['title', 'task'],
     },
@@ -75,9 +78,32 @@ export const spawnAgentTool: Tool = {
       role,
       title: String(input.title),
       ...(typeof input.cwd === 'string' ? { cwd: input.cwd } : {}),
+      ...(input.resident === true ? { resident: true } : {}),
     });
     child.send(String(input.task), { author: 'parent' });
-    return { content: `Started sub-agent "${String(input.title)}" with id ${child.id}. It is working now.` };
+    return {
+      content:
+        `Started sub-agent "${String(input.title)}" with id ${child.id}. It is working now.` +
+        (input.resident === true ? ' It is kept for later jobs: give it the next one with message_agent.' : ''),
+    };
+  },
+};
+
+export const stopAgentTool: Tool = {
+  category: 'agent',
+  spec: {
+    name: 'stop_agent',
+    description:
+      'Stop one of your sub-agents: a running one stops now; one kept for later jobs (resident) is ended and no longer waits for jobs. ' +
+      'Its record stays; the user can still open it.',
+    inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  async execute(input, ctx) {
+    const rt = runtimeOf(ctx);
+    const child = rt.session(String(input.id));
+    if (!child || child.parentId !== ctx.sessionId) return { content: `${String(input.id)} is not one of your sub-agents.`, isError: true };
+    child.abort('stopped by the agent that started it');
+    return { content: `Stopped sub-agent "${child.info().title ?? child.id}".` };
   },
 };
 
@@ -255,4 +281,4 @@ export const suggestActionsTool: Tool = {
   },
 };
 
-export const agentTools: Tool[] = [askUserTool, suggestActionsTool, spawnAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];
+export const agentTools: Tool[] = [askUserTool, suggestActionsTool, spawnAgentTool, stopAgentTool, messageAgentTool, waitAgentsTool, recordDecisionTool];

@@ -49,8 +49,7 @@ import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
-import { buildScheduleSeed } from './fake-schedule-seed';
-import { buildSeed, fakeCard } from './fake-seed';
+import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
@@ -73,8 +72,6 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
-  /** The 定时任务 mock-up's conversations too (SPICA_DEMO_SCHEDULE=1). */
-  demoSchedule?: boolean;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -214,6 +211,8 @@ export class FakeBackend implements AgentBackend {
   #superseded = new Map<string, Message[]>();
   /** Confirmations the user declined: nothing ran. */
   #declined = new Set<string>();
+  /** Calls allowed with 始终允许 (操作电脑's card). */
+  #always = new Set<string>();
   /** Folders a conversation was allowed to write in on a card (始终允许此文件夹), by session. */
   #writeFolders = new Map<string, Set<string>>();
   #pending = new Map<string, PendingItem[]>();
@@ -259,12 +258,6 @@ export class FakeBackend implements AgentBackend {
       for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: s.role === 'top' && !s.parentId && (!s.cwd || s.cwd === this.#legacyCwd) });
       for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
       for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
-      if (options.demoSchedule) {
-        const more = buildScheduleSeed(this.#now());
-        for (const s of more.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: false });
-        for (const [id, list] of Object.entries(more.messages)) this.#messages.set(id, list);
-        for (const [id, list] of Object.entries(more.pending)) this.#pending.set(id, list);
-      }
       this.#ids = 1000;
       for (const p of FAKE_PROJECTS) {
         const pm = this.#sessions.get(p.managerSessionId);
@@ -279,6 +272,23 @@ export class FakeBackend implements AgentBackend {
           status: 'active',
           createdAt: pm.createdAt,
           updatedAt: pm.updatedAt,
+        });
+      }
+      // Projects holding sub-projects; a sub-project's folder is inside its project's.
+      for (const p of SUB_PROJECTS) {
+        const pm = p.managerSessionId ? this.#sessions.get(p.managerSessionId) : undefined;
+        const at = pm?.updatedAt ?? this.#now().toISOString();
+        this.#projects.set(p.id, {
+          id: p.id,
+          name: p.name,
+          folder: p.folder ?? pm?.cwd ?? '',
+          managerSessionId: p.managerSessionId,
+          ...(p.parentId ? { parentId: p.parentId } : {}),
+          workflowId: null,
+          stage: null,
+          status: 'active',
+          createdAt: pm?.createdAt ?? at,
+          updatedAt: at,
         });
       }
     }
@@ -538,9 +548,10 @@ export class FakeBackend implements AgentBackend {
     this.#emit(sessionId, { type: 'ask.resolved', callId, answer });
   }
 
-  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean }): Promise<void> {
+  async confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void> {
     const item = this.#pending.get(sessionId)?.find((p) => p.callId === callId);
-    if (approved && options?.allowFolder && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
+    if (approved && options?.always) this.#always.add(callId);
+    if (approved && (options?.always || options?.allowFolder) && item?.kind === 'confirm' && item.outsideFolder && !item.folderTooWide) {
       const set = this.#writeFolders.get(sessionId) ?? new Set<string>();
       set.add(item.outsideFolder);
       this.#writeFolders.set(sessionId, set);
@@ -551,6 +562,13 @@ export class FakeBackend implements AgentBackend {
   }
 
   async abort(sessionId: string): Promise<void> {
+    // as the core: stopping a sub-task kept for later jobs ends it
+    const s = this.#sessions.get(sessionId);
+    if (s?.resident) {
+      delete s.resident;
+      if (!this.#runs.has(sessionId)) Object.assign(s, { status: 'aborted', updatedAt: isoAt(this.#now()) });
+      this.#emit(sessionId, { type: 'session.updated', info: structuredClone(s) });
+    }
     this.#runs.get(sessionId)?.controller.abort();
   }
 
@@ -614,10 +632,12 @@ export class FakeBackend implements AgentBackend {
 
   async getProject(projectId: string): Promise<ProjectDetail | undefined> {
     const p = this.#projects.get(projectId);
-    const manager = p ? this.#sessions.get(p.managerSessionId) : undefined;
-    if (!p || !manager) return undefined;
-    const agents = [...this.#sessions.values()].filter((s) => s.parentId === manager.id);
-    return structuredClone({ ...p, workflow: null, objects: [], recentLog: [], manager, agents });
+    if (!p) return undefined;
+    const manager = p.managerSessionId ? this.#sessions.get(p.managerSessionId) : undefined;
+    if (p.managerSessionId && !manager) return undefined;
+    const agents = manager ? [...this.#sessions.values()].filter((s) => s.parentId === manager.id) : [];
+    const subProjects = [...this.#projects.values()].filter((x) => x.parentId === p.id);
+    return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager: manager ?? null, agents, subProjects });
   }
 
   async renameProject(projectId: string, name: string): Promise<ProjectInfo> {
@@ -626,7 +646,7 @@ export class FakeBackend implements AgentBackend {
     const n = name.trim();
     if (!n) throw new Error('a project needs a name');
     Object.assign(p, { name: n, updatedAt: isoAt(this.#now()) });
-    await this.renameSession(p.managerSessionId, n);
+    if (p.managerSessionId) await this.renameSession(p.managerSessionId, n);
     this.#emit(p.managerSessionId, { type: 'project.updated', project: structuredClone(p) });
     return structuredClone(p);
   }
@@ -638,7 +658,8 @@ export class FakeBackend implements AgentBackend {
   async deleteProject(projectId: string): Promise<void> {
     const p = this.#projects.get(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
-    const ids = new Set([p.managerSessionId]);
+    const subs = [...this.#projects.values()].filter((x) => x.parentId === projectId);
+    const ids = new Set([p.managerSessionId, ...subs.map((x) => x.managerSessionId)].filter(Boolean));
     for (let grew = true; grew; ) {
       grew = false;
       for (const s of this.#sessions.values()) {
@@ -656,8 +677,12 @@ export class FakeBackend implements AgentBackend {
       this.#superseded.delete(id);
       this.#pending.delete(id);
     }
-    this.#projects.delete(projectId);
     const top = [...this.#sessions.values()].find((s) => s.role === 'top' && !s.parentId);
+    for (const x of subs) {
+      this.#projects.delete(x.id);
+      this.#emit(top?.id ?? '', { type: 'project.deleted', projectId: x.id });
+    }
+    this.#projects.delete(projectId);
     this.#emit(top?.id ?? '', { type: 'project.deleted', projectId });
   }
 
@@ -1501,6 +1526,39 @@ export class FakeBackend implements AgentBackend {
         this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: ok ? '已提交' : '用户拒绝了', isError: !ok }]);
         this.#setStatus(sessionId, 'thinking');
         const after = ok ? '已提交。' : '好的，没有提交。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
+      } else if (/操作电脑/.test(text)) {
+        // 操作电脑's approval card (backend/computer-tools.ts): the programs the task needs on one card. The card is
+        // the only thing the conversation shows for the call (no step row); the result says what was allowed.
+        const callId = this.#id('call');
+        const name = 'computer_request_access';
+        const apps: { name: string; exe: string; tier: string; highRisk?: boolean }[] = [
+          { name: 'Microsoft Excel', exe: 'C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE', tier: 'full' },
+          { name: '记事本', exe: 'C:\\Windows\\System32\\notepad.exe', tier: 'full' },
+          { name: '文件资源管理器', exe: 'C:\\Windows\\explorer.exe', tier: 'full', highRisk: true },
+          { name: 'Microsoft Edge', exe: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', tier: 'view' },
+        ];
+        const asked = { apps: apps.map((a) => a.name), reason: '把采购清单整理到记事本' };
+        // the made-up desktop's icons (main/computer/fake-driver.ts fakeIcon)
+        const icons: Record<string, string> = { 'Microsoft Excel': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOQzXciCTGMahjVMHw1AABghc4B2Jx3TgAAAABJRU5ErkJggg==', '记事本': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGOwbjpCEmIY1TCqYfhqAAAkk4EQzwyljQAAAABJRU5ErkJggg==', '文件资源管理器': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGN4sFSNJMQwqmFUw/DVAAC7YqsQXS68ewAAAABJRU5ErkJggg==', 'Microsoft Edge': 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGPQ7rhBEmIY1TCqYfhqAABRdIsQRzBI7AAAAABJRU5ErkJggg==' };
+        const input = { ...asked, prepared: { apps: apps.map((a) => ({ ...a, icon: icons[a.name], asked: a.name, state: 'ask' })), missing: [], ask: true } };
+        this.#emit(sessionId, { type: 'tool.call', callId, name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input: asked }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason: name, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason: name });
+        this.#setStatus(sessionId, 'awaiting_confirm', name);
+        waiting = { id: callId, name, input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        const tiers: Record<string, string> = { full: 'full control', view: 'view only (screenshots; no clicks or typing)' };
+        const result = ok
+          ? apps.map((a) => `- ${a.name} (${a.exe}): approved for ${this.#always.has(callId) && !a.highRisk ? 'every' : 'this'} conversation — ${tiers[a.tier]}${a.highRisk ? ', high risk' : ''}`).join('\n')
+          : 'The user declined this action. Do not retry it unless the user asks.';
+        this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result.slice(0, 160), durationMs: 20 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? '好的，开始整理。' : '好的，不操作这些程序。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
       } else if (/两张卡/.test(text)) {

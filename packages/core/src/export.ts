@@ -55,7 +55,11 @@ export function usageLogLines(store: Store, filter: UsageLogFilter = {}, opts: U
   const project = filter.projectId ? store.getProject(filter.projectId) : undefined;
   if (filter.projectId) {
     if (!project) throw new Error(`unknown project: ${filter.projectId}`);
-    const ids = new Set(all.filter((s) => s.config.projectId === project.id || s.id === project.managerSessionId).map((s) => s.id));
+    // a project's sub-projects belong to it too
+    const parts = [project, ...store.listProjects().filter((p) => p.parentId === project.id)];
+    const pids = new Set(parts.map((p) => p.id));
+    const managers = new Set(parts.map((p) => p.managerSessionId).filter(Boolean));
+    const ids = new Set(all.filter((s) => (s.config.projectId !== undefined && pids.has(s.config.projectId)) || managers.has(s.id)).map((s) => s.id));
     // everything under the project's sessions belongs to it too
     for (let grew = true; grew; ) {
       grew = false;

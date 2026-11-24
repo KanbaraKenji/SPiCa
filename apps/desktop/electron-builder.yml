@@ -32,6 +32,11 @@ extraResources:
   - from: uv
     to: uv
     filter: ["uv.exe"]
+  # koffi, which 操作电脑 calls Windows with (its native part cannot be bundled); copied from node_modules by
+  # scripts/koffi.mjs before every build.
+  - from: koffi
+    to: koffi
+    filter: ["**/*"]
 asar: true
 # Electron fuses, flipped in the packaged exe: an installed Spica does not open a
 # debugger on --inspect / --inspect-brk, nor read NODE_OPTIONS (either would let

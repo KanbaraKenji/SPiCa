@@ -67,6 +67,18 @@ describe('allowed_folders', () => {
     expect(lastResult(s, 'l1')).not.toContain(realPath(work));
   });
 
+  it('始终允许 sent as always (what the desktop card sends) keeps the folder as allowFolder did', async () => {
+    const { s } = setup();
+    const file = join(outside, 'a.md');
+    gw.enqueue({ toolCalls: [{ id: 'w1', name: 'write_file', args: { path: file, content: 'w1' } }] });
+    expect((await s.send('write it').done).reason).toBe('awaiting_confirm');
+    gw.enqueue({ text: 'ok' });
+    await (await s.confirm('w1', true, { always: true }))!;
+    expect(lastResult(s, 'w1')).toContain('from now on in this conversation');
+    gw.enqueue({ toolCalls: [{ id: 'w2', name: 'write_file', args: { path: join(outside, 'c.md'), content: 'c' } }] }, { text: 'done' });
+    expect((await s.send('again').done).reason).toBe('completed');
+  });
+
   it('revoke: taken back without a card; the next write there asks again', async () => {
     const { events, s } = setup();
     await allowFor(s, join(outside, 'b.md'), 'w1');

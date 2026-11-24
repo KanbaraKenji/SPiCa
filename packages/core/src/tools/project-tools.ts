@@ -1,4 +1,5 @@
 // Project tools. Top-level agent: create_project, list_projects, open_project.
+// Project managers: create_project (a sub-project of their project).
 // Sessions inside a project: project_status, set_stage, add_work_object, list_work_objects.
 import type { Runtime } from '../runtime.ts';
 import type { ProjectDetail, WorkObject } from '../types.ts';
@@ -17,6 +18,7 @@ function projectOf(ctx: ToolContext): string {
 }
 
 const topOnly = (env: { role?: string }) => env.role === 'top';
+const topOrManager = (env: { role?: string; projectId?: string }) => env.role === 'top' || (env.role === 'manager' && !!env.projectId);
 const inProject = (env: { projectId?: string }) => !!env.projectId;
 
 function objectTree(objects: WorkObject[]): string {
@@ -37,11 +39,13 @@ function describe(d: ProjectDetail): string {
   const lines = [
     `# ${d.name} (${d.id})`,
     `Folder: ${d.folder}`,
-    `Project manager: ${d.manager.id}, status ${d.manager.status}`,
+    d.manager ? `Project manager: ${d.manager.id}, status ${d.manager.status}` : 'Project manager: none (this project only holds sub-projects)',
     d.workflow
       ? `Workflow: ${d.workflow.name}; stages: ${d.workflow.stages.map((s) => (s.id === d.stage ? `[${s.name}]` : s.name)).join(' → ')}`
       : 'Workflow: none',
   ];
+  if (d.parentId) lines.push(`Sub-project of: ${d.parentId}`);
+  if (d.subProjects.length > 0) lines.push(`Sub-projects: ${d.subProjects.map((p) => `${p.name} (${p.id}, manager ${p.managerSessionId})`).join('; ')}`);
   if (stage?.goal) lines.push(`Current stage goal: ${stage.goal}`);
   if (stage?.exitCriteria?.length) lines.push(`Exit criteria: ${stage.exitCriteria.join('; ')}`);
   lines.push('', 'Work objects:', objectTree(d.objects));
@@ -61,7 +65,10 @@ export const createProjectTool: Tool = {
     description:
       'Create a project: a folder plus a persistent project manager agent that handles everything in it. ' +
       'Give a short name, optionally a folder (absolute, or relative to the projects folder), a workflow id, and a brief ' +
-      'that becomes the project manager\'s first task.',
+      'that becomes the project manager\'s first task. A project can hold sub-projects (one level): each is a folder inside ' +
+      'the project\'s folder with a project manager of its own. Give parent (a project id or name) to create a sub-project; ' +
+      'manager: false creates a project that only holds sub-projects (no manager of its own). A project manager creates ' +
+      'sub-projects of its own project (of the project above, when its own is a sub-project).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -69,23 +76,40 @@ export const createProjectTool: Tool = {
         folder: { type: 'string' },
         workflow: { type: 'string', description: 'Workflow id (see list_projects for the available workflows).' },
         brief: { type: 'string' },
+        parent: { type: 'string', description: 'The project (id or name) this one is a sub-project of. Ignored for a project manager.' },
+        manager: { type: 'boolean', description: 'false: a project that only holds sub-projects. Default true.' },
       },
       required: ['name'],
     },
   },
-  available: topOnly,
+  available: topOrManager,
   async execute(input, ctx) {
     const r = rt(ctx);
+    const self = r.session(ctx.sessionId)?.info();
+    let parentId: string | undefined;
+    if (self?.role === 'manager' && self.projectId) {
+      const own = r.store.getProject(self.projectId);
+      parentId = own?.parentId ?? own?.id;
+    } else if (typeof input.parent === 'string' && input.parent) {
+      const key = input.parent;
+      const found = r.listProjects().find((x) => x.id === key || x.name === key);
+      if (!found) return { content: `No project "${key}".`, isError: true };
+      parentId = found.id;
+    }
     const p = r.createProject({
       name: String(input.name),
       ...(typeof input.folder === 'string' ? { folder: input.folder } : {}),
       ...(typeof input.workflow === 'string' ? { workflowId: input.workflow } : {}),
       ...(typeof input.brief === 'string' ? { brief: input.brief } : {}),
+      ...(parentId ? { parentId } : {}),
+      ...(input.manager === false && !parentId ? { manager: false } : {}),
     }, { askerId: ctx.sessionId });
+    const what = p.parentId ? `sub-project "${p.name}" (${p.id}) of ${p.parentId}` : `project "${p.name}" (${p.id})`;
     return {
-      content:
-        `Created project "${p.name}" (${p.id}) in ${p.folder}. Its project manager is ${p.managerSessionId}` +
-        `${input.brief ? ' and is working on the brief' : ''}. Talk to it with message_agent.`,
+      content: p.managerSessionId
+        ? `Created ${what} in ${p.folder}. Its project manager is ${p.managerSessionId}` +
+          `${input.brief ? ' and is working on the brief' : ''}. Talk to it with message_agent.`
+        : `Created ${what} in ${p.folder}. It has no project manager; create its sub-projects with create_project and parent "${p.id}".`,
     };
   },
 };
@@ -106,7 +130,7 @@ export const listProjectsTool: Tool = {
       const last = d?.recentLog[0];
       const report = d?.recentLog.find((e) => e.action === 'manager.report');
       return (
-        `- ${p.name} (${p.id}) — folder ${p.folder}; stage ${p.stage ?? 'none'}; manager ${d?.manager.status ?? 'missing'}` +
+        `- ${p.name} (${p.id})${p.parentId ? ` — sub-project of ${p.parentId}` : ''} — folder ${p.folder}; stage ${p.stage ?? 'none'}; manager ${d ? (d.manager?.status ?? 'none (holds sub-projects)') : 'missing'}` +
         `${p.unread ? `; ${p.unread} unread update${p.unread === 1 ? '' : 's'}` : ''}${last ? `; last: ${last.summary}` : ''}` +
         `${report?.detail ? `; latest report (${report.at}): ${report.detail.slice(0, 200)}` : ''}`
       );

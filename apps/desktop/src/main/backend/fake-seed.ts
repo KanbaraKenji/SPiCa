@@ -1,7 +1,7 @@
 // Demo data for the fake backend: a neutral, fictional workspace with one
 // finished conversation, two projects and their sub-agents in every state the
 // UI has to draw. Used by screenshots, so keep it stable.
-import type { ContentBlock, FileCardMeta, Message, PendingItem, SessionInfo, SessionStatus, AgentRole } from '@spica/protocol';
+import type { ContentBlock, FileCardMeta, Message, PendingItem, ProjectLogEntry, SessionInfo, SessionStatus, AgentRole } from '@spica/protocol';
 import { isoAt } from './time';
 
 export interface Seed {
@@ -151,8 +151,10 @@ export function buildSeed(now: Date): Seed {
     msg(minutes, 'assistant', 'assistant', [text('会议记录我看过了，动笔前先确认一下写法。'), { type: 'tool_use', id: 'seed-ask-1', name: 'ask_user', input: { question: '纪要按哪种口径写？' } }], 3),
   ];
 
+  const sub = subProjects(now, session, msg, text);
+
   return {
-    sessions: [chat, chat2, pm, quotes, tests, minutes, pm2, budget],
+    sessions: [chat, chat2, pm, quotes, tests, minutes, pm2, budget, ...sub.sessions],
     messages: {
       [chat.id]: chatMessages,
       [chat2.id]: [msg(chat2, 'user', 'user', [text('把本周来信按项目归一下类')], 190), msg(chat2, 'assistant', 'assistant', [text('本周一共 14 封来信：样机评审 6 封、年度预算 3 封，其余 5 封是通知类，不需要处理。')], 180)],
@@ -162,9 +164,161 @@ export function buildSeed(now: Date): Seed {
       [minutes.id]: minutesMessages,
       [pm2.id]: [],
       [budget.id]: [msg(budget, 'user', 'user', [text('核对三季度支出和预算的差额')], 1460), msg(budget, 'assistant', 'assistant', [text('三季度实际支出比预算低 4.2%，差额主要在差旅。')], 1450)],
+      ...sub.messages,
     },
     pending: {
       [minutes.id]: [{ kind: 'ask', callId: 'seed-ask-1', question: '纪要按哪种口径写？', options: ['只写结论', '结论加讨论过程', '按议题逐条写'], createdAt: at(3) }],
     },
   };
+}
+
+// ----- Projects that hold sub-projects ------------------------------------------------
+// 机种 holds three 磁件, 游戏攻略 holds one game. Each sub-project is a conversation, its manager; 磁件 T1's manager
+// has sent out sub-tasks (two running, one kept for later jobs, four ended).
+
+export const SUB_IDS = {
+  t1: 's-sp-t1',
+  l1: 's-sp-l1',
+  l2: 's-sp-l2',
+  game: 's-sp-game',
+  quote: 's-st-quote',
+  oldParts: 's-st-old',
+  samples: 's-st-sample',
+  spec: 's-st-spec',
+  winding: 's-st-winding',
+  heat: 's-st-heat',
+  core: 's-st-core',
+  l1Quote: 's-st-l1q',
+} as const;
+
+/** The demo's projects: two that hold sub-projects (no conversation of their own) and their sub-projects. */
+export const SUB_PROJECTS: readonly { id: string; name: string; folder?: string; parentId?: string; managerSessionId: string }[] = [
+  { id: 'p-models', name: '机种', folder: 'D:\\工作\\机种', managerSessionId: '' },
+  { id: 'p-t1', name: '磁件 T1', parentId: 'p-models', managerSessionId: SUB_IDS.t1 },
+  { id: 'p-l1', name: '磁件 L1', parentId: 'p-models', managerSessionId: SUB_IDS.l1 },
+  { id: 'p-l2', name: '磁件 L2', parentId: 'p-models', managerSessionId: SUB_IDS.l2 },
+  { id: 'p-games', name: '游戏攻略', folder: 'D:\\游戏攻略', managerSessionId: '' },
+  { id: 'p-game', name: '怪物猎人: 冰原', parentId: 'p-games', managerSessionId: SUB_IDS.game },
+];
+
+type MakeSession = (id: string, role: AgentRole, title: string, status: SessionStatus, parent: SessionInfo | null, minutesAgo: number, costUsd: number, cwd?: string) => SessionInfo;
+type MakeMessage = (s: SessionInfo, role: 'user' | 'assistant', kind: Message['kind'], content: ContentBlock[], minutesAgo: number) => Message;
+
+function subProjects(now: Date, session: MakeSession, msg: MakeMessage, text: (t: string) => ContentBlock): { sessions: SessionInfo[]; messages: Record<string, Message[]> } {
+  const at = (minutesAgo: number) => isoAt(new Date(now.getTime() - minutesAgo * 60_000));
+  /** A sub-task started `ran` minutes ago (its time in the list) and last touched `last` minutes ago. */
+  const task = (id: string, title: string, status: SessionStatus, parent: SessionInfo, ran: number, last: number, cost: number): SessionInfo => ({
+    ...session(id, 'worker', title, status, parent, last, cost),
+    projectId: parent.projectId!,
+    createdAt: at(ran),
+  });
+  const manager = (id: string, title: string, status: SessionStatus, projectId: string, cwd: string, minutesAgo: number, cost: number, created: number): SessionInfo => ({
+    ...session(id, 'manager', title, status, null, minutesAgo, cost, cwd),
+    projectId,
+    createdAt: at(created),
+  });
+  const t1 = manager(SUB_IDS.t1, '磁件 T1', 'thinking', 'p-t1', 'D:\\工作\\机种\\磁件 T1', 1, 0.0186, 9000);
+  const l1 = manager(SUB_IDS.l1, '磁件 L1', 'idle', 'p-l1', 'D:\\工作\\机种\\磁件 L1', 95, 0.0074, 8000);
+  const l2 = manager(SUB_IDS.l2, '磁件 L2', 'idle', 'p-l2', 'D:\\工作\\机种\\磁件 L2', 2900, 0.0012, 7000);
+  const game = manager(SUB_IDS.game, '怪物猎人: 冰原', 'idle', 'p-game', 'D:\\游戏攻略\\怪物猎人 冰原', 300, 0.0051, 6000);
+
+  const quote = task(SUB_IDS.quote, '查报价', 'tool', t1, 16, 0, 0.0043);
+  const oldParts = task(SUB_IDS.oldParts, '查旧料参考', 'thinking', t1, 10, 0, 0.0027);
+  const samples: SessionInfo = { ...task(SUB_IDS.samples, '追踪样制', 'idle', t1, 58, 8, 0.0019), resident: true };
+  const spec = task(SUB_IDS.spec, '整理规格书', 'done', t1, 70, 52, 0.0031);
+  const winding = task(SUB_IDS.winding, '核对绕线参数', 'done', t1, 66, 49, 0.0022);
+  const heat = task(SUB_IDS.heat, '汇总温升数据', 'done', t1, 64, 47, 0.0026);
+  const core = task(SUB_IDS.core, '比对磁芯规格', 'aborted', t1, 62, 55, 0.0009);
+  const l1Quote = task(SUB_IDS.l1Quote, '查报价', 'done', l1, 120, 96, 0.0018);
+
+  let k = 0;
+  const call = (name: string, input: Record<string, unknown>) => ({ type: 'tool_use' as const, id: `seed-st-${++k}`, name, input });
+  const result = (c: { id: string }, content: string): ContentBlock => ({ type: 'tool_result', toolUseId: c.id, content });
+
+  const spawnQuote = call('spawn_agent', { title: '查报价', task: '向三家供应商询磁件 T1 的单价和交期，整理成表' });
+  const spawnOld = call('spawn_agent', { title: '查旧料参考', task: '在旧料清单里找和 T1 规格接近的料，列出差异' });
+  const spawnSample = call('spawn_agent', { title: '追踪样制', task: '每天查一次样品进度，有变化就告诉我' });
+  const t1Messages = [
+    msg(t1, 'user', 'user', [text('T1 打样前把报价、旧料参考和样品进度都跟上')], 17),
+    msg(t1, 'assistant', 'assistant', [text('分三件事派出去：查报价、查旧料参考、追踪样制。'), spawnQuote, spawnOld, spawnSample], 16),
+    msg(t1, 'user', 'tool_results', [result(spawnQuote, `已派出：查报价（${SUB_IDS.quote}）`), result(spawnOld, `已派出：查旧料参考（${SUB_IDS.oldParts}）`), result(spawnSample, `已派出：追踪样制（${SUB_IDS.samples}）`)], 16),
+  ];
+
+  const qList = call('list_dir', { path: '报价' });
+  const qRead = call('read_file', { path: '报价\\供应商A.xlsx' });
+  const qRead2 = call('read_file', { path: '报价\\供应商B.pdf' });
+  const qRead3 = call('read_file', { path: '报价\\供应商C.pdf' });
+  const quoteMessages = [
+    msg(quote, 'user', 'user', [text('向三家供应商询磁件 T1 的单价和交期，整理成表')], 16),
+    msg(quote, 'assistant', 'assistant', [text('先看报价文件夹里已有的回复。'), qList, qRead, qRead2], 14),
+    msg(quote, 'user', 'tool_results', [result(qList, '供应商A.xlsx\n供应商B.pdf\n供应商C.pdf'), result(qRead, '单价 2.35，交期 3 周，MOQ 2k'), result(qRead2, '单价 2.18，交期 5 周，MOQ 5k')], 12),
+    msg(quote, 'assistant', 'assistant', [text('A、B 两家已经有数，再看 C。'), qRead3], 1),
+  ];
+
+  const sList = call('glob', { pattern: '规格\\*.pdf' });
+  const sRead = call('read_file', { path: '规格\\T1 规格书 v2.pdf' });
+  const sWrite = call('write_file', { path: 'T1 规格摘要.md', content: '# T1 规格摘要\n\n- 电感量 120 µH ±10%\n- 额定电流 3.2 A\n- 温升 ≤ 40 K' });
+  const specMessages = [
+    msg(spec, 'user', 'user', [text('把 T1 规格书整理成一页摘要')], 70),
+    msg(spec, 'assistant', 'assistant', [sList, sRead], 66),
+    msg(spec, 'user', 'tool_results', [result(sList, '规格\\T1 规格书 v2.pdf'), result(sRead, '电感量 120 µH ±10%；额定电流 3.2 A；温升 ≤ 40 K；外形 EE16')], 60),
+    msg(spec, 'assistant', 'assistant', [sWrite], 56),
+    msg(spec, 'user', 'tool_results', [result(sWrite, '已写入 T1 规格摘要.md')], 55),
+    msg(spec, 'assistant', 'assistant', [text('摘要写好了：电感量 120 µH ±10%，额定电流 3.2 A，温升不超过 40 K，外形 EE16。放在 T1 规格摘要.md。')], 52),
+  ];
+
+  const sampleRead = call('read_file', { path: '样制\\进度.xlsx' });
+  const sampleMessages = [
+    msg(samples, 'user', 'user', [text('每天查一次样品进度，有变化就告诉我')], 58),
+    msg(samples, 'assistant', 'assistant', [sampleRead], 9),
+    msg(samples, 'user', 'tool_results', [result(sampleRead, '绕线完成 20/20；浸漆 12/20；预计周五出样')], 9),
+    msg(samples, 'assistant', 'assistant', [text('今天的进度：绕线 20 台都完成了，浸漆 12/20，预计周五出样。')], 8),
+  ];
+
+  const done = (s: SessionInfo, ask: string, answer: string) => [msg(s, 'user', 'user', [text(ask)], 60), msg(s, 'assistant', 'assistant', [text(answer)], 48)];
+
+  return {
+    sessions: [t1, l1, l2, game, quote, oldParts, samples, spec, winding, heat, core, l1Quote],
+    messages: {
+      [t1.id]: t1Messages,
+      [l1.id]: [msg(l1, 'user', 'user', [text('L1 先把报价拿到')], 125)],
+      [l2.id]: [],
+      [game.id]: [msg(game, 'user', 'user', [text('整理冰原里大剑的配装')], 310), msg(game, 'assistant', 'assistant', [text('先按上位和大师级各出一套。')], 300)],
+      [quote.id]: quoteMessages,
+      [oldParts.id]: [msg(oldParts, 'user', 'user', [text('在旧料清单里找和 T1 规格接近的料，列出差异')], 10)],
+      [samples.id]: sampleMessages,
+      [spec.id]: specMessages,
+      [winding.id]: done(winding, '核对 T1 的绕线参数和规格书是否一致', '匝数、线径都和规格书一致；层间胶带规格书写 2 层，图纸写 3 层，已标出。'),
+      [heat.id]: done(heat, '汇总上一版的温升数据', '三台样品温升 31 K、33 K、35 K，都在 40 K 以内。'),
+      [core.id]: [msg(core, 'user', 'user', [text('比对两家磁芯的规格')], 62)],
+      [l1Quote.id]: done(l1Quote, '向两家供应商询磁件 L1 的价', '两家都回了：1.12 和 1.05，交期都是 4 周。'),
+    },
+  };
+}
+
+/** The sub-projects' activity (getProject's recentLog), newest first. */
+export function subProjectLog(projectId: string, now: Date): ProjectLogEntry[] {
+  const at = (minutesAgo: number) => isoAt(new Date(now.getTime() - minutesAgo * 60_000));
+  const e = (n: number, sessionId: string, minutesAgo: number, action: ProjectLogEntry['action'], target: string, detail?: string): ProjectLogEntry => ({
+    id: `seed-log-${projectId}-${n}`,
+    projectId,
+    sessionId,
+    at: at(minutesAgo),
+    action,
+    target,
+    ...(detail ? { detail } : {}),
+    summary: '',
+  });
+  if (projectId === 'p-t1')
+    return [
+      e(8, SUB_IDS.samples, 8, 'child.report', '追踪样制', '浸漆 12/20，预计周五出样'),
+      e(7, SUB_IDS.t1, 16, 'child.spawn', '追踪样制'),
+      e(6, SUB_IDS.t1, 16, 'child.spawn', '查旧料参考'),
+      e(5, SUB_IDS.t1, 16, 'child.spawn', '查报价'),
+      e(4, SUB_IDS.heat, 47, 'child.report', '汇总温升数据', '三台温升都在 40 K 以内'),
+      e(3, SUB_IDS.spec, 55, 'file.write', 'T1 规格摘要.md'),
+    ];
+  if (projectId === 'p-l1') return [e(1, SUB_IDS.l1Quote, 96, 'child.report', '查报价', '两家都回了')];
+  if (projectId === 'p-game') return [e(1, SUB_IDS.game, 300, 'file.write', '大剑配装.md')];
+  return [];
 }

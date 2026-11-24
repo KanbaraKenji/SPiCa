@@ -858,8 +858,8 @@ function FileList({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: s
           const name = f.card?.name ?? fileName(shown);
           const full = fullPath(f.path, actions?.cwd);
           return (
-            <li key={f.path} className="file-row">
-              <button type="button" className="file-row-main" onClick={() => onOpen(f.path)} title={t('打开 {path}', { path: full })}>
+            <li key={f.path} className={f.card?.notSaved ? 'file-row is-not-saved' : 'file-row'}>
+              <button type="button" className="file-row-main" disabled={!!f.card?.notSaved} onClick={() => onOpen(f.path)} title={f.card?.notSaved ? undefined : t('打开 {path}', { path: full })}>
                 <span className="file-row-name">
                   <FileGlyph name={name} />
                   <span className="file-row-text">{name}</span>
@@ -867,7 +867,7 @@ function FileList({ files, onOpen, actions }: { files: FileRef[]; onOpen(path: s
                 <span className="file-row-kind">{f.card ? fileCardParts(f.card).kind : fileFolder(shown)}</span>
                 <FileDid f={f} className="file-row-did" />
               </button>
-              {actions ? <FileTools full={full} actions={actions} /> : <span />}
+              {actions && !f.card?.notSaved ? <FileTools full={full} actions={actions} /> : <span />}
             </li>
           );
         })}
@@ -905,8 +905,9 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
         const shown = f.shown ?? f.path;
         const full = fullPath(f.path, actions?.cwd);
         return (
-          <div key={f.path} className="card file-card">
-            <button type="button" className="file-card-main" onClick={() => onOpen(f.path)} title={t('打开 {path}', { path: full })}>
+          <div key={f.path} className={f.card?.notSaved ? 'card file-card is-not-saved' : 'card file-card'}>
+            {/* not kept (an MCP tool's embedded file): nothing to open */}
+            <button type="button" className="file-card-main" disabled={!!f.card?.notSaved} onClick={() => onOpen(f.path)} title={f.card?.notSaved ? undefined : t('打开 {path}', { path: full })}>
               {actions?.imageUrl && PICTURE.test(f.card?.name ?? shown) ? (
                 <CardPicture path={full} name={f.card?.name ?? fileName(shown)} url={actions.imageUrl} />
               ) : (
@@ -917,7 +918,7 @@ export function FileCards({ files, onOpen, actions }: { files: FileRef[]; onOpen
                 <FileCardSub f={f} />
               </span>
             </button>
-            {actions ? <FileTools full={full} actions={actions} /> : null}
+            {actions && !f.card?.notSaved ? <FileTools full={full} actions={actions} /> : null}
           </div>
         );
       })}
@@ -1300,7 +1301,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         <span className="card-title" title={title} data-tip-clipped="">{title}</span>
         {danger ? <span className="confirm-undo">{t('无法撤销')}</span> : null}
         {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
-        {block.outsideFolder ? <span className="confirm-undo">{t('工作文件夹以外')}</span> : null}
+        {/* reading in another project's folder: said the same way, with which (the folder is on the main button's hover) */}
+        {block.outsideFolder ? <span className="confirm-undo">{block.cause === 'other_project' ? t('其他项目') : t('工作文件夹以外')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
