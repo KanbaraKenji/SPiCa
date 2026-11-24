@@ -68,6 +68,10 @@ export function runReason(r: ScheduleRun): string {
       return t('已中断');
     case 'repeated':
       return t('重复操作，已停止');
+    case 'folder_missing':
+      return t('文件夹不存在');
+    case 'folder_invalid':
+      return t('文件夹路径不对');
     case 'conversation_deleted':
       return t('对话已删除');
     case 'previous_waiting':

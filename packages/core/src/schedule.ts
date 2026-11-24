@@ -14,6 +14,25 @@ import type { CoreEvent } from './events.ts';
 import { isoNow } from './events.ts';
 import type { Runtime } from './runtime.ts';
 import { newId } from './util.ts';
+import { statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
+
+/**
+ * Why a task's folder cannot be worked in, or null: it must be a whole path to a folder that is there, with no control
+ * characters (a \r an agent's string turned into a line break). The message starts with its code (folder_missing,
+ * folder_invalid) for the window to say in its own words.
+ */
+export function folderProblem(cwd: string): string | null {
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(cwd)) return 'folder_invalid: the folder has control characters in it (a line break, a tab)';
+  if (!isAbsolute(cwd)) return `folder_invalid: the folder must be a whole path (${cwd})`;
+  try {
+    if (statSync(cwd).isDirectory()) return null;
+  } catch {
+    // not there
+  }
+  return `folder_missing: the folder does not exist (${cwd})`;
+}
 
 /** How often the table is looked at. */
 export const SCHEDULE_TICK_MS = 60_000;
@@ -87,7 +106,7 @@ export class Scheduler {
    * A change keeps the task on or off as it was, and its failures. Throws on a task that cannot run.
    */
   save(input: ScheduleInput & { id?: string }, by: 'user' | 'agent' = 'user'): ScheduleInfo {
-    const problem = scheduleProblem(input);
+    const problem = scheduleProblem(input) ?? (input.cwd?.trim() ? folderProblem(input.cwd.trim()) : null);
     if (problem) throw new Error(problem);
     const now = this.#now();
     const before = input.id ? this.#rt.store.getSchedule(input.id) : undefined;
@@ -203,6 +222,9 @@ export class Scheduler {
       return run;
     }
     let run: ScheduleRun = { ...base, status: 'running' };
+    // a new conversation in a folder that is gone (moved, deleted, a drive not there): this run fails, nothing runs
+    const gone = !s.sessionId && s.cwd ? folderProblem(s.cwd) : null;
+    if (gone) return this.#finish(run, 'failed', gone.slice(0, gone.indexOf(':')), gone.slice(gone.indexOf(':') + 2));
     try {
       const same = s.sessionId ? this.#rt.session(s.sessionId) : undefined;
       const session =

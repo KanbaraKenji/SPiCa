@@ -1424,6 +1424,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             />
           ) : view === 'inbox' ? (
             <InboxView
+              mailShown={mail.supported && mailSource}
               {...(schedCards.length ? { before: <RunCards items={schedCards} now={schedNow} onOpen={openSession} onResume={(id) => void schedStore.setEnabled(id, true)} /> } : {})}
               mail={mail}
               mock={pluginMock}

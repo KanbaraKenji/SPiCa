@@ -4,6 +4,7 @@ import { useSyncExternalStore } from 'react';
 import type { AgentApi, CoreEvent, ScheduleInfo, ScheduleInput, ScheduleRun } from '@spica/protocol';
 import { Store } from './external';
 import { friendlyError } from './agent';
+import { t } from '../../../shared/i18n';
 
 export interface SchedulesView {
   /** False when this backend has no scheduled tasks. */
@@ -47,6 +48,10 @@ export class SchedulesStore {
       this.#upsert(await this.#api.saveSchedule(input));
       return '';
     } catch (err) {
+      // the core's folder codes, in the window's words
+      const raw = err instanceof Error ? err.message : String(err);
+      if (raw.includes('folder_missing')) return t('文件夹不存在');
+      if (raw.includes('folder_invalid')) return t('文件夹路径不对');
       return friendlyError(err);
     }
   }

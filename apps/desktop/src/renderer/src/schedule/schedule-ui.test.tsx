@@ -108,6 +108,24 @@ describe('the list page', () => {
 });
 
 describe('收件箱', () => {
+  it('with no mail plugin shows only the 定时任务 cards: no tabs, no mail status, no 没有邮件', async () => {
+    const { InboxView } = await import('../shell/InboxView');
+    const { DEFAULT_SETTINGS } = await import('../../../shared/settings');
+    const mail = { supported: true, loaded: true, items: [], polling: false, lastPolledAt: null, lastAdded: null, problem: '', threadId: null, flagged: [], triageModel: null };
+    const noop = vi.fn();
+    render(<InboxView mailShown={false} mail={mail} prefs={DEFAULT_SETTINGS.mail} projects={[]} onPoll={noop} onAccept={noop} onIgnore={noop} onMove={noop} onOpenSession={noop} onOpenSettings={noop} onDismissProblem={noop} before={<RunCards now={now} onOpen={noop} onResume={noop} items={[task({ lastRun: run({ status: 'waiting' }) })]} />} />);
+    expect(screen.getByRole('article', { name: '每日报表' })).toBeTruthy();
+    expect(screen.queryByRole('tab')).toBeNull();
+    expect(screen.queryByText('没有邮件')).toBeNull();
+    expect(screen.queryByText(/邮件分类/)).toBeNull();
+  });
+
+  it('a folder that is not there: the form is told so in its own words', async () => {
+    const agent = { listSchedules: vi.fn(async () => []), saveSchedule: vi.fn(async () => Promise.reject(new Error('folder_missing: the folder does not exist (D:/x)'))) } as unknown as AgentApi;
+    const store = new SchedulesStore({ agent, onAgentEvent: () => () => undefined });
+    expect(await store.save({ title: 't', prompt: 'p', trigger: { type: 'time', repeat: { kind: 'daily', time: '09:00' } }, cwd: 'D:/x' })).toBe('文件夹不存在');
+  });
+
   it('has a card for a run waiting for a confirmation (打开) and for a task off after failing (重新开启, 打开)', () => {
     const onOpen = vi.fn();
     const onResume = vi.fn();

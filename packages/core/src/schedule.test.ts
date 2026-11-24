@@ -2,6 +2,7 @@
 // closed, a run skipped while the previous one waits, turning off after failing in a row, and the agent's tools.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
+import { mkdirSync, rmSync } from 'node:fs';
 import { nextRun, Scheduler, scheduleProblem } from './schedule.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway, tempDir, until } from './testing/helpers.ts';
@@ -159,6 +160,26 @@ describe('a run', () => {
     expect(changed).toMatchObject({ enabled: false, nextAt: null, title: '改了名字', trigger: { repeat: { time: '10:00' } } });
     const on = sch.setEnabled(s.id, true);
     expect(on.nextAt).toBe(iso(at(2026, 11, 22, 10)));
+    sch.stop();
+  });
+
+  it('a folder that is not there is refused when saving; one gone by the time it is due fails the run, and nothing runs', async () => {
+    const now = { t: at(2026, 11, 22, 8, 59) };
+    const { rt, sch } = setUp(now);
+    expect(() => sch.save(daily('09:00', { cwd: join(dir, 'nope') }))).toThrow(/^folder_missing/);
+    expect(() => sch.save(daily('09:00', { cwd: `${dir}work` }))).toThrow(/^folder_invalid/);
+    expect(() => sch.save(daily('09:00', { cwd: 'reports' }))).toThrow(/^folder_invalid/);
+    const work = join(dir, 'work');
+    mkdirSync(work);
+    const s = sch.save(daily('09:00', { cwd: work }));
+    rmSync(work, { recursive: true });
+    const before = rt.sessions().length;
+    now.t = at(2026, 11, 22, 9, 0);
+    await sch.check();
+    expect(sch.runs()[0]).toMatchObject({ status: 'failed', reason: 'folder_missing' });
+    expect(sch.runs()[0]?.sessionId).toBeUndefined();
+    expect(rt.sessions().length).toBe(before);
+    expect(sch.get(s.id)?.failures).toBe(1);
     sch.stop();
   });
 

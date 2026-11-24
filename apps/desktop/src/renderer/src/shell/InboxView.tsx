@@ -37,6 +37,8 @@ export interface InboxViewProps {
   now?: Date;
   /** Cards above the mail under 待确认 (定时任务 runs waiting for the user, tasks off after failing). */
   before?: ReactNode;
+  /** False: no mail plugin, the inbox is there only for `before` (no tabs, no mail status, no 「没有邮件」). Default true. */
+  mailShown?: boolean;
 }
 
 type Filter = 'todo' | 'all';
@@ -132,6 +134,14 @@ export function InboxView(props: InboxViewProps) {
       ]
         .filter(Boolean)
         .join(' · ');
+
+  // No mail plugin: the inbox is only what waits from elsewhere (定时任务); nothing about mail that is not there.
+  if (props.mailShown === false)
+    return (
+      <div className="inbox">
+        <div className="inbox-column">{props.before ? <div className="mail-list">{props.before}</div> : null}</div>
+      </div>
+    );
 
   return (
     <div className="inbox">
