@@ -32,6 +32,8 @@ function RunMark({ s, run }: { s?: ScheduleInfo; run: ScheduleRun | undefined })
 }
 
 export interface ScheduleListProps {
+  /** False until the list came back: nothing is drawn (no 「没有定时任务」 flash). */
+  loaded: boolean;
   items: ScheduleInfo[];
   now: Date;
   onNew(): void;
@@ -69,7 +71,7 @@ export function SchedulePage(props: ScheduleListProps) {
             </button>
           </div>
         ) : null}
-        {props.items.length === 0 ? (
+        {!props.loaded ? null : props.items.length === 0 ? (
           <div className="inbox-empty">
             <p className="inbox-empty-title">{t('没有定时任务')}</p>
           </div>
@@ -376,21 +378,17 @@ export function ScheduleFacts({ input }: { input: unknown }) {
       <dt>{t('名称')}</dt>
       <dd>{str('title') || '—'}</dd>
       <dt>{t('内容')}</dt>
-      <dd>{str('prompt') || '—'}</dd>
+      <dd className="schedule-prompt">{str('prompt') || '—'}</dd>
       <dt>{t('重复')}</dt>
       <dd>{when}</dd>
+      <dt>{t('运行在')}</dt>
+      <dd>{v.new_conversation === true ? t('新对话') : t('这个对话')}</dd>
       <dt>{t('文件夹')}</dt>
       <dd className="schedule-path" title={str('folder')}>
         {str('folder') || '—'}
       </dd>
       <dt>{t('模型')}</dt>
       <dd>{str('model') || t('默认模型')}</dd>
-      {v.here === true ? (
-        <>
-          <dt>{t('运行在')}</dt>
-          <dd>{t('这个对话')}</dd>
-        </>
-      ) : null}
     </dl>
   );
 }

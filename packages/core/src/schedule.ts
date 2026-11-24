@@ -82,7 +82,10 @@ export class Scheduler {
     return this.#rt.store.listScheduleRuns(filter);
   }
 
-  /** Adds a task, or with `id` changes one; its next run is worked out from now. Throws on a task that cannot run. */
+  /**
+   * Adds a task, or with `id` changes one (given whole: a field left out is gone); its next run is worked out from now.
+   * A change keeps the task on or off as it was, and its failures. Throws on a task that cannot run.
+   */
   save(input: ScheduleInput & { id?: string }, by: 'user' | 'agent' = 'user'): ScheduleInfo {
     const problem = scheduleProblem(input);
     if (problem) throw new Error(problem);
@@ -98,10 +101,11 @@ export class Scheduler {
       ...(input.cwd?.trim() ? { cwd: input.cwd.trim() } : {}),
       ...(input.providerId ? { providerId: input.providerId } : {}),
       ...(input.model ? { model: input.model } : {}),
-      ...((input.sessionId ?? before?.sessionId) ? { sessionId: input.sessionId ?? before?.sessionId } : {}),
-      enabled: next !== null,
-      nextAt: next ? isoNow(next) : null,
-      failures: 0,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      enabled: before ? before.enabled && next !== null : next !== null,
+      nextAt: next && (before ? before.enabled : true) ? isoNow(next) : null,
+      failures: before?.failures ?? 0,
+      ...(before?.pausedAfterFailures && !before.enabled ? { pausedAfterFailures: true } : {}),
       createdBy: before?.createdBy ?? by,
       createdAt: before?.createdAt ?? isoNow(now),
       updatedAt: isoNow(now),
@@ -157,8 +161,27 @@ export class Scheduler {
     }
   }
 
+  /**
+   * The task's run still going or waiting for the user, if any. One whose conversation was deleted is over (failed,
+   * 'conversation_deleted'): the task would skip for ever otherwise.
+   */
+  #active(scheduleId: string): ScheduleRun | undefined {
+    const st = this.#rt.store;
+    const run = st.listScheduleRuns({ scheduleId, status: 'waiting', limit: 1 })[0] ?? st.listScheduleRuns({ scheduleId, status: 'running', limit: 1 })[0];
+    if (run?.sessionId && !this.#rt.session(run.sessionId)) {
+      this.#finish(run, 'failed', 'conversation_deleted');
+      return undefined;
+    }
+    return run;
+  }
+
+  /**
+   * The task with the run to show: the one going or waiting, else the latest that ran (a skip says nothing about how
+   * the task does), else the latest skip.
+   */
   #withLast(s: ScheduleInfo): ScheduleInfo {
-    const last = this.#rt.store.listScheduleRuns({ scheduleId: s.id, limit: 1 })[0];
+    const recent = this.#rt.store.listScheduleRuns({ scheduleId: s.id, limit: 20 });
+    const last = this.#active(s.id) ?? recent.find((r) => r.status !== 'skipped') ?? recent[0];
     return last ? { ...s, lastRun: last } : s;
   }
 
@@ -172,9 +195,8 @@ export class Scheduler {
     const now = this.#now();
     const base = { id: newId('run'), scheduleId: s.id, dueAt: isoNow(due), startedAt: isoNow(now), ...(late ? { late: true } : {}) };
     // the previous run still going or waiting for the user: this one is skipped
-    const prev = this.#rt.store.listScheduleRuns({ scheduleId: s.id, limit: 1 })[0];
-    if (prev && (prev.status === 'running' || prev.status === 'waiting')) {
-      const run: ScheduleRun = { ...base, status: 'skipped', endedAt: isoNow(now), reason: 'previous_waiting', ...(prev.sessionId ? { sessionId: prev.sessionId } : {}) };
+    if (this.#active(s.id)) {
+      const run: ScheduleRun = { ...base, status: 'skipped', endedAt: isoNow(now), reason: 'previous_waiting' };
       this.#rt.store.upsertScheduleRun(run);
       this.#rt.events.emit(this.#rt.eventHost, { type: 'schedule.run', run });
       this.#changed(s);
@@ -205,7 +227,8 @@ export class Scheduler {
   /** A conversation's run ended: the scheduled run in it (going, or waiting for the user) ends with it. */
   #seen(e: CoreEvent): void {
     if (e.type !== 'run.end' || !e.sessionId) return;
-    const run = this.#rt.store.listScheduleRuns({ sessionId: e.sessionId, limit: 5 }).find((r) => r.status === 'running' || r.status === 'waiting');
+    const st = this.#rt.store;
+    const run = st.listScheduleRuns({ sessionId: e.sessionId, status: 'waiting', limit: 1 })[0] ?? st.listScheduleRuns({ sessionId: e.sessionId, status: 'running', limit: 1 })[0];
     if (!run) return;
     const status = outcome(e.reason);
     if (status === 'waiting' && run.status === 'waiting') return;

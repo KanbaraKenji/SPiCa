@@ -111,6 +111,57 @@ describe('a run', () => {
     sch.stop();
   });
 
+  it('waiting for the user through many due times: each is skipped, the waiting run stays the one shown, and ends done once answered', async () => {
+    const now = { t: at(2026, 11, 22, 8, 59) };
+    const { rt, sch } = setUp(now);
+    gw.enqueue({ toolCalls: [{ id: 'c1', name: 'run_command', args: { command: 'echo hi' } }] });
+    const s = sch.save({ ...daily('09:00', { cwd: dir }), trigger: { type: 'time', repeat: { kind: 'interval', minutes: 1 } } });
+    now.t = at(2026, 11, 22, 9, 0);
+    await sch.check();
+    await until(() => sch.runs()[0]?.status === 'waiting');
+    const waiting = sch.runs()[0]!;
+    for (let i = 1; i <= 6; i++) {
+      now.t = new Date(now.t.getTime() + 60_000);
+      await sch.check();
+    }
+    expect(sch.runs({ status: 'skipped' })).toHaveLength(6);
+    expect(sch.runs({ status: 'running' })).toHaveLength(0);
+    expect(sch.get(s.id)?.lastRun?.id).toBe(waiting.id);
+    gw.enqueue({ text: 'Ran it.' });
+    await rt.session(waiting.sessionId!)!.confirm('c1', true);
+    await until(() => sch.get(s.id)?.lastRun?.status === 'done');
+    expect(sch.get(s.id)?.lastRun?.id).toBe(waiting.id);
+    sch.stop();
+  });
+
+  it('a waiting run whose conversation was deleted is over, and the task runs again', async () => {
+    const now = { t: at(2026, 11, 22, 8, 59) };
+    const { rt, sch } = setUp(now);
+    gw.enqueue({ toolCalls: [{ id: 'c1', name: 'run_command', args: { command: 'echo hi' } }] }, { text: 'second' });
+    const s = sch.save({ ...daily('09:00', { cwd: dir }), trigger: { type: 'time', repeat: { kind: 'interval', minutes: 1 } } });
+    now.t = at(2026, 11, 22, 9, 0);
+    await sch.check();
+    await until(() => sch.runs()[0]?.status === 'waiting');
+    await rt.deleteSession(sch.runs()[0]!.sessionId!);
+    now.t = at(2026, 11, 22, 9, 1);
+    await sch.check();
+    expect(sch.runs({ status: 'failed' })[0]).toMatchObject({ reason: 'conversation_deleted' });
+    await until(() => sch.get(s.id)?.lastRun?.status === 'done');
+    sch.stop();
+  });
+
+  it('a change keeps the task off when it was off, and its failures', async () => {
+    const now = { t: at(2026, 11, 22, 8, 0) };
+    const { sch } = setUp(now);
+    const s = sch.save(daily('09:00'));
+    sch.setEnabled(s.id, false);
+    const changed = sch.save({ ...daily('10:00'), id: s.id, title: '改了名字' });
+    expect(changed).toMatchObject({ enabled: false, nextAt: null, title: '改了名字', trigger: { repeat: { time: '10:00' } } });
+    const on = sch.setEnabled(s.id, true);
+    expect(on.nextAt).toBe(iso(at(2026, 11, 22, 10)));
+    sch.stop();
+  });
+
   it('turns the task off after failing three times in a row', async () => {
     const now = { t: at(2026, 11, 22, 8, 0) };
     const { sch } = setUp(now);
@@ -182,7 +233,8 @@ describe('the agent’s tools', () => {
     gw.enqueue({ toolCalls: [{ id: 't2', name: 'list_schedules', args: {} }] }, { text: 'Set up.' });
     await s.confirm('t1', true);
     await until(() => rt.schedules.list().length === 1);
-    expect(rt.schedules.list()[0]).toMatchObject({ title: '周报', createdBy: 'agent', cwd: dir, enabled: true });
+    // set up in a conversation: its runs come back to it unless the agent asks for a new one each time
+    expect(rt.schedules.list()[0]).toMatchObject({ title: '周报', createdBy: 'agent', cwd: dir, enabled: true, sessionId: s.id });
     await s.settled();
     const listed = rt.store.listMessages(s.id).flatMap((m) => m.content).find((b) => b.type === 'tool_result' && b.toolUseId === 't2');
     expect(listed && 'content' in listed ? String(listed.content) : '').toMatch(/周报 \(sch[_-]\w+\): every Fri at 17:30/);

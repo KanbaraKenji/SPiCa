@@ -99,10 +99,7 @@ export class SchedulesStore {
   #onEvent(e: CoreEvent): void {
     if (e.type === 'schedule.changed') this.#upsert(e.schedule);
     else if (e.type === 'schedule.deleted') this.#drop(e.id);
-    else if (e.type === 'schedule.run') {
-      const run = e.run;
-      this.state.set((v) => ({ ...v, items: v.items.map((s) => (s.id === run.scheduleId && (!s.lastRun || s.lastRun.id === run.id || s.lastRun.startedAt <= run.startedAt) ? { ...s, lastRun: run } : s)) }));
-    }
+    // schedule.run is followed by schedule.changed, which carries the run to show (a waiting one stays shown when the next is skipped)
   }
 }
 

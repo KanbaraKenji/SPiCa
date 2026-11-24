@@ -68,6 +68,8 @@ export function runReason(r: ScheduleRun): string {
       return t('已中断');
     case 'repeated':
       return t('重复操作，已停止');
+    case 'conversation_deleted':
+      return t('对话已删除');
     case 'previous_waiting':
       return t('上次运行在等待确认');
     case 'max_turns':

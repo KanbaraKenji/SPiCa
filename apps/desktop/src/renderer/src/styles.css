@@ -9938,6 +9938,13 @@ input[type='radio']:disabled {
   overflow-wrap: anywhere;
 }
 
+/* What the task says: its own lines kept, at most eight of them in sight (the card's head and buttons stay in view). */
+.schedule-facts .schedule-prompt {
+  white-space: pre-wrap;
+  max-height: calc(var(--lh-body) * 8);
+  overflow-y: auto;
+}
+
 .schedule-facts .schedule-path {
   overflow: hidden;
   text-overflow: ellipsis;

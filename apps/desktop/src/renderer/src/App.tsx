@@ -1410,6 +1410,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
             )
           ) : view === 'schedule' ? (
             <SchedulePage
+              loaded={scheds.loaded}
               items={scheds.items}
               now={schedNow}
               onNew={() => setSchedForm({})}

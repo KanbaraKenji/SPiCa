@@ -33,11 +33,12 @@ export const scheduleTaskTool: Tool = {
   spec: {
     name: 'schedule_task',
     description:
-      'Set up a scheduled task: a prompt the app sends to an agent by itself at set times, in this computer\'s time ' +
-      'zone. Each run starts with no memory of this conversation, so the prompt says everything the run needs. ' +
-      'By default each run is a new conversation in the folder given (or a folder of its own); here: true runs it back ' +
-      'in this conversation instead. Give id (from list_schedules) to change a task. The user confirms before it is ' +
-      'saved. A run that needs a confirmation stops and waits for the user, who may not be there.',
+      'Set up a scheduled task: a prompt the app sends by itself at set times, in this computer\'s time zone. By ' +
+      'default each run comes back to this conversation and goes on from what was said here; new_conversation: true ' +
+      'runs it in a new conversation each time instead (in the folder given, or a folder of its own), which starts with ' +
+      'no memory of this one, so the prompt says everything the run needs. Give id (from list_schedules) to change a ' +
+      'task. The user confirms before it is saved. A run that needs a confirmation stops and waits for the user, who ' +
+      'may not be there.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -60,7 +61,7 @@ export const scheduleTaskTool: Tool = {
         },
         folder: { type: 'string', description: 'The folder it works in.' },
         model: { type: 'string', description: 'The model to run with; left out: the default model.' },
-        here: { type: 'boolean', description: 'Run back in this conversation instead of a new one each time.' },
+        new_conversation: { type: 'boolean', description: 'Run each time in a new conversation instead of this one.' },
       },
       required: ['title', 'prompt', 'repeat'],
     },
@@ -79,11 +80,13 @@ export const scheduleTaskTool: Tool = {
           trigger: { type: 'time', repeat: input.repeat as ScheduleRepeat },
           ...(typeof input.folder === 'string' && input.folder ? { cwd: input.folder } : before?.cwd ? { cwd: before.cwd } : {}),
           ...(typeof input.model === 'string' && input.model ? { model: input.model } : before?.model ? { model: before.model, ...(before.providerId ? { providerId: before.providerId } : {}) } : {}),
-          ...(input.here === true ? { sessionId: ctx.sessionId } : {}),
+          // here unless asked otherwise; a change keeps where it runs unless told
+          ...(input.new_conversation === true ? {} : input.new_conversation === false || !before ? { sessionId: ctx.sessionId } : before.sessionId ? { sessionId: before.sessionId } : {}),
         },
         'agent',
       );
-      return { content: `${id ? 'Changed' : 'Scheduled'} ${s.title} (${s.id}): ${repeatWords(s.trigger.repeat)}; next run ${s.nextAt ?? '-'}.` };
+      const where = s.sessionId ? 'runs in this conversation' : 'each run in a new conversation';
+      return { content: `${id ? 'Changed' : 'Scheduled'} ${s.title} (${s.id}): ${repeatWords(s.trigger.repeat)}; ${where}; next run ${s.nextAt ?? '-'}${s.enabled ? '' : ' (off)'}.` };
     } catch (err) {
       return { content: `Not scheduled: ${err instanceof Error ? err.message : String(err)}.`, isError: true };
     }
