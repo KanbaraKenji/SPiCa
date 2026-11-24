@@ -6159,52 +6159,23 @@ section.plugins-part > .plugins-part-title {
   border-radius: 0;
 }
 
-/* The looks on trial (html[data-allow-menu], set by hand; chat/AllowSplit.tsx). Goes once one is picked.
-   main: as on main (frame, gap, lit block). pill: the last one (fills, the menu's 14). a: 甲, the rules above.
-   b: 乙, as wide as the button, the words where the button's are. c: 丙, a second button under it. */
-html[data-allow-menu='main'] .context-menu.is-single {
-  padding: 4px;
-  border-radius: var(--radius-popup);
-}
-
-html[data-allow-menu='main'] .context-menu.is-single .context-item {
-  min-height: 28px;
-  border-radius: var(--radius-m);
-}
-
-html[data-allow-menu='pill'] .context-menu.is-single {
-  border-radius: var(--radius-popup);
-}
-
-html[data-allow-menu='pill'] .context-menu.is-single .context-item {
-  min-height: 28px;
-  border-radius: var(--radius-popup);
-}
-
-html[data-allow-menu='b'] .allow-split-menu .context-item {
-  padding: 4px var(--control-pad-x);
-}
-
-html[data-allow-menu='c'] .allow-split-menu {
-  border-radius: var(--radius-m);
-}
-
-html[data-allow-menu='c'] .allow-split-menu .context-item {
+/* 允许一次 under 始终允许 ▾ (chat/AllowSplit.tsx): a second button rather than a menu, as wide as the one above, its
+   words starting where 始终允许's do (the same border and padding, left-aligned); lit as a button is. */
+.context-menu.allow-split-menu .context-item {
   min-height: var(--control-h);
   padding: 0 var(--control-pad-x);
-  justify-content: center;
   border: 1px solid var(--spica-border-strong);
   border-radius: var(--radius-m);
   background: var(--spica-control);
 }
 
-html[data-allow-menu='c'] .allow-split-menu .context-item:hover,
-html[data-allow-menu='c'] .allow-split-menu .context-item:focus-visible {
+.context-menu.allow-split-menu .context-item:hover,
+.context-menu.allow-split-menu .context-item:focus-visible {
   background: var(--spica-control-hover);
 }
 
-html[data-allow-menu='c'] .allow-split-menu .context-item .context-item-label {
-  flex: none;
+.context-menu.allow-split-menu.is-keys .context-item:hover:not(:focus-visible) {
+  background: var(--spica-control);
 }
 
 /* Moving with Up and Down: only the focused item is lit, not also the one under a pointer that has not moved. */

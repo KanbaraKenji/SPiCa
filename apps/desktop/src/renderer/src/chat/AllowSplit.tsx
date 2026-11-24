@@ -1,19 +1,13 @@
 // 始终允许 as the main button, 允许一次 in its drop-down: a confirmation that can be allowed for good (a write outside
 // the conversation's folders: that folder). One shape: the main part and the arrow share the outer corners, the
 // inner edge is straight on both. Keys: Enter / Space on the main part is 始终允许; on the arrow, or Alt+Down on the
-// main part, the menu opens with 允许一次 focused (Up / Down / Enter / Esc as in every menu).
+// main part, the menu opens with 允许一次 focused (Up / Down / Enter / Esc as in every menu). The menu is drawn as a
+// second button under this one, as wide, its words starting where 始终允许's do.
 import { useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { t } from '../../../shared/i18n';
 import { Icon } from '../ui/Icon';
 import { ContextMenu } from '../ui/ContextMenu';
-
-/**
- * The looks of the drop-down on trial, set by hand on the page (DevTools: document.documentElement.dataset.allowMenu =
- * 'main' | 'pill' | 'a' | 'b' | 'c'); nothing in the app sets it, so it is 甲 ('a') until one is picked. 乙 and 丙 are
- * as wide as the button. Goes once one is picked.
- */
-const sameWidth = (): boolean => ['b', 'c'].includes(document.documentElement.dataset.allowMenu ?? '');
 
 /**
  * Every confirmation that can be allowed for good uses this one (a write outside the folders, the computer-use card):
@@ -58,8 +52,8 @@ export function AllowSplit({ disabled, hint, onAllow }: { disabled: boolean; hin
               anchor={box}
               align="end"
               className="allow-split-menu"
-              // 乙 / 丙 (the looks on trial, html[data-allow-menu]): as wide as the button
-              minWidth={sameWidth() ? box.offsetWidth : undefined}
+              // as wide as the button, so 允许一次 is a second button under it (styles.css .allow-split-menu)
+              minWidth={box.offsetWidth}
               items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]}
               onClose={() => setBox(null)}
             />,
