@@ -123,6 +123,17 @@ Spica 启动 server 时会给这些环境变量：
 - 工具出错时返回 `isError: true` 的结果，写一句模型和人都看得懂的话，不要直接崩溃。
 - 只读的工具（只查、只读，不写文件、不发东西、不改任何系统）在工具定义里写 `annotations: { readOnlyHint: true }`。这是 MCP 规范的写法，意思是「这个工具不改动它所处的环境」，不写就当 `false`。没声明的工具，Spica 当成会有改动：一轮回答里调过它，这一轮就不能「重新生成」。
 - 工具可以在结果里返回图片（`{ type: 'image', data: <base64>, mimeType: 'image/png' }`）和音频（`type: 'audio'`），MCP 规范的写法。Spica 把它们存成文件放在这次对话的文件夹里（对话删了一起删），每个出一张文件卡；模型看到一行「图片：<路径>」或「音频：<路径>（模型听不到内容）」。PNG、JPEG、GIF、WEBP 的图片在当前模型能看图时一起发给模型（太大的先缩小），别的格式只出卡。插件页面直接调工具时不保存，页面拿到的还是「[image … omitted]」。
+- 工具也可以直接把文件放在结果里交给用户（远端服务没法往用户电脑写文件时就用这个）：MCP 规范的内嵌资源，`{ type: 'resource', resource: { uri, mimeType, blob } }`，`blob` 是文件内容的 base64。Spica 把它存进这次对话的工作文件夹（用户没选过文件夹时放项目的文件夹，都没有就放对话的媒体文件夹，对话删了一起删），出一张文件卡，模型只看到一行「文件：<路径>」，base64 不给模型。
+
+  ```js
+  content.push({ type: 'resource', resource: { uri: 'file:///exports/PSU-200-spec.pdf', mimeType: 'application/pdf', blob: pdfBytes.toString('base64') } });
+  ```
+
+  - 文件名取 `uri` 的最后一段（规范里内嵌资源没有 name）：上面这个存成 `PSU-200-spec.pdf`。不能做文件名的字符换成 `_`，不带路径；名字没扩展名时按 `mimeType` 补。同名文件已经在了就存成「名字 (2).pdf」，不覆盖。
+  - 单个文件最大 50 MB（解码后）。超过的、`blob` 不是合法 base64 的、写不进去的不保存，模型看到一行「文件 <名字> 没有保存：<原因>」，对话里出一张写着原因的卡，这次调用照常返回。
+  - 同时放 `text` 的，`text` 给模型看、文件照存。只有 `text` 没有 `blob` 的照旧只给文字。
+  - exe、bat、ps1、js 这类可执行文件照样存，但用户点「打开」只会在文件夹里显示它，不会运行。
+  - 插件页面直接调工具时没有对话，不保存，拿到的是那一行说明。
 - 返回结构化结果（`structuredContent`）时，照规范在 `content` 里同时放一份同样的 JSON 文字：有 `content` 时模型只读得到 `content`，`structuredContent` 只在没有别的内容时才给模型。
 - 进程崩溃 Spica 会自动重启，但 60 秒内超过 3 次就停（可在声明里用 `restart` 改）。
 - Python 写的 server：这一版请用 PyInstaller 之类打成 `.exe`，声明写 `"runtime": "binary"`、`"entry": "bin/server.exe"`。别用 `.bat` / `.cmd` 启动，会弹黑窗口，Spica 会拒绝。

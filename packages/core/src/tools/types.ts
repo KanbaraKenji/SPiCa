@@ -17,6 +17,11 @@ export interface ToolContext {
   callId: string;
   /** Where the call may keep files it got for this conversation (images, audio); deleted with the conversation. */
   mediaDir?: string;
+  /**
+   * Where files the call hands to the user go (an MCP tool's embedded file): the working folder the user chose, or
+   * the project's folder (Session.handOverDir). Absent: none was chosen; such files go in mediaDir.
+   */
+  handOverDir?: string;
   /** Publish an event on behalf of this session (e.g. a card for the UI). */
   emit(body: CoreEventBody): void;
   /** Who started the call, for traceable records (default `tool:<name>`; a plugin view is `view:<plugin>`). */

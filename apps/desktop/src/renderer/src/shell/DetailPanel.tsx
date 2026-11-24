@@ -111,7 +111,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
   const moves = changesAfter(transcript.items);
   const files = [
     ...new Map(transcript.items.flatMap((i) => (i.kind === 'response' ? filesOf(i.blocks, transcript.fileCards, moves.get(i.id), transcript.fileCardLists) : [])).map((f) => [f.path, f] as const)).values(),
-  ];
+  ].filter((f) => !f.card?.notSaved); // a file a tool's result carried that was not kept is no file of the conversation
   return (
     <aside className="detail" aria-label={t('详情')}>
       {hideHeading && !onClose ? null : (

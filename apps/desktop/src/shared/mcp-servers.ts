@@ -4,6 +4,7 @@
 // sends back a mask.
 import type { InstallPreview } from '@spica/protocol';
 import { N_, t } from './i18n';
+import { isLocalHost } from './local-host';
 
 /** When one of its tools runs: asked each time (the default for a service the person added) or straight away. */
 export type McpApproval = 'ask' | 'auto';
@@ -162,10 +163,10 @@ export function draftOf(s: McpServerView): McpServerDraft {
   };
 }
 
-/** Hosts a plain http:// address may name (this computer); anything else must be https. */
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
-
-/** What is wrong with a web address: empty, not one, or http to another computer. */
+/**
+ * What is wrong with a web address: empty, not one, or plain http to a host that is not this computer or on the
+ * local network (isLocalHost: localhost, loopback, private and link-local addresses; any other name needs https).
+ */
 export function mcpUrlError(text: string): string | undefined {
   const s = text.trim();
   if (!s) return t('必填');
@@ -176,8 +177,8 @@ export function mcpUrlError(text: string): string | undefined {
     return t('网址无效');
   }
   if (u.protocol === 'https:') return undefined;
-  if (u.protocol === 'http:' && LOCAL_HOSTS.has(u.hostname.toLowerCase())) return undefined;
-  return u.protocol === 'http:' ? t('只支持 https（本机地址可用 http）') : t('网址无效');
+  if (u.protocol === 'http:' && isLocalHost(u.hostname)) return undefined;
+  return u.protocol === 'http:' ? t('只支持 https（本机和内网可用 http）') : t('网址无效');
 }
 
 /** The key as it is sent: what was typed, without a "Bearer " the person put before it. */

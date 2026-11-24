@@ -2332,11 +2332,12 @@ pre .hl-punctuation {
 
 /* A question card. Waiting for its answer it stands above the message box (.ask-dock, below): what is asked, the
    options one a row, a row to type in, 确定 on a row of its own. Answered it is back in the conversation: the
-   question's first line and the answer under it (.ask-done-*, below). */
+   question's first line and the answer under it (.ask-done-*, below). Never wider than the content column: in a
+   narrow one its line is cut (the whole question on hover) instead of running past the window's edge. */
 .card.ask-card {
   align-self: flex-start;
   width: 100%;
-  max-width: 560px;
+  max-width: min(560px, 100%);
 }
 
 .ask-card.is-open {
@@ -2538,9 +2539,9 @@ label.ask-row:active {
 
 /* Answered (or stopped while it waited): the mark on the question's first line, before it (not centred on the card),
    then the question and under it the answer (已中断), lined up with the question's words. The question in the ink, the
-   answer in the muted grey (已中断 in red, the mark too). As wide as the longer of the two up to 560, so a short
-   answer leaves no empty card at its right. The question is one line, cut at its end; the answer up to two lines,
-   cut at the end of the second; each in full on hover. */
+   answer in the muted grey (已中断 in red, the mark too). As wide as the longer of the two up to 560 (and the content
+   column), so a short answer leaves no empty card at its right. The question is one line, cut at its end; the answer
+   up to two lines, cut at the end of the second; each in full on hover. */
 .card.ask-card.is-done {
   width: fit-content;
   display: flex;
@@ -2625,6 +2626,16 @@ label.ask-row:active {
 .file-card:has(.file-card-main:hover) {
   background: var(--spica-hover);
   border-color: var(--spica-border-strong);
+}
+
+/* A file the result carried that was not kept (Not saved · over 50 MB): nothing to open, so it does not light. */
+.file-card.is-not-saved:has(.file-card-main:hover) {
+  background: var(--spica-surface);
+  border-color: var(--spica-border);
+}
+
+.file-row.is-not-saved:has(.file-row-main:hover) {
+  background: none;
 }
 
 .file-card-icon {
@@ -9620,11 +9631,12 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
 }
 
-/* Finished, back in the conversation where it was finished: as wide as what it says, like an answered question. */
+/* Finished, back in the conversation where it was finished: as wide as what it says, like an answered question (up to
+   560, never wider than the content column). */
 .plan-strip.is-record {
   align-self: flex-start;
   width: fit-content;
-  max-width: 560px;
+  max-width: min(560px, 100%);
   box-shadow: none;
   background: var(--spica-surface);
   border-color: var(--spica-border);
