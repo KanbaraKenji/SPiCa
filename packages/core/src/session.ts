@@ -295,6 +295,27 @@ export class Session {
     return this.#run !== undefined || this.#hasPending();
   }
 
+  /**
+   * Where files a tool hands to the user go (an MCP tool's embedded file): the working folder when one was chosen,
+   * else the project's folder; none when the conversation still works in the folder the app gave it (or the one all
+   * conversations shared in earlier versions), where the user would not look: the tool keeps them in the media
+   * folder then. A sub-agent works in its parent's folder, so the folder the app gave is the top conversation's.
+   */
+  handOverDir(): string | undefined {
+    const cfg = this.#record.config;
+    let top = this.#record;
+    for (let p = top.parentId ? this.#rt.store.getSession(top.parentId) : undefined; p; p = p.parentId ? this.#rt.store.getSession(p.parentId) : undefined) top = p;
+    const given = [this.#rt.ownFolder(top.id), this.#rt.ownFolder(this.id), this.#rt.legacyDefaultCwd];
+    if (!given.some((f) => samePath(cfg.cwd, f))) return cfg.cwd;
+    const project = cfg.projectId ? this.#rt.store.getProject(cfg.projectId) : undefined;
+    return project?.folder || undefined;
+  }
+
+  #handOver(): { handOverDir?: string } {
+    const dir = this.handOverDir();
+    return dir ? { handOverDir: dir } : {};
+  }
+
   /** The working folder changed (the runtime moved the files; see Runtime.setSessionCwd). */
   setCwd(cwd: string): SessionInfo {
     this.#record = { ...this.#record, config: { ...this.#record.config, cwd } };
@@ -417,6 +438,7 @@ export class Session {
           services: this.#rt.services(this),
           callId: draft.callId,
           mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
           ...this.#imageContext(),
           ...(confirmedBy ? { confirmedBy } : {}),
           emit: (body) => this.#emit(body),
@@ -672,6 +694,7 @@ export class Session {
           services: this.#rt.services(this),
           callId: newId('att'),
           mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
           ...this.#imageContext(),
           emit: (body) => {
             if (body.type === 'file.card') file = body.file;
@@ -1374,6 +1397,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       callId: draft.callId,
       ...confirmed,
       mediaDir: this.#rt.mediaDir(this.id),
+          ...this.#handOver(),
       ...(this.#lastRound().anchor ? { roundStartedAt: this.#lastRound().anchor!.createdAt } : {}),
       ...this.#imageContext(),
       step: this.#stepper(draft, signal, hctx),

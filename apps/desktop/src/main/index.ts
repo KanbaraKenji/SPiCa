@@ -92,6 +92,7 @@ import { ProviderStore } from './providers/store';
 import { createFakeTester } from './providers/tester';
 import { createRealTester } from './providers/real-tester';
 import type { PluginService } from './plugins/types';
+import { runsAsProgram } from './runs-as-program';
 import { devSwitch, documentsFolder, makeWorkflowsDirAtStart, mockFilesFolder, mockWebFolder, pickedFiles, pickedFolder, recordShellTo, shellRecord, SHOTS_WORKFLOWS_DIR } from './dev-hooks';
 import { checkLocalPath, csvFileName, csvFileText, type PathKind } from './local-paths';
 import { withErrorHint } from './error-hint';
@@ -1380,6 +1381,12 @@ ipcMain.handle(DesktopChannel.OpenFile, async (_e, sessionId: unknown, path: unk
   const session = typeof sessionId === 'string' ? await backend.getSession(sessionId) : undefined;
   const full = isAbsolute(path) ? path : resolvePath(session?.cwd || app.getPath('home'), path);
   if (!existsSync(full)) return t('找不到文件：{path}', { path: full });
+  // a program or script (a tool's file may be named anything): shown in its folder, not run
+  if (runsAsProgram(full)) {
+    if (recordShell) appendFileSync(recordShell, shellRecord('showInFolder', full));
+    else shell.showItemInFolder(full);
+    return null;
+  }
   const error = await shell.openPath(full);
   return error ? t('无法打开文件：{error}', { error }) : null;
 });

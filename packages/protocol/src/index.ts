@@ -1112,6 +1112,12 @@ export interface FileCardMeta {
   noTextLayer?: boolean;
   /** Detected text encoding (e.g. UTF-8, GBK). */
   encoding?: string;
+  /**
+   * A file a tool's result carried (an MCP tool's embedded file) that was not kept, and why: over the size limit
+   * (`sizeBytes` is its size), not base64, it could not be written, or the call had no conversation to keep it in.
+   * `path` is where it would have gone (or only its name); nothing is there to open.
+   */
+  notSaved?: 'too_large' | 'bad_data' | 'write_failed' | 'no_folder';
 }
 
 /**

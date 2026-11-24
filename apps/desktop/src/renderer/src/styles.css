@@ -2628,6 +2628,16 @@ label.ask-row:active {
   border-color: var(--spica-border-strong);
 }
 
+/* A file the result carried that was not kept (Not saved · over 50 MB): nothing to open, so it does not light. */
+.file-card.is-not-saved:has(.file-card-main:hover) {
+  background: var(--spica-surface);
+  border-color: var(--spica-border);
+}
+
+.file-row.is-not-saved:has(.file-row-main:hover) {
+  background: none;
+}
+
 .file-card-icon {
   width: 32px;
   height: 32px;

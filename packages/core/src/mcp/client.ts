@@ -13,9 +13,11 @@ import type { Tracer } from '../trace.ts';
 import type { Tool, ToolRegistry } from '../tools/types.ts';
 import { withNetworkEnv } from '../net.ts';
 import type { SamplingGrant } from '../sampling.ts';
-import { producedFileCard } from '../tools/file-card.ts';
+import { notSavedCard, producedFileCard } from '../tools/file-card.ts';
+import { join } from 'node:path';
 import type { ImageBlock } from '../types.ts';
 import { keepMedia, type KeptMedia } from './media.ts';
+import { embeddedName, keepEmbedded, notKeptWords, type KeptEmbedded, type NotKept } from './embedded.ts';
 import { childEnv } from '../util.ts';
 import { descendants, endTree, listProcesses } from './process-tree.ts';
 import { windowsLaunch } from './win-command.ts';
@@ -426,7 +428,9 @@ export class McpStdioClient {
     onProgress?: (p: McpProgress) => void,
     /** Keeps an image or audio item as a file (the conversation's media folder); without it they are left out. */
     keep?: (kind: 'image' | 'audio', data: string, mimeType: string) => KeptMedia | undefined,
-  ): Promise<{ content: string; isError: boolean; files?: string[]; images?: ImageBlock[] }> {
+    /** Keeps a file the result carries (an embedded resource with a blob); without it, it is not kept. */
+    keepFile?: (res: { uri?: unknown; mimeType?: unknown; blob: string }) => KeptEmbedded,
+  ): Promise<{ content: string; isError: boolean; files?: string[]; images?: ImageBlock[]; notKept?: NotKept[] }> {
     const done = await this.#takeTurn(signal);
     let answer: unknown;
     try {
@@ -442,15 +446,28 @@ export class McpStdioClient {
       return { content: `The MCP server asked for more input before it can finish (${asks.join(', ') || 'input_required'}); Spica cannot answer that yet.`, isError: true };
     }
     const result = answer as {
-      content?: { type: string; text?: string; uri?: string; data?: string; resource?: { text?: string; uri?: string }; mimeType?: string }[];
+      content?: { type: string; text?: string; uri?: string; data?: string; resource?: { text?: unknown; uri?: unknown; mimeType?: unknown; blob?: unknown }; mimeType?: string }[];
       structuredContent?: unknown;
       isError?: boolean;
     };
     const files: string[] = [];
     const images: ImageBlock[] = [];
+    const notKept: NotKept[] = [];
     const parts = (result.content ?? []).map((c) => {
       if (c.type === 'text') return c.text ?? '';
-      if (c.type === 'resource') return c.resource?.text ?? `[resource ${c.resource?.uri ?? ''}]`;
+      if (c.type === 'resource') {
+        const r = c.resource ?? {};
+        const text = typeof r.text === 'string' ? r.text : undefined;
+        if (typeof r.blob !== 'string') return text ?? `[resource ${typeof r.uri === 'string' ? r.uri : ''}]`;
+        // a file: kept for the user (the bytes never go to the model); with text as well, the text is the model's
+        const kept: KeptEmbedded = keepFile
+          ? keepFile({ uri: r.uri, mimeType: r.mimeType, blob: r.blob })
+          : { ok: false, reason: 'no_folder', name: embeddedName(typeof r.uri === 'string' ? r.uri : '', typeof r.mimeType === 'string' ? r.mimeType : undefined) };
+        if (kept.ok) files.push(kept.path);
+        else notKept.push({ name: kept.name, reason: kept.reason, ...(kept.bytes !== undefined ? { bytes: kept.bytes } : {}) });
+        const line = kept.ok ? `文件：${kept.path}` : `文件 ${kept.name} 没有保存：${notKeptWords(kept)}`;
+        return text !== undefined ? `${text}\n${line}` : line;
+      }
       if (c.type === 'resource_link') {
         const link = linkLine(c.uri);
         if (link.file) files.push(link.file);
@@ -470,7 +487,13 @@ export class McpStdioClient {
     // structuredContent: the spec asks servers to repeat it as JSON text, and servers that wrap a
     // non-object result ({ value }) say it differently there; so it is given only when nothing else is
     if (parts.length === 0 && result.structuredContent !== undefined) parts.push(JSON.stringify(result.structuredContent));
-    return { content: parts.join('\n'), isError: !!result.isError, ...(files.length > 0 ? { files } : {}), ...(images.length > 0 ? { images } : {}) };
+    return {
+      content: parts.join('\n'),
+      isError: !!result.isError,
+      ...(files.length > 0 ? { files } : {}),
+      ...(images.length > 0 ? { images } : {}),
+      ...(notKept.length > 0 ? { notKept } : {}),
+    };
   }
 
   /**
@@ -694,11 +717,14 @@ export class McpStdioClient {
   }
 
   #onData(chunk: string): void {
+    // only the new part is searched for the line's end: a message of tens of MB (a file in it) comes in many chunks
+    let from = this.#buffer.length;
     this.#buffer += chunk;
     let nl: number;
-    while ((nl = this.#buffer.indexOf('\n')) >= 0) {
+    while ((nl = this.#buffer.indexOf('\n', from)) >= 0) {
       const line = this.#buffer.slice(0, nl).trim();
       this.#buffer = this.#buffer.slice(nl + 1);
+      from = 0;
       if (!line) continue;
       let msg: ServerMessage;
       try {
@@ -837,10 +863,15 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
         // images and audio are kept in the conversation's media folder (a plugin page's call has none: left out)
         const dir = ctx.mediaDir;
         const keep = dir ? (kind: 'image' | 'audio', data: string, type: string) => keepMedia(dir, kind, data, type) : undefined;
-        const r = await client.callTool(info.name, input, ctx.signal, undefined, keep);
+        // files it hands over (embedded resources with a blob): where the user works, else the media folder
+        const fileDir = ctx.handOverDir ?? dir;
+        const keepFile = fileDir ? (res: { uri?: unknown; mimeType?: unknown; blob: string }) => keepEmbedded(fileDir, res) : undefined;
+        const r = await client.callTool(info.name, input, ctx.signal, undefined, keep, keepFile);
         trace.finish({ status: r.isError ? 'error' : 'ok', bytes: r.content.length });
-        // files the tool made (resource_link to a local file, kept images and audio): one card each, in order
+        // files the tool made (resource_link to a local file, kept images, audio and embedded files): one card each,
+        // in order; then a card for each embedded file that could not be kept, saying why
         const cards = (await Promise.all((r.files ?? []).map((f) => producedFileCard(f, 'produced')))).filter((c) => c !== undefined);
+        for (const n of r.notKept ?? []) cards.push(notSavedCard(fileDir ? join(fileDir, n.name) : n.name, n.reason, n.bytes));
         if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
         return { content: r.content, isError: r.isError, ...(r.images ? { images: r.images } : {}) };
       } catch (err) {

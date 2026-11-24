@@ -64,12 +64,15 @@ export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (e: 
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
+    // only the new part is searched for line ends (from one back: a \r\n may be split between chunks); an event of
+    // tens of MB (a file in it) comes in many chunks
+    const ends = /\r\n|\r|\n/g;
+    ends.lastIndex = Math.max(0, buf.length - 1);
     buf += value;
-    let nl: number;
-    while ((nl = buf.search(/\r\n|\r|\n/)) >= 0) {
-      const sep = buf[nl] === '\r' && buf[nl + 1] === '\n' ? 2 : 1;
-      line(buf.slice(0, nl));
-      buf = buf.slice(nl + sep);
+    for (let m = ends.exec(buf); m; m = ends.exec(buf)) {
+      line(buf.slice(0, m.index));
+      buf = buf.slice(m.index + m[0].length);
+      ends.lastIndex = 0;
     }
   }
   if (buf) line(buf);
