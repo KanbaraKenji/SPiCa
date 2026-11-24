@@ -14,7 +14,6 @@ import type { Tool, ToolRegistry } from '../tools/types.ts';
 import { withNetworkEnv } from '../net.ts';
 import type { SamplingGrant } from '../sampling.ts';
 import { notSavedCard, producedFileCard } from '../tools/file-card.ts';
-import { join } from 'node:path';
 import type { ImageBlock } from '../types.ts';
 import { keepMedia, type KeptMedia } from './media.ts';
 import { embeddedName, keepEmbedded, notKeptWords, type KeptEmbedded, type NotKept } from './embedded.ts';
@@ -177,7 +176,8 @@ export class McpStdioClient {
   readonly #paramHeaders = new Map<string, { property: string; header: string }[]>();
   #nextId = 1;
   #pending = new Map<number, Pending>();
-  #buffer = '';
+  /** What came of the line not ended yet, chunk by chunk (joined once its end comes: a line of tens of MB is many chunks). */
+  #partial: string[] = [];
   #stderr = '';
   #closed = false;
   #closing = false;
@@ -717,14 +717,18 @@ export class McpStdioClient {
   }
 
   #onData(chunk: string): void {
-    // only the new part is searched for the line's end: a message of tens of MB (a file in it) comes in many chunks
-    let from = this.#buffer.length;
-    this.#buffer += chunk;
+    // a chunk with no line end is kept apart: joining at every chunk would copy a message of tens of MB (a file in
+    // it) over and over
+    if (!chunk.includes('\n')) {
+      this.#partial.push(chunk);
+      return;
+    }
+    let buffer = this.#partial.join('') + chunk;
+    this.#partial = [];
     let nl: number;
-    while ((nl = this.#buffer.indexOf('\n', from)) >= 0) {
-      const line = this.#buffer.slice(0, nl).trim();
-      this.#buffer = this.#buffer.slice(nl + 1);
-      from = 0;
+    while ((nl = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
       if (!line) continue;
       let msg: ServerMessage;
       try {
@@ -734,6 +738,7 @@ export class McpStdioClient {
       }
       if (msg && typeof msg === 'object') this.#onMessage(msg);
     }
+    if (buffer) this.#partial.push(buffer);
   }
 
   /** One message from the server: an answer, a notification, or a request of its own. */
@@ -871,7 +876,8 @@ export function mcpTools(client: McpStdioClient, infos: McpToolInfo[], tracer: T
         // files the tool made (resource_link to a local file, kept images, audio and embedded files): one card each,
         // in order; then a card for each embedded file that could not be kept, saying why
         const cards = (await Promise.all((r.files ?? []).map((f) => producedFileCard(f, 'produced')))).filter((c) => c !== undefined);
-        for (const n of r.notKept ?? []) cards.push(notSavedCard(fileDir ? join(fileDir, n.name) : n.name, n.reason, n.bytes));
+        // (its path only tells the cards apart: a kept file of the same name may be next to it)
+        (r.notKept ?? []).forEach((n, i) => cards.push(notSavedCard(`${ctx.callId}/${i + 1}/${n.name}`, n.reason, n.bytes)));
         if (cards.length > 0) ctx.emit({ type: 'file.card', callId: ctx.callId, file: cards[0]!, files: cards });
         return { content: r.content, isError: r.isError, ...(r.images ? { images: r.images } : {}) };
       } catch (err) {

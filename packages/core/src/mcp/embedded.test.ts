@@ -271,7 +271,7 @@ describe('where a conversation keeps them, and their cards', () => {
     expect(readFileSync(join(work, 'spec.pdf'), 'utf8')).toBe('%PDF');
     expect(cards.map((c) => [c.path, c.origin, c.notSaved])).toEqual([
       [join(work, 'spec.pdf'), 'produced', undefined],
-      [join(work, 'huge.bin'), 'produced', 'too_large'],
+      ['e1/1/huge.bin', 'produced', 'too_large'],
     ]);
     expect(cards[1]!.sizeBytes).toBe(EMBEDDED_LIMIT + 1);
     expect(existsSync(join(work, 'huge.bin'))).toBe(false);
@@ -285,6 +285,30 @@ describe('where a conversation keeps them, and their cards', () => {
       expect(existsSync(r.ownFolder) ? readdirSync(r.ownFolder) : []).toEqual([]);
       expect(readFileSync(join(r.media, 'spec.pdf'), 'utf8')).toBe('%PDF');
       expect(existsSync(join(dir, 'default'))).toBe(false);
+    }
+  });
+
+  it('one name kept and one not in the same call: both cards, kept with the conversation; a plugin page: one line, no file', async () => {
+    const work = join(dir, 'work2');
+    mkdirSync(work);
+    const rt = makeRuntime(gw, { sessionFilesDir: join(dir, 'app', 'sessions'), mediaDir: join(dir, 'app', 'media'), cwd: join(dir, 'default') });
+    const content = [blob('file:///srv/report.pdf', b64('%PDF')), blob('file:///other/report.pdf', '%%bad')];
+    gw.enqueue({ toolCalls: [{ id: 'r1', name: 'dl__make', args: { content } }] }, { text: 'done' });
+    try {
+      await rt.connectMcp({ name: 'dl', command: process.execPath, args: ['-e', SERVER] });
+      const s = rt.createSession({ cwd: work });
+      await s.send('make the report').done;
+      const kept = s.messages().find((m) => m.meta?.fileCardLists)?.meta?.fileCardLists?.r1;
+      expect(kept?.map((c) => [c.path, c.name, c.notSaved])).toEqual([
+        [join(work, 'report.pdf'), 'report.pdf', undefined],
+        ['r1/1/report.pdf', 'report.pdf', 'bad_data'],
+      ]);
+      await rt.connectMcp({ name: 'pl', command: process.execPath, args: ['-e', SERVER] }, { source: 'plugin:pl' });
+      const r = await rt.callPluginTool('pl', 'make', { content: [blob('file:///srv/page.pdf', b64('%PDF'))] });
+      expect(r).toMatchObject({ isError: false, content: '文件 page.pdf 没有保存：这次调用不在对话里，没有地方存' });
+      expect(existsSync(join(dir, 'default'))).toBe(false);
+    } finally {
+      await rt.close();
     }
   });
 

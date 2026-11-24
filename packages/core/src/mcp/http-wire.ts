@@ -45,6 +45,7 @@ const MODERN_ERRORS = new Set([-32022, -32020, -32021, -32601, -32602, -32600]);
 export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (e: { event: string; data: string }) => void): Promise<void> {
   const reader = body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = '';
+  let pending: string[] = [];
   let event = '';
   let data: string[] = [];
   const line = (l: string): void => {
@@ -64,17 +65,22 @@ export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (e: 
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    // only the new part is searched for line ends (from one back: a \r\n may be split between chunks); an event of
-    // tens of MB (a file in it) comes in many chunks
-    const ends = /\r\n|\r|\n/g;
-    ends.lastIndex = Math.max(0, buf.length - 1);
-    buf += value;
-    for (let m = ends.exec(buf); m; m = ends.exec(buf)) {
-      line(buf.slice(0, m.index));
-      buf = buf.slice(m.index + m[0].length);
-      ends.lastIndex = 0;
+    // a chunk with no line end is kept apart: joining at every chunk would copy an event of tens of MB (a file in it)
+    // over and over
+    if (!/[\r\n]/.test(value)) {
+      pending.push(value);
+      continue;
+    }
+    buf = buf + pending.join('') + value;
+    pending = [];
+    let nl: number;
+    while ((nl = buf.search(/\r\n|\r|\n/)) >= 0) {
+      const sep = buf[nl] === '\r' && buf[nl + 1] === '\n' ? 2 : 1;
+      line(buf.slice(0, nl));
+      buf = buf.slice(nl + sep);
     }
   }
+  buf += pending.join('');
   if (buf) line(buf);
   line('');
 }

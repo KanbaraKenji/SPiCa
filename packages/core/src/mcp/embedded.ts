@@ -2,7 +2,7 @@
 // blob in base64; no name or title in the spec): kept as a file for the user, in the conversation's working folder
 // when it has one (see Session.handOverDir), else its media folder. The bytes never go to the model.
 import { closeSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
-import { extname, join, resolve, sep } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 
 /** The most a kept file may be, decoded. */
 export const EMBEDDED_LIMIT = 50 * 1024 * 1024;
@@ -116,7 +116,7 @@ export function keepEmbedded(dir: string, res: { uri?: unknown; mimeType?: unkno
     const stem = name.slice(0, name.length - ext.length);
     for (let n = 1; n < 1000; n++) {
       const path = join(root, n === 1 ? name : `${stem} (${n})${ext}`);
-      if (!path.startsWith(root + sep)) return { ok: false, reason: 'write_failed', name, error: 'outside the folder' };
+      if (dirname(path) !== root) return { ok: false, reason: 'write_failed', name, error: 'outside the folder' };
       let fd: number;
       try {
         fd = openSync(path, 'wx');

@@ -83,7 +83,8 @@ export async function producedFileCard(path: string, origin: Exclude<NonNullable
 
 /**
  * The card for a file a tool's result carried that was not kept (an MCP tool's embedded file over the limit, not
- * base64, not writable, or from a call with no conversation): its name, where it would have gone, and why.
+ * base64, not writable, or from a call with no conversation): its name and why. `path` only tells the cards apart
+ * (`<call id>/<n>/<name>`); no file is there.
  */
 export function notSavedCard(path: string, reason: NonNullable<FileCardMeta['notSaved']>, bytes?: number): FileCardMeta {
   const now = isoNow();
