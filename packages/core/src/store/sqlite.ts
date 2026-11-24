@@ -386,7 +386,8 @@ export class SqliteStore implements Store {
 
   // scheduled tasks ---------------------------------------------------------------
   upsertSchedule(s: ScheduleInfo): void {
-    const { lastRun: _last, ...data } = s;
+    const data = { ...s };
+    delete data.lastRun;
     this.#q('INSERT INTO schedules (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(s.id, s.createdAt, json(data));
   }
   getSchedule(id: string): ScheduleInfo | undefined {

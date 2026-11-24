@@ -94,7 +94,8 @@ export class MemoryStore implements Store {
   }
 
   upsertSchedule(s: ScheduleInfo): void {
-    const { lastRun: _last, ...data } = s;
+    const data = { ...s };
+    delete data.lastRun;
     this.#schedules.set(s.id, clone(data));
   }
   getSchedule(id: string): ScheduleInfo | undefined {
