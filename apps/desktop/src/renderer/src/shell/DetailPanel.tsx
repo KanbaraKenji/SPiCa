@@ -15,6 +15,7 @@ import { SpicaStatusIcon } from '@spica/brand/react';
 import { N_, t, tc } from '../../../shared/i18n';
 import { CommandJobs } from './CommandJobs';
 import { SubTaskDetail, SubTasks } from './SubTasks';
+import { Switch } from '../settings/Switch';
 
 export type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -99,6 +100,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
   // another conversation: its files open again, the first five
   /** A sub-task shown in place of the list (子任务 › one of them). */
   const [taskShown, setTaskShown] = useState<string | null>(null);
+  // 由项目经理确认子任务的操作 per project (one of two placements shown for a choice; not kept)
+  const [managerConfirms, setManagerConfirms] = useState(false);
+  const perProject = document.documentElement.dataset.coordApprove === 'project' && !!project && project.managerSessionId === session?.id;
   const [shownFor, setShownFor] = useState(session?.id);
   if (shownFor !== session?.id) {
     setShownFor(session?.id);
@@ -173,6 +177,14 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
                     <button type="button" className="link-btn" onClick={() => onOpenFile(project?.folder ?? session.cwd)}>
                       {t('打开')}
                     </button>
+                  </dd>
+                </>
+              ) : null}
+              {perProject ? (
+                <>
+                  <dt>{t('确认子任务的操作')}</dt>
+                  <dd className="detail-switch">
+                    <Switch on={managerConfirms} label={t('由项目经理确认子任务的操作')} onChange={setManagerConfirms} />
                   </dd>
                 </>
               ) : null}

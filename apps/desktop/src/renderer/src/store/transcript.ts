@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, CommandJob, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, CommandJob, ConfirmAnswer, ConfirmDelegate, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -51,6 +51,8 @@ export type Block =
       outside?: UntrustedKind;
       /** Irreversible, but ran without asking: the conversation's approval is automatic. */
       autoApproved?: boolean;
+      /** Its confirmation was answered by the sub-agent's manager, for the user: who, the decision, the reason. */
+      agentAnswered?: ConfirmAnswer;
       /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
       category?: ToolCategory;
       /** The model's one line on what this step does (run_command's description). */
@@ -65,7 +67,8 @@ export type Block =
   | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
+  /** `delegated`: handed to the sub-agent's manager too (the user can still answer). `by`: the manager answered it. */
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmDelegate; by?: ConfirmAnswer }
   /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
   | ComputerBlock
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
@@ -667,6 +670,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (note) tool.outside = note.kind;
           if (note?.signals?.length) tool.flagged = note.kind;
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
+          const answered = m.meta?.agentAnswered?.[b.toolUseId];
+          if (answered) tool.agentAnswered = answered;
           continue;
         }
         settleCard(items, b.toolUseId, b.content, b.isError);
@@ -789,7 +794,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
       if (was) replaceBlock(t.items, was, card);
       else lastResponse(t.items, `pending-${p.callId}`).blocks.push(card);
     } else if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.install ? { install: p.install } : {}) });
+      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.install ? { install: p.install } : {}), ...(p.delegated ? { delegated: p.delegated } : {}) });
     }
   }
 }
@@ -930,7 +935,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         return t;
       }
       if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.install ? { install: e.install } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.install ? { install: e.install } : {}), ...(e.delegated ? { delegated: e.delegated } : {}) });
       }
       return t;
     }
@@ -949,6 +954,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'confirm.resolved': {
       const c = findBlock(items, 'confirm', e.callId) ?? findBlock(items, 'computer', e.callId);
       if (c) c.approved = e.approved;
+      if (c?.type === 'confirm' && e.by) c.by = e.by;
       return t;
     }
     case 'install.failed': {

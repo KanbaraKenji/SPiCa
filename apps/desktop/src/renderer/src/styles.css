@@ -6783,6 +6783,18 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
 }
 
+/* 项目经理确认中: after the title as 无法撤销 is, the same size, grey (nobody has answered yet). */
+.confirm-by {
+  flex: none;
+  color: var(--spica-muted);
+}
+
+/* In a call's detail: the sub-agent's manager answered its confirmation, and why. */
+.tool-by {
+  margin: 2px 0 0;
+  color: var(--spica-muted);
+}
+
 /* The reason's second line (only when it has one), under the head and lined up with the title: past the warning
    mark on a dangerous card. Its type is .file-card-sub's (the shared rule). */
 .confirm-card > .card-sub {
@@ -9795,4 +9807,10 @@ input[type='radio']:disabled {
   display: flex;
   align-items: center;
   font-weight: 400;
+}
+
+/* 详情栏 › 确认子任务的操作 (per-project placement, shown for a choice): the switch in the row's line. */
+.detail-facts dd.detail-switch {
+  display: flex;
+  align-items: center;
 }

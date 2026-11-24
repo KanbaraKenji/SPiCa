@@ -323,7 +323,9 @@ export function CallDetail({ block, card, args = true }: { block: ToolBlock; car
   return (
     <div className="tool-detail">
       {args ? input : null}
-      {status ? <p className="tool-status">{status}</p> : null}
+      {/* the sub-agent's manager answered its confirmation: which way and why (its 已拒绝 is this line, not the red one) */}
+      {block.agentAnswered ? <p className="tool-by">{block.agentAnswered.approved ? t('项目经理已允许：{reason}', { reason: block.agentAnswered.reason }) : t('项目经理已拒绝：{reason}', { reason: block.agentAnswered.reason })}</p> : null}
+      {status && !(block.agentAnswered && !block.agentAnswered.approved && status === t('已拒绝')) ? <p className="tool-status">{status}</p> : null}
       {out ? <CallOutput text={out} /> : null}
       {args && empty && !status && !out ? <p className="tool-empty">—</p> : null}
     </div>

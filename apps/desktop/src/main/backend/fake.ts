@@ -51,6 +51,7 @@ import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPE
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
+import { COORD_ANSWERS, COORD_PROJECT, coordSeed } from './fake-coord';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
@@ -72,6 +73,8 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
+  /** The demo of 由项目经理确认子任务的操作 (fake-coord.ts): its project, and the manager answering cards. */
+  coordDemo?: boolean;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -292,7 +295,36 @@ export class FakeBackend implements AgentBackend {
         });
       }
     }
+    if (options.coordDemo) {
+      this.#coordDemo = true;
+      const seed = coordSeed(this.#now());
+      for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: false });
+      for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
+      for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
+      const at = this.#now().toISOString();
+      this.#projects.set(COORD_PROJECT.id, { id: COORD_PROJECT.id, name: COORD_PROJECT.name, folder: COORD_PROJECT.folder, managerSessionId: seed.sessions[0]!.id, workflowId: null, stage: null, status: 'active', createdAt: at, updatedAt: at });
+    }
     for (const s of this.#sessions.values()) s.regenerate = this.#regenerateState(s.id);
+  }
+
+  #coordDemo = false;
+  readonly #coordAsked = new Set<string>();
+
+  /** The demo's manager answers a card handed to it a few seconds after the card is first shown, unless the user did. */
+  #coordAnswer(sessionId: string, list: PendingItem[]): void {
+    for (const p of list) {
+      const answer = p.kind === 'confirm' && p.delegated ? COORD_ANSWERS[p.callId] : undefined;
+      if (!answer || this.#coordAsked.has(p.callId)) continue;
+      this.#coordAsked.add(p.callId);
+      setTimeout(() => {
+        if (!this.#pending.get(sessionId)?.some((x) => x.callId === p.callId)) return; // the user answered first
+        // the card stays as answered (the demo does not go on with the sub-agent's run)
+        this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== p.callId));
+        this.#setStatus(sessionId, answer.approved ? 'tool' : 'thinking');
+        if (!answer.approved) this.#declined.add(p.callId);
+        this.#emit(sessionId, { type: 'confirm.resolved', callId: p.callId, approved: answer.approved, by: answer });
+      }, 6000);
+    }
   }
 
   // ----- events -------------------------------------------------------------
@@ -479,6 +511,7 @@ export class FakeBackend implements AgentBackend {
   }
 
   async getPending(sessionId: string): Promise<PendingItem[]> {
+    if (this.#coordDemo) this.#coordAnswer(sessionId, this.#pending.get(sessionId) ?? []);
     return structuredClone(this.#pending.get(sessionId) ?? []);
   }
 

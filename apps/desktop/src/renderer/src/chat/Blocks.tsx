@@ -623,8 +623,10 @@ function toolMeta(block: ToolBlock, done = false): ReactNode {
   if (block.state === 'repeated') return t('重复，未执行');
   if (block.state === 'timeout') return t('已超时');
   if (block.state === 'running') return null;
-  if (block.durationMs !== undefined && !done) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
-  return block.autoApproved ? 'Auto' : null;
+  // allowed by the sub-agent's manager for the user: said where Auto would be
+  const by = block.agentAnswered ? t('项目经理') : block.autoApproved ? 'Auto' : null;
+  if (block.durationMs !== undefined && !done) return by ? `${by} · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
+  return by;
 }
 
 /** A call's words: the verb quieter, the object as it is; the whole path or address on hover when it was cut. */
@@ -1300,11 +1302,13 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
         {/* reading in another project's folder: said the same way, with which (the folder is on the main button's hover) */}
         {block.outsideFolder ? <span className="confirm-undo">{block.cause === 'other_project' ? t('其他项目') : t('工作文件夹以外')}</span> : null}
+        {/* handed to the sub-agent's manager as well: it may answer first (the user still can) */}
+        {block.delegated && !decided ? <span className="confirm-by" title={block.delegated.title}>{t('项目经理确认中')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
-            <span>{block.approved ? t('已允许') : block.approved === false ? t('已拒绝') : t(CARD_STOPPED)}</span>
+            <span title={block.by?.title}>{block.by ? (block.by.approved ? t('项目经理已允许') : t('项目经理已拒绝')) : block.approved ? t('已允许') : block.approved === false ? t('已拒绝') : t(CARD_STOPPED)}</span>
           </p>
         ) : (
           <div className="card-actions">
@@ -1329,6 +1333,7 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       ) : null}
       {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
+      {block.by ? <p className="card-why">{t('理由：{reason}', { reason: block.by.reason })}</p> : null}
     </section>
   );
 }

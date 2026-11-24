@@ -399,6 +399,8 @@ export interface MessageMeta {
   suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
+  /** tool_results: confirmations answered by an agent for the user (the sub-agent's manager), per tool call id. */
+  agentAnswered?: Record<string, ConfirmAnswer>;
   /** Runtime note: the user chose the working folder; what was made before moved there. */
   cwdChange?: CwdChangeMeta;
   /** Runtime note: the user switched the session's model (a decision). */
@@ -635,6 +637,18 @@ export interface PluginToolResult {
  * `irreversible` on a confirmation: what it allows cannot be undone (a plugin hook said so, or the plugin declared
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
+/** Who a sub-agent's confirmation is handed to besides the user: today its manager (a model chosen for a scheduled task later). */
+export interface ConfirmDelegate {
+  sessionId: string;
+  title?: string;
+}
+
+/** A confirmation answered by an agent for the user: which, its decision and the reason it gave. */
+export interface ConfirmAnswer extends ConfirmDelegate {
+  approved: boolean;
+  reason: string;
+}
+
 export type PendingItem =
   | {
       kind: 'confirm';
@@ -650,6 +664,8 @@ export type PendingItem =
       /** `outsideFolder` is a drive's root or the home folder: it is never kept as allowed, so the card offers allowing it this once only. */
       folderTooWide?: boolean;
       install?: InstallPreview;
+      /** Handed to the agent that answers for the user (the sub-agent's manager); the user can still answer. */
+      delegated?: ConfirmDelegate;
       createdAt: string;
     }
   /**
@@ -745,7 +761,7 @@ export type CoreEventBody =
       durationMs: number;
     }
   /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmDelegate }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -756,7 +772,8 @@ export type CoreEventBody =
   | { type: 'settings.changed'; change: SettingsChangeMeta }
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
-  | { type: 'confirm.resolved'; callId: string; approved: boolean }
+  /** `by`: answered by an agent for the user (absent: the user answered). */
+  | { type: 'confirm.resolved'; callId: string; approved: boolean; by?: ConfirmAnswer }
   | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }
   /**

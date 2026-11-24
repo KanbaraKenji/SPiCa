@@ -43,7 +43,7 @@ export function categoryOf(c: ToolCall): ToolCategory {
   if (n === 'write_file' || n === 'edit_file') return 'write';
   if (n === 'web_fetch' || n === 'web_search') return 'web';
   if (['search_history', 'read_history', 'find_history_files'].includes(n)) return 'history';
-  if (n === 'spawn_agent' || n === 'wait_agents') return 'agent';
+  if (n === 'spawn_agent' || n === 'wait_agents' || n === 'answer_confirmation') return 'agent';
   if (n === 'message_agent' || n === 'record_decision') return 'message';
   if (n === 'ask_user' || n === 'suggest_actions') return 'ask';
   if (n === 'present_files') return 'present';
@@ -216,6 +216,8 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       return { verb: 'Started', object: arg(c, 'title') ? named(arg(c, 'title')) : 'a sub-agent' };
     case 'stop_agent':
       return { verb: 'Stopped', object: 'a sub-agent' };
+    case 'answer_confirmation':
+      return { verb: (c.input as { approve?: unknown } | undefined)?.approve === true ? 'Allowed' : 'Declined', object: c.title ? t('「{name}」的操作', { name: c.title }) : "a sub-agent's step" };
     case 'wait_agents': {
       const ids = (c.input as { ids?: unknown } | undefined)?.ids;
       const k = Array.isArray(ids) ? ids.length : 0;
@@ -423,6 +425,8 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'started', say: (n) => `started ${many('a sub-agent', n, 'sub-agents')}` };
     case 'wait_agents':
       return { key: 'waited', say: () => 'waited for sub-agents' };
+    case 'answer_confirmation':
+      return { key: 'answered', say: (n) => (n === 1 ? "answered a sub-agent's confirmation" : `answered ${n} sub-agents' confirmations`) };
     case 'message_agent': {
       const to = toolWords(c).object;
       return { key: `messaged ${to}`, say: () => `messaged ${to}` };
