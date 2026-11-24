@@ -303,7 +303,7 @@ describe('scheduled tasks', () => {
     const path = join(dir, 'db-sch', 'spica.db');
     mkdirSync(join(dir, 'db-sch'), { recursive: true });
     const stores = [new MemoryStore(), new SqliteStore(path)];
-    const task = { id: 'sch_a', title: '每日报表', prompt: 'p', trigger: { type: 'time' as const, repeat: { kind: 'daily' as const, time: '09:00' } }, cwd: 'D:\work', enabled: true, nextAt: '2026-11-23T09:00:00.000+08:00', failures: 0, createdBy: 'user' as const, createdAt: '2026-11-22T08:00:00.000+08:00', updatedAt: '2026-11-22T08:00:00.000+08:00' };
+    const task = { id: 'sch_a', title: '每日报表', prompt: 'p', trigger: { type: 'time' as const, repeat: { kind: 'daily' as const, time: '09:00' } }, cwd: 'D:/work', enabled: true, nextAt: '2026-11-23T09:00:00.000+08:00', failures: 0, createdBy: 'user' as const, createdAt: '2026-11-22T08:00:00.000+08:00', updatedAt: '2026-11-22T08:00:00.000+08:00' };
     const each = (s: Store) => {
       s.upsertSchedule(task);
       s.upsertSchedule({ ...task, id: 'sch_b', createdAt: '2026-11-22T08:01:00.000+08:00' });
