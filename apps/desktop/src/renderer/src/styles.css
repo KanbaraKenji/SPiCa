@@ -9780,7 +9780,7 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
 }
 
-/* 定时任务 (mock-up). The list: one box, rows split by thin lines (as a settings box); a row: the name and when on
+/* 定时任务. The list: one box, rows split by thin lines (as a settings box); a row: the name and when on
    the left, the last run, the switch and 更多 on the right. */
 .schedule-list {
   margin: 0;
@@ -9815,6 +9815,10 @@ input[type='radio']:disabled {
   color: inherit;
   text-align: left;
   cursor: pointer;
+}
+
+.schedule-main:disabled {
+  cursor: default;
 }
 
 .schedule-name {
@@ -9985,6 +9989,8 @@ button.schedule-run-line {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
 /* 新子项目 under a project's sub-projects: the sidebar's 新项目 as a row of the list. */
 .project-new {
   color: var(--spica-muted);
@@ -10000,4 +10006,9 @@ button.schedule-run-line {
   display: flex;
   align-items: center;
   font-weight: 400;
+}
+
+/* 定时任务 cards above the mail in 收件箱: the list's gap below them too. */
+.inbox-before {
+  margin-bottom: 10px;
 }

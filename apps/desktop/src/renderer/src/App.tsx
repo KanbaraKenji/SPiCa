@@ -61,6 +61,9 @@ import { sameFolder } from './store/relocate';
 import { APP_NAME } from '../../shared/app-identity';
 import { getLocale, t, tc, tx } from '../../shared/i18n';
 import { useLocale } from './i18n';
+import type { ScheduleInfo } from '@spica/protocol';
+import { SchedulesStore, schedulesNeedingYou, useSchedules } from './store/schedules';
+import { RunCards, ScheduleDetail, ScheduleDialog, SchedulePage, TrayAsk } from './schedule/ScheduleViews';
 
 /** The sidebar's wordmark: 22 px high, smaller for a long app name. */
 const BANNER_HEIGHT = sidebarBannerHeight();
@@ -75,12 +78,22 @@ export interface AppProps {
 }
 
 /** 'project': the page of a project that holds sub-projects. */
-type View = 'chat' | 'inbox' | 'plugin' | 'project';
+type View = 'chat' | 'inbox' | 'plugin' | 'project' | 'schedule';
 
 /** Role template of the core's mail sorting thread; it lives in the inbox, not the sidebar. */
 const MAIL_TRIAGE_TEMPLATE = 'mail-triage';
 
 /** What the core's standing top-level agent is called until someone renames it. */
+
+/** The time now, again each minute (the 定时任务 page says 今天 / 明天 and the next run). */
+function useMinute(): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return now;
+}
 
 export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppProps) {
   const { settings } = useShell(shell);
@@ -91,6 +104,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     void mailStore.reload();
     return bridge.backend.onRestarted(() => void mailStore.reload());
   }, [bridge, mailStore]);
+  // 定时任务: the core's tasks, kept fresh by its events; the page, the form (new or a task to change), the clock.
+  const [schedStore] = useState(() => new SchedulesStore(bridge));
+  const scheds = useSchedules(schedStore);
+  useEffect(() => {
+    void schedStore.reload();
+    return bridge.backend.onRestarted(() => void schedStore.reload());
+  }, [bridge, schedStore]);
+  const [schedForm, setSchedForm] = useState<null | { editing?: ScheduleInfo }>(null);
+  const [trayAsk, setTrayAsk] = useState(false);
+  const schedNow = useMinute();
+  const loadRuns = useCallback((id: string) => bridge.agent.listScheduleRuns?.({ scheduleId: id, limit: 5 }) ?? Promise.resolve([]), [bridge]);
   const width = useViewportWidth();
   const [floating, setFloating] = useState<Floating>(null);
   const [view, setView] = useState<View>('chat');
@@ -369,7 +393,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
     }
     return out;
   }, [state.projects, sessions]);
-  const inboxCount = mail.items.filter(needsYou).length;
+  const schedCards = useMemo(() => schedulesNeedingYou(scheds.items), [scheds.items]);
+  const inboxCount = mail.items.filter(needsYou).length + schedCards.length;
   // Finished sub-tasks not opened since they finished: news on their row. Opening one records it.
   const doneNews = useMemo(() => unseenDone(sessions, settings.doneNews ?? []), [sessions, settings.doneNews]);
   const statusBefore = useRef<Map<string, SessionInfo['status']> | null>(null);
@@ -388,6 +413,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const session = sessions.find((s) => s.id === state.activeId);
   const parent = session?.parentId ? sessions.find((s) => s.id === session.parentId) : undefined;
   const transcript = agent.transcript(state.activeId);
+  // the 定时任务 this conversation runs for: set up to run here, or its last run is this conversation
+  const schedOfSession = state.activeId ? scheds.items.find((s) => s.sessionId === state.activeId || s.lastRun?.sessionId === state.activeId) : undefined;
   // The project the open session belongs to: its manager, or any sub-agent below it.
   const project = useMemo(() => {
     if (!session) return undefined;
@@ -1062,7 +1089,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const pageProject = view === 'project' ? state.projects.find((p) => p.id === projectPageId) : undefined;
   const aboveProject = project?.parentId ? state.projects.find((p) => p.id === project.parentId) : undefined;
   const newProjectParent = newProject?.parentId ? state.projects.find((p) => p.id === newProject.parentId) : undefined;
-  const title = view === 'inbox' ? t('收件箱') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
+  const title = view === 'inbox' ? t('收件箱') : view === 'schedule' ? t('定时任务') : view === 'plugin' ? (openPluginView?.title ?? '') : view === 'project' ? (pageProject?.name ?? '') : (session?.title ?? '');
   /**
    * In a project, a conversation's 子任务 in the details (the workers it sent out; a sub-task's
    * own ones in its details). Shown there, a finished one has been seen (its news dot goes).
@@ -1117,6 +1144,13 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         hideHeading={panelPages.length > 0}
         onStopJob={(jobId) => void agent.stopJob(jobId)}
         {...(subTasks ? { subTasks } : {})}
+        {...(schedOfSession
+          ? {
+              extra: (
+                <ScheduleDetail s={schedOfSession} now={schedNow} current={state.activeId ?? ''} loadRuns={loadRuns} onToggle={(on) => void schedStore.setEnabled(schedOfSession.id, on)} onOpenSession={openSession} />
+              ),
+            }
+          : {})}
       />
       )}
     </>
@@ -1203,7 +1237,7 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
       {...(rowActions.onNewSubProject ? { onNewSubProject: rowActions.onNewSubProject } : {})}
       {...(bridge.agent.createProject && !shell.demo ? { onNewProject: () => setNewProject({}) } : {})}
       {...sidebarNews({
-        inboxShown: mail.supported && mailSource,
+        inboxShown: (mail.supported && mailSource) || schedCards.length > 0,
         inbox: {
           count: inboxCount,
           open: view === 'inbox',
@@ -1214,6 +1248,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         },
       })}
       unseenDone={doneNews}
+      {...(scheds.supported
+        ? {
+            schedule: {
+              open: view === 'schedule',
+              onOpen: () => {
+                setView((v) => (v === 'schedule' ? 'chat' : 'schedule'));
+                setFloating(null);
+              },
+            },
+          }
+        : {})}
     />
   );
 
@@ -1363,8 +1408,22 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
                 <p>{t('插件页面不可用（插件已停用或已卸载）。')}</p>
               </div>
             )
+          ) : view === 'schedule' ? (
+            <SchedulePage
+              items={scheds.items}
+              now={schedNow}
+              onNew={() => setSchedForm({})}
+              onEdit={(s) => setSchedForm({ editing: s })}
+              onToggle={(id, on) => void schedStore.setEnabled(id, on)}
+              onRunNow={(id) => void schedStore.runNow(id)}
+              onDelete={(id) => void schedStore.remove(id)}
+              onOpenSession={openSession}
+              problem={scheds.problem}
+              onDismissProblem={() => schedStore.dismissProblem()}
+            />
           ) : view === 'inbox' ? (
             <InboxView
+              {...(schedCards.length ? { before: <RunCards items={schedCards} now={schedNow} onOpen={openSession} onResume={(id) => void schedStore.setEnabled(id, true)} /> } : {})}
               mail={mail}
               mock={pluginMock}
               prefs={settings.mail}
@@ -1621,6 +1680,35 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
               const pins = settings.pinnedProjects ?? [];
               if (pins.includes(pid)) shell.update({ pinnedProjects: pins.filter((x) => x !== pid) });
             });
+          }}
+        />
+      ) : null}
+
+      {schedForm ? (
+        <ScheduleDialog
+          {...(schedForm.editing ? { editing: schedForm.editing } : {})}
+          now={schedNow}
+          models={models.flatMap((p) => p.models.map((m) => ({ value: `${p.id}/${m.id}`, label: m.id, group: p.name })))}
+          onPickFolder={() => bridge.pickFolder(t('选择文件夹'))}
+          onSave={async (input) => {
+            const first = scheds.items.length === 0 && !input.id;
+            const problem = await schedStore.save(input);
+            // the first one: once, × of the window may minimize to the tray instead (the tasks run while the app does)
+            if (!problem && first && !settings.scheduleTrayAsked && settings.closeWindow !== 'tray') setTrayAsk(true);
+            return problem;
+          }}
+          onClose={() => setSchedForm(null)}
+        />
+      ) : null}
+      {trayAsk ? (
+        <TrayAsk
+          onYes={() => {
+            shell.update({ closeWindow: 'tray', scheduleTrayAsked: true });
+            setTrayAsk(false);
+          }}
+          onNo={() => {
+            shell.update({ scheduleTrayAsked: true });
+            setTrayAsk(false);
           }}
         />
       ) : null}

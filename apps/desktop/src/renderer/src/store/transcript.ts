@@ -166,11 +166,19 @@ function noteItem(m: Message): Item | undefined {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
     return { kind: 'note', id: m.id, text: empty ? NO_REPORT_WORDS : child.text, child: empty ? { ...child, text: NO_REPORT_WORDS } : child };
   }
-  // A run a 定时任务 started (mock-up): which one, and when.
-  const run = m.meta?.scheduleRun as { title?: unknown; at?: unknown } | undefined;
-  if (run && typeof run.title === 'string' && typeof run.at === 'string') return { kind: 'note', id: m.id, text: `${t('定时任务「{title}」', { title: run.title })} · ${whenText(run.at, new Date())}` };
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
+}
+
+/**
+ * A run a 定时任务 started (meta.scheduleRun on the prompt the core sent): a line above it with the task and when it was
+ * due (补跑 when it ran late: the app was closed or the computer asleep at that time).
+ */
+export function scheduleRunNote(m: Message): Item | undefined {
+  const run = m.meta?.scheduleRun as { title?: unknown; dueAt?: unknown; late?: unknown } | undefined;
+  if (!run || typeof run.title !== 'string' || typeof run.dueAt !== 'string') return undefined;
+  const words = `${t('定时任务「{title}」', { title: run.title })} · ${whenText(run.dueAt, new Date())}${run.late === true ? ` · ${t('补跑')}` : ''}`;
+  return { kind: 'note', id: `${m.id}:schedule`, text: words };
 }
 
 /** Mail the core handed to a project manager (meta.mails on its message): ids into the inbox. */
@@ -680,7 +688,11 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     }
     const mailIds = mailIdsOf(m);
     if (mailIds) items.push(mailItem(m, mailIds));
-    else if (m.kind === 'user' || m.kind === 'steer') items.push(userItem(m));
+    else if (m.kind === 'user' || m.kind === 'steer') {
+      const run = scheduleRunNote(m);
+      if (run) items.push(run);
+      items.push(userItem(m));
+    }
     else {
       const note = noteItem(m);
       if (note) items.push(note);
@@ -820,7 +832,11 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (mailIds) {
         if (!items.some((i) => i.id === m.id)) items.push(mailItem(m, mailIds));
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
-        if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
+        if (!items.some((i) => i.id === m.id)) {
+          const run = scheduleRunNote(m);
+          if (run) items.push(run);
+          items.push(userItem(m));
+        }
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
         // the user wrote: the count of messages to other agents starts over
         if ((m.meta?.author ?? 'user') === 'user') delete t.agentLimit;

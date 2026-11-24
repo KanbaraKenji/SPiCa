@@ -1647,6 +1647,47 @@ export interface ScheduleRun {
 /** Runs failing this many times in a row turn the task off. */
 export const SCHEDULE_FAILURES_TO_PAUSE = 3;
 
+const HM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** The words wrong with a task as given, or null. */
+export function scheduleProblem(input: ScheduleInput): string | null {
+  if (!input.title?.trim()) return 'title is empty';
+  if (!input.prompt?.trim()) return 'prompt is empty';
+  const t = input.trigger;
+  if (!t || t.type !== 'time') return 'trigger must be { type: "time", repeat }';
+  const r = t.repeat as ScheduleRepeat | undefined;
+  if (!r) return 'trigger.repeat is missing';
+  if (r.kind === 'daily') return HM.test(r.time) ? null : 'time must be HH:MM';
+  if (r.kind === 'weekly') {
+    if (!HM.test(r.time)) return 'time must be HH:MM';
+    return Array.isArray(r.days) && r.days.length && r.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) ? null : 'days must be 0 (Sunday) to 6';
+  }
+  if (r.kind === 'interval') return Number.isInteger(r.minutes) && r.minutes >= 1 && r.minutes <= 7 * 24 * 60 ? null : 'minutes must be 1 to 10080';
+  if (r.kind === 'once') return Number.isNaN(Date.parse(r.at)) ? 'at must be a date and time' : null;
+  return 'repeat.kind must be daily, weekly, interval or once';
+}
+
+/**
+ * The first time strictly after `after` the repeat fires, in this computer's time zone; null for a one-off already
+ * past. An interval counts from `after` (the last run, or when it was set up or turned on).
+ */
+export function nextRun(repeat: ScheduleRepeat, after: Date): Date | null {
+  if (repeat.kind === 'once') {
+    const at = new Date(repeat.at);
+    return at.getTime() > after.getTime() ? at : null;
+  }
+  if (repeat.kind === 'interval') return new Date(after.getTime() + repeat.minutes * 60_000);
+  const m = HM.exec(repeat.time);
+  if (!m) return null;
+  const [h, min] = [Number(m[1]), Number(m[2])];
+  const days = repeat.kind === 'weekly' ? repeat.days : [0, 1, 2, 3, 4, 5, 6];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(after.getFullYear(), after.getMonth(), after.getDate() + i, h, min, 0, 0);
+    if (d.getTime() > after.getTime() && days.includes(d.getDay())) return d;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Projects (project = a folder + a persistent project-manager session)
 // ---------------------------------------------------------------------------

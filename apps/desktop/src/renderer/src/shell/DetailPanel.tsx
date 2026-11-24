@@ -7,7 +7,7 @@ import { Icon } from '../ui/Icon';
 import { InfoTip } from '../ui/InfoTip';
 import { FileGlyph } from '../ui/FileIcon';
 import { activityText } from './activity';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { fileName, formatUsd } from '../chat/format';
 import { spendText } from '../../../shared/spend';
 import { runningWords, toolWords } from '../chat/tool-words';
@@ -54,6 +54,8 @@ export interface DetailPanelProps {
   history?: { open: boolean; toggle(): void };
   /** 后台命令's 停止. */
   onStopJob?: (jobId: string) => void;
+  /** A section under the facts (the 定时任务 this conversation runs for). */
+  extra?: ReactNode;
   /**
    * The sub-tasks the open conversation sent out (its 子任务 section) and how to show one:
    * its record (loaded on a click), 停止, its whole conversation in the main area.
@@ -90,7 +92,7 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob, subTasks }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob, subTasks, extra }: DetailPanelProps) {
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
   const running = tools.filter((b) => isRunning(b, live));
@@ -179,6 +181,7 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
             </dl>
           </section>
         ) : null}
+        {extra}
 
         {subTasks?.tasks.length ? (
           <SubTasks

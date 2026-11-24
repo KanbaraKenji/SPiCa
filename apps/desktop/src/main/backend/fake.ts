@@ -42,11 +42,15 @@ import type {
   ToolCategory,
   UsageQuery,
   UsageSummary,
+  ScheduleInfo,
+  ScheduleInput,
+  ScheduleRun,
 } from '@spica/protocol';
 import { summarizeRequests } from '@spica/core/src/usage.ts';
 import { usdText } from '@spica/core/src/money.ts';
 import { periodBounds } from '@spica/core/src/period.ts';
 import { fakeRequests } from './fake-usage';
+import { FakeSchedules } from './fake-schedules';
 import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK } from '@spica/protocol';
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
@@ -229,6 +233,11 @@ export class FakeBackend implements AgentBackend {
   /** 设置 › 模型 › 代理互发消息上限 (null: none), as the core gets it. */
   #agentMessages: number | null = 10;
   #projects = new Map<string, ProjectInfo>();
+  /** 定时任务, kept in memory (fake-schedules.ts). */
+  readonly #schedules = new FakeSchedules(
+    () => this.#now(),
+    (body) => this.#emit('', body),
+  );
   readonly #mail: FakeMailbox;
   readonly #memory: FakeMemory;
   #tidying = false;
@@ -889,6 +898,32 @@ export class FakeBackend implements AgentBackend {
     if (req.brief) void this.send(manager.id, req.brief);
     return structuredClone(project);
   }
+
+  async listSchedules(): Promise<ScheduleInfo[]> {
+    return this.#schedules.list();
+  }
+
+  async saveSchedule(input: ScheduleInput & { id?: string }): Promise<ScheduleInfo> {
+    return this.#schedules.save(input);
+  }
+
+  async deleteSchedule(id: string): Promise<boolean> {
+    return this.#schedules.remove(id);
+  }
+
+  async setScheduleEnabled(id: string, enabled: boolean): Promise<ScheduleInfo> {
+    return this.#schedules.setEnabled(id, enabled);
+  }
+
+  async runSchedule(id: string): Promise<ScheduleRun> {
+    return this.#schedules.run(id);
+  }
+
+  async listScheduleRuns(filter?: { scheduleId?: string; status?: ScheduleRun['status']; limit?: number }): Promise<ScheduleRun[]> {
+    return this.#schedules.runs(filter);
+  }
+
+  async checkSchedules(): Promise<void> {}
 
   async listMail(filter?: Parameters<NonNullable<AgentBackend['listMail']>>[0]): Promise<MailItem[]> {
     return this.#mail.list(filter);

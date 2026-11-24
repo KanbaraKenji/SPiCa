@@ -35,9 +35,8 @@ export interface InboxViewProps {
   onDismissProblem(): void;
   /** For tests and screenshots. */
   now?: Date;
-  /** Cards above the mail, under 待确认 (the 定时任务 mock-up's runs waiting for the user); `beforeCount` of them. */
+  /** Cards above the mail under 待确认 (定时任务 runs waiting for the user, tasks off after failing). */
   before?: ReactNode;
-  beforeCount?: number;
 }
 
 type Filter = 'todo' | 'all';
@@ -177,6 +176,7 @@ export function InboxView(props: InboxViewProps) {
           </div>
         ) : null}
 
+        {filter === 'todo' && props.before ? <div className="mail-list inbox-before">{props.before}</div> : null}
         {!mail.supported ? (
           <p className="inbox-empty">{t('当前版本不支持邮件。')}</p>
         ) : !mail.loaded ? null : sorted.length === 0 ? (
@@ -189,7 +189,6 @@ export function InboxView(props: InboxViewProps) {
           </div>
         ) : (
           <div className="mail-list">
-            {filter === 'todo' ? props.before : null}
             {shown.map((m) => (
               <MailCard key={m.id} item={m} props={props} onMoveMenu={(item, anchor) => setMenu((now) => (now?.anchor === anchor ? null : { item, anchor }))} />
             ))}

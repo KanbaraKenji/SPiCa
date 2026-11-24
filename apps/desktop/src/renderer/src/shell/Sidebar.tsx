@@ -529,6 +529,11 @@ export function Sidebar({
               {inbox.count ? <span className="rail-badge">{inbox.count}</span> : null}
             </button>
           ) : null}
+          {schedule ? (
+            <button type="button" className={schedule.open ? 'side-action is-active' : 'side-action'} onClick={schedule.onOpen} aria-current={schedule.open ? 'page' : undefined} aria-label={t('定时任务')} title={t('定时任务')}>
+              <Icon name="clock" />
+            </button>
+          ) : null}
         </div>
         </div>
         {pluginPages.length ? (

@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { repeatText, whenText } from './model';
-import { scheduleLine } from './ScheduleViews';
-import { demoSchedules } from './demo';
+import type { ScheduleInfo } from '@spica/protocol';
+import { repeatText, scheduleLine, whenText } from './model';
+import { formOf, inputOf } from './ScheduleViews';
 
 const now = new Date(2026, 10, 22, 15, 0); // a Sunday, in this computer's time zone
+const task = (over: Partial<ScheduleInfo>): ScheduleInfo => ({
+  id: 'sch_1',
+  title: '每日报表',
+  prompt: 'p',
+  trigger: { type: 'time', repeat: { kind: 'daily', time: '09:00' } },
+  enabled: true,
+  nextAt: new Date(2026, 10, 23, 9).toISOString(),
+  failures: 0,
+  createdBy: 'user',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+});
 
 describe('定时任务 times', () => {
   it('says how a task repeats', () => {
@@ -24,9 +37,26 @@ describe('定时任务 times', () => {
     expect(whenText(null, now)).toBe('—');
   });
 
-  it('says a one-off task’s time once in its row, and a paused one why', () => {
-    const items = demoSchedules(now, { report: 'a', orders: 'b', sameChat: 'c', sameWaiting: 'd' });
-    expect(scheduleLine(items.find((s) => s.id === 'sch-sample')!, now)).toBe('一次 · 下次 周六 10:00');
-    expect(scheduleLine(items.find((s) => s.id === 'sch-backup')!, now)).toBe('每天 18:00 · 连续 3 次失败，已暂停');
+  it('says the next run while on; off, only how it repeats (the switch and the run mark say the rest)', () => {
+    expect(scheduleLine(task({}), now)).toBe('每天 09:00 · 下次 明天 09:00');
+    expect(scheduleLine(task({ enabled: false, nextAt: null, pausedAfterFailures: true, failures: 3 }), now)).toBe('每天 09:00');
+    const once = new Date(2026, 10, 28, 10).toISOString();
+    expect(scheduleLine(task({ trigger: { type: 'time', repeat: { kind: 'once', at: once } }, nextAt: once }), now)).toBe('一次 · 下次 周六 10:00');
+  });
+});
+
+describe('the form', () => {
+  it('reads back what it was given, and says which field is wrong', () => {
+    const weekly = task({ trigger: { type: 'time', repeat: { kind: 'weekly', days: [5, 1], time: '17:30' } }, providerId: 'deepseek', model: 'deepseek-flash', cwd: 'D:/r' });
+    const v = formOf(weekly, now);
+    expect(v).toMatchObject({ kind: 'weekly', days: [5, 1], time: '17:30', model: 'deepseek/deepseek-flash', cwd: 'D:/r' });
+    expect(inputOf(v)).toEqual({ input: { title: '每日报表', prompt: 'p', trigger: { type: 'time', repeat: { kind: 'weekly', days: [1, 5], time: '17:30' } }, cwd: 'D:/r', providerId: 'deepseek', model: 'deepseek-flash' } });
+    expect(inputOf({ ...v, time: '9:5' })).toEqual({ problem: '时间不对' });
+    expect(inputOf({ ...v, kind: 'daily', time: '9:05' })).toMatchObject({ input: { trigger: { repeat: { kind: 'daily', time: '09:05' } } } });
+    expect(inputOf({ ...v, kind: 'interval', every: '2', unit: 'hours' })).toMatchObject({ input: { trigger: { repeat: { kind: 'interval', minutes: 120 } } } });
+    expect(inputOf({ ...v, kind: 'once', date: '2026/2/30', time: '10:00' })).toEqual({ problem: '日期不对' });
+    const once = inputOf({ ...v, kind: 'once', date: '2026/11/28', time: '10:00' });
+    expect('input' in once && once.input.trigger.repeat).toEqual({ kind: 'once', at: new Date(2026, 10, 28, 10).toISOString() });
+    expect(inputOf({ ...v, title: ' ' })).toEqual({ problem: '请填写名称' });
   });
 });
