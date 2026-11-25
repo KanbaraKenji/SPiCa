@@ -7,6 +7,7 @@ An example Spica plugin that shows every part of the plugin format:
 | Manifest | `manifest.json` | Name `notes`, version, permissions, mock support |
 | MCP server | `mcp/notes.json` → `server/index.js` | Node server run with Spica's own Node: `list_notes`, `read_note`, `write_note`, `delete_note` (needs confirmation), `summarize_note` (uses the model set up in Spica), `search_catalog` |
 | Skill | `skills/note-taking/SKILL.md` | How to keep tidy notes |
+| Agent | `manifest.json` · `agents` | `keeper` (Notebook keeper): a project manager starts it with `spawn_agent` `agent: "notes__keeper"`; it may only list, read and write notes, and it is kept for later jobs (`resident`) |
 | Command | `commands/note.md` | `/notes:note <text>` saves something to the notebook |
 | Hook | `hooks/notes-hint.js` | Injects one line after the system prompt |
 | Hook | `hooks/replace-confirm.js` | Asks before `write_note` overwrites a note (`replace: true`); the confirmation is marked `irreversible`, so the card shows 无法撤销 |

@@ -494,6 +494,8 @@ export interface SessionInfo {
    * jobs, it is not ended when one is done and waits for the next.
    */
   resident?: boolean;
+  /** Stopped because the plugin whose agent it was started from was turned off or removed (status 'aborted'). */
+  stoppedBy?: 'plugin';
   // The three below are always set by the core (optional only so older fakes still type-check).
   /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
   approvalMode?: ApprovalMode;

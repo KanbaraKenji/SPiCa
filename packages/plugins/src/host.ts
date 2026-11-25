@@ -74,6 +74,23 @@ export interface PluginHost {
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
   /** Values the core takes out of anything it shows or stores (a plugin's passwords from user_config). Absent on older cores. */
   addRedactions?(values: readonly string[]): void;
+  /** Add an agent the plugin provides (spawn_agent's agent) under a source; returns a remover. Absent on older cores. */
+  registerAgent?(agent: AgentSpec, source: string): () => void;
+  /** The plugin was turned off or removed: its sub-agents still going are stopped. Absent on older cores. */
+  endAgents?(plugin: string): void;
+}
+
+/** Mirrors @spica/core's RoleTemplate for a plugin's agent. */
+export interface AgentSpec {
+  /** `<plugin>__<id>` */
+  id: string;
+  name: string;
+  description: string;
+  system: string;
+  tools?: string[];
+  resident: boolean;
+  /** The plugin's display name. */
+  plugin: string;
 }
 
 /** Mirrors @spica/core's PluginToolResult. */
@@ -107,6 +124,8 @@ export interface RuntimeLike {
   invokeTool?(name: string, input: Record<string, unknown>): Promise<{ content: string; isError: boolean }>;
   callPluginTool?(plugin: string, tool: string, args: Record<string, unknown>, opts?: { confirmed?: boolean; signal?: AbortSignal }): Promise<PluginToolCallResult>;
   addRedactions?(values: readonly (string | undefined)[]): void;
+  registerTemplate?(tpl: AgentSpec & { role: 'worker' }, source: string): () => void;
+  endPluginAgents?(plugin: string): unknown;
 }
 
 export function runtimeHost(rt: RuntimeLike): PluginHost {
@@ -126,6 +145,8 @@ export function runtimeHost(rt: RuntimeLike): PluginHost {
     ...(rt.mail ? { addMailSource: (src: MailSourceSpec) => rt.mail!.addSource(src) } : {}),
     ...(rt.invokeTool ? { invokeTool: (name: string, input: Record<string, unknown>) => rt.invokeTool!(name, input) } : {}),
     ...(rt.addRedactions ? { addRedactions: (values: readonly string[]) => rt.addRedactions!(values) } : {}),
+    ...(rt.registerTemplate ? { registerAgent: (agent: AgentSpec, source: string) => rt.registerTemplate!({ ...agent, role: 'worker' }, source) } : {}),
+    ...(rt.endPluginAgents ? { endAgents: (plugin: string) => void rt.endPluginAgents!(plugin) } : {}),
     ...(rt.callPluginTool
       ? { callPluginTool: (plugin: string, tool: string, args: Record<string, unknown>, opts: { confirmed?: boolean; signal?: AbortSignal }) => rt.callPluginTool!(plugin, tool, args, opts) }
       : {}),

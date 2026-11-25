@@ -5,7 +5,7 @@
 //
 //   node scaffold.mjs <name> [--dir <parent folder>] [--display "Title"]
 //                     [--description "..."] [--author "..."]
-//                     [--with skill,command,hook,ui,config] [--with-ui]
+//                     [--with skill,command,hook,ui,config,agent] [--with-ui]
 //                     [--placement sidebar|panel|settings] [--force]
 //
 // The page (ui) goes in the sidebar by default; --placement panel puts it in
@@ -26,7 +26,7 @@ import * as parts from './templates/config-parts.mjs';
 
 const TEMPLATES = join(dirname(fileURLToPath(import.meta.url)), 'templates');
 const NAME = /^[a-z][a-z0-9-]{1,23}$/;
-const EXTRAS = ['skill', 'command', 'hook', 'ui', 'config'];
+const EXTRAS = ['skill', 'command', 'hook', 'ui', 'config', 'agent'];
 
 function parse(argv) {
   const o = { with: new Set(), force: false };
@@ -70,6 +70,18 @@ export async function scaffold(opts) {
   const placement = opts.placement ?? 'sidebar';
   if (!['sidebar', 'panel', 'settings'].includes(placement)) throw new Error('--placement 只能是 sidebar（侧栏）、panel（对话旁边的面板）或 settings（设置 › 插件 里这个插件的设置页）。');
   if (opts.placement && !withs.has('ui')) withs.add('ui');
+  // --with agent: one agent managers can start (spawn_agent agent "<name>__keeper"), kept for later jobs
+  const agents = `,
+  "agents": [
+    {
+      "id": "keeper",
+      "name": ${JSON.stringify(`${display} keeper`)},
+      "description": "Keeps the list up to date over several jobs and reports what changed.",
+      "system": ${JSON.stringify(`You keep the ${display} list up to date. For each job: look at the list (${name}__list_items, ${name}__get_item), add what you are given with ${name}__add_item, never remove anything, then report in two or three lines what you changed. New jobs come as messages.`)},
+      "tools": ["${name}__list_items", "${name}__get_item", "${name}__add_item"],
+      "resident": true
+    }
+  ]`;
   // Inside JSON files the values are escaped as JSON strings; elsewhere they go in as typed.
   const fill = (text, json) => {
     const v = (s) => (json ? JSON.stringify(s).slice(1, -1) : s);
@@ -80,6 +92,7 @@ export async function scaffold(opts) {
       .replaceAll('__AUTHOR__', v(author))
       .replaceAll('__HOOKS__', hooks)
       .replaceAll('__PLACEMENT__', placement)
+      .replaceAll('__AGENTS__', withs.has('agent') ? agents : '')
       .replaceAll('__USER_CONFIG__', config ? parts.USER_CONFIG : '')
       .replaceAll('__CONFIG_IMPORT__', config ? parts.CONFIG_IMPORT : '')
       .replaceAll('__CONFIG_TOOL__', config ? parts.CONFIG_TOOL : '')
@@ -130,7 +143,7 @@ const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(imp
 if (isMain) {
   const o = parse(process.argv.slice(2));
   if (o.help || !o.name) {
-    console.log('用法：node scaffold.mjs <插件名> [--dir 上级文件夹] [--display "显示名"] [--description "..."] [--with skill,command,hook,ui,config] [--with-ui] [--placement sidebar|panel|settings] [--force]');
+    console.log('用法：node scaffold.mjs <插件名> [--dir 上级文件夹] [--display "显示名"] [--description "..."] [--with skill,command,hook,ui,config,agent] [--with-ui] [--placement sidebar|panel|settings] [--force]');
     process.exit(o.help ? 0 : 2);
   }
   try {

@@ -51,6 +51,8 @@ export interface SessionConfig {
   writeFolders?: string[];
   /** A sub-agent kept for later jobs (spawn_agent resident): idle between jobs, not ended. */
   resident?: boolean;
+  /** Stopped because the plugin whose agent it was started from was turned off or removed. */
+  stoppedBy?: 'plugin';
   /** Other projects' folders the user allowed on a card to read in without asking (GuardCause other_project). */
   readFolders?: string[];
   /**

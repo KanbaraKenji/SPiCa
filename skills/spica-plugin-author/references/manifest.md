@@ -42,6 +42,7 @@
 | `permissions.model` | 否 | 借用户在 Spica 里配好的模型：`{ "reason": "一句为什么" }`，没有每日花费上限，用户可以在插件页允许或禁止；旧的 `max_usd_per_day` 能读，不再起作用。见 `model.md`（rc.2 之后的版本才有） |
 | `mock` | 否 | `{ "supported": true, "description": "模拟时会怎样" }` |
 | `mail` | 否 | 邮件来源声明，见 `mail.md` |
+| `agents` | 否 | 插件带的子任务，项目经理用 `spawn_agent` 的 `agent: "<插件名>__<id>"` 派活：`[{ "id", "name", "description", "system", "tools"?, "resident"? }]`。见下面「子任务」 |
 | `user_config` | 否 | 让用户填的设置（地址、账号、密码、开关、选项、文件夹……）：Spica 画表单、存值，server 读 `SPICA_USER_CONFIG`。见 `user-config.md` |
 
 ## 插件图标
@@ -79,6 +80,7 @@ Spica 的界面有简体、繁体、英语三种。字段照常写一种语言�
     "views": { "main": "To-do" },
     "commands": { "add": { "description": "Add a to-do", "argument_hint": "<text>" } },
     "skills": { "tidy": "How to tidy the list" },
+    "agents": { "keeper": { "name": "To-do keeper", "description": "Keeps the list up to date" } },
     "user_config": { "api_url": { "title": "Service URL", "placeholder": "https://…" } }
   },
   "zh-TW": { "display_name": "待辦" }
@@ -88,6 +90,20 @@ Spica 的界面有简体、繁体、英语三种。字段照常写一种语言�
 - 语言只有 `zh-CN`、`zh-TW`、`en`；每个字段都可以不写，没写的显示原字段，繁体没写先用简体那份。`views` / `commands` / `skills` 按 id 写，`user_config` 按设置表单的键写（`title`、`description`、`placeholder`）。
 - 只换给人看的字（插件页和设置表单、市场卡片、页面名字、`/` 命令说明）；模型看到的工具描述、技能正文不变。
 - 写错了只给警告，不挡安装。页面里 `window.spica.locale` 是当前界面语言，切换时收到 `{ type: 'locale', locale }`（见 `ui.md`）。
+
+## 子任务（`agents`，可选）
+
+```json
+"agents": [
+  { "id": "keeper", "name": "To-do keeper", "description": "一句话：它做什么", "system": "它的说明（系统提示）", "tools": ["todo__list", "todo__add"], "resident": true }
+]
+```
+
+- `id`：小写字母、数字、`-`，2–32 字符，不重复；模型叫它 `<插件名>__<id>`。`name`、`description`、`system` 必填；`description` 不超过 200 字，经理每一轮看到它；`system` 不超过 20000 字。
+- `tools`：模型看到的名字，自己的带前缀（`todo__add`），自带的照原名；不写就用经理的工具。
+- `resident: true`：做完一件留着等下一件（常驻），经理用 `message_agent` 派下一件；默认 `false`。
+- 插件被停用、卸载时，它的子任务里还在跑的和常驻的都停下，行上写「插件已停用」；更新、重启不停。
+- 别的语言：`i18n.<语言>.agents.<id>` 写 `name`、`description`。`scaffold.mjs --with agent` 生成一个；例子见 `plugins/example-notes`。
 
 ## `mcp/<id>.json` / `services/<id>.json`
 

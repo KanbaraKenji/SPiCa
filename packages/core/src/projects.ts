@@ -104,6 +104,12 @@ export interface RoleTemplate {
   tools?: string[];
   providerId?: string;
   model?: string;
+  /** One sentence on what it is for (a plugin's agent: listed to the agents that can start it). */
+  description?: string;
+  /** Its sub-agents are kept for later jobs (SessionConfig.resident). */
+  resident?: boolean;
+  /** The plugin that provides it (its display name), for a plugin's agent. */
+  plugin?: string;
 }
 
 export const TOP_TEMPLATE: RoleTemplate = {

@@ -122,6 +122,24 @@ describe('picking a language', () => {
   });
 });
 
+describe('agents', () => {
+  it("an agent's name and description in a language; one the plugin does not have is a warning", async () => {
+    const d = localizeDescription(
+      { displayName: 'N', description: 'D', skills: [], commands: [], views: [], agents: [{ id: 'keeper', name: 'Keeper', description: 'Keeps notes' }], i18n: { 'zh-CN': { agents: { keeper: { name: '管家', description: '整理笔记' } } } } },
+      'zh-TW',
+    );
+    expect(d.agents).toEqual([{ id: 'keeper', name: '管家', description: '整理笔记' }]);
+    const dir = await mkdtemp(join(tmpdir(), 'spica-i18n-'));
+    try {
+      await writeFile(join(dir, 'manifest.json'), JSON.stringify({ ...BASE, agents: [{ id: 'keeper', name: 'K', description: 'D', system: 'S' }], i18n: { en: { agents: { keeper: { name: 'K' }, ghost: { name: 'G' } } } } }));
+      const f = await readPluginFolder(dir);
+      expect(f.issues.filter((i) => i.where.includes('i18n')).map((i) => [i.where, i.severity])).toEqual([['manifest.json · i18n.en.agents.ghost', 'warning']]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('the official plugins', () => {
   const root = fileURLToPath(new URL('../../../plugins/', import.meta.url));
   it.each(['example-notes', 'office-preview', 'outlook-mail'])('%s has its words in all three languages, English without Chinese', async (dir) => {
@@ -134,10 +152,11 @@ describe('the official plugins', () => {
       skills: f.skills.map((x) => ({ id: x.id, description: x.description })),
       commands: f.commands.map((x) => ({ id: x.id, description: x.description, ...(x.argumentHint ? { argumentHint: x.argumentHint } : {}) })),
       views: f.views.map((x) => ({ id: x.id, title: x.title })),
+      agents: (m.agents ?? []).map((x) => ({ id: x.id, name: x.name, description: x.description })),
       ...(m.permissions.model ? { model: m.permissions.model } : {}),
       ...(m.i18n ? { i18n: m.i18n } : {}),
     };
-    const words = (x: typeof d) => [x.displayName, x.description, ...x.skills.map((s) => s.description), ...x.commands.flatMap((c) => [c.description, c.argumentHint ?? '']), ...x.views.map((v) => v.title), x.model?.reason ?? ''].filter(Boolean);
+    const words = (x: typeof d) => [x.displayName, x.description, ...x.skills.map((s) => s.description), ...x.commands.flatMap((c) => [c.description, c.argumentHint ?? '']), ...x.views.map((v) => v.title), ...(x.agents ?? []).flatMap((a) => [a.name, a.description]), x.model?.reason ?? ''].filter(Boolean);
     expect(words(localizeDescription(d, 'en')).filter((w) => /[\u3400-\u9fff]/.test(w))).toEqual([]);
     for (const zh of ['zh-CN', 'zh-TW'] as const) expect(words(localizeDescription(d, zh)).filter((w) => !/[\u3400-\u9fff]/.test(w) && /[a-z]{4} [a-z]{4}/.test(w))).toEqual([]);
   });

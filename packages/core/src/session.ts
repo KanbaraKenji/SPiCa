@@ -172,6 +172,7 @@ export class Session {
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
       ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
       ...(r.config.resident ? { resident: true } : {}),
+      ...(r.config.stoppedBy ? { stoppedBy: r.config.stoppedBy } : {}),
       approvalMode: r.config.approvalMode ?? 'manual',
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
@@ -522,7 +523,12 @@ export class Session {
   }
 
   /** Stop the run. Pending questions and confirmations are cancelled. */
-  abort(reason = 'aborted by user'): void {
+  abort(reason = 'aborted by user', opts: { by?: 'plugin' } = {}): void {
+    // stopped because its plugin was turned off: the row says so (kept after a restart)
+    if (opts.by === 'plugin') {
+      this.#record = { ...this.#record, config: { ...this.#record.config, stoppedBy: 'plugin' } };
+      this.#rt.store.upsertSession(this.#record);
+    }
     // a sub-agent kept for later jobs is ended by stopping it: no longer kept (also after a restart), stopped
     if (this.#record.config.resident) {
       const { resident: _r, ...config } = this.#record.config;
@@ -845,6 +851,13 @@ export class Session {
   // ---------------------------------------------------------------------------
 
   #startRun(): Promise<RunResult> {
+    // working again (the user wrote in it): no longer the one its plugin stopped
+    if (this.#record.config.stoppedBy) {
+      const { stoppedBy: _s, ...config } = this.#record.config;
+      void _s;
+      this.#record = { ...this.#record, config };
+      this.#rt.store.upsertSession(this.#record);
+    }
     const p = this.#loop().finally(() => {
       this.#run = undefined;
       this.#runAbort = undefined;

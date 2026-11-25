@@ -113,6 +113,26 @@ export async function check(dir, opts = {}) {
   const hasServers = ['mcp', 'services'].some((d) => existsSync(join(root, d)));
   if (hasServers && m.mock?.supported === true && !existsSync(join(root, 'mock'))) warn('manifest.json', 'mock.supported 是 true，但没有 mock/ 文件夹');
   if (hasServers && m.mock?.supported !== true) warn('manifest.json', '没有支持模拟模式（mock.supported）：在家里或外网连不上服务时，插件就没法试');
+  // agents: the same rules as Spica (packages/plugins/src/manifest.ts · parseAgents)
+  if (m.agents !== undefined) {
+    if (!Array.isArray(m.agents)) err('manifest.json', 'agents 要写成列表：[{ "id": "keeper", "name": "…", "description": "…", "system": "…" }]');
+    else {
+      const seen = new Set();
+      m.agents.forEach((a, i) => {
+        const at = `manifest.json · agents[${i}]`;
+        if (typeof a !== 'object' || a === null || Array.isArray(a)) return err(at, '要写成对象 { "id", "name", "description", "system" }');
+        for (const k of ['id', 'name', 'description', 'system']) if (typeof a[k] !== 'string' || !a[k].trim()) err(at, `缺少 ${k}（文字）`);
+        if (typeof a.id === 'string' && a.id && !/^[a-z][a-z0-9-]{1,31}$/.test(a.id)) err(at, `id「${a.id}」只能用小写字母、数字和 -，以字母开头，2–32 个字符`);
+        if (seen.has(a.id)) err(at, `id「${a.id}」重复了`);
+        seen.add(a.id);
+        if (typeof a.description === 'string' && a.description.trim().length > 200) err(at, 'description 写一句话就够，不要超过 200 个字');
+        if (typeof a.system === 'string' && a.system.trim().length > 20000) err(at, 'system 不能超过 20000 个字');
+        if (a.tools !== undefined && (!Array.isArray(a.tools) || a.tools.some((t) => typeof t !== 'string' || !t))) err(at, 'tools 要写成工具名列表，自己的工具带前缀，例如 ["read_file", "' + (m.name ?? 'name') + '__list_items"]');
+        if (a.resident !== undefined && typeof a.resident !== 'boolean') err(at, 'resident 只能是 true 或 false');
+        for (const k of Object.keys(a)) if (!['id', 'name', 'description', 'system', 'tools', 'resident'].includes(k)) warn(at, `不认识的字段 ${k}，会被忽略`);
+      });
+    }
+  }
   // the settings form (user_config): the same rules as Spica (lib/user-config.mjs)
   const configFields = parseUserConfig(
     m.user_config,
