@@ -6146,6 +6146,38 @@ section.plugins-part > .plugins-part-title {
   outline: none;
 }
 
+/* A menu of one item (复制, 允许一次): the item fills it edge to edge, so lit (pointer or keys) the menu is one shape,
+   not a lit block inside its frame; the corners are a button's (8), not the big menus' (14), so one row is not a
+   round-ended pill. Menus of more items keep the gap and their corners. */
+.context-menu.is-single {
+  padding: 0;
+  border-radius: var(--radius-m);
+}
+
+.context-menu.is-single .context-item {
+  min-height: 32px;
+  border-radius: 0;
+}
+
+/* 允许一次 under 始终允许 ▾ (chat/AllowSplit.tsx): a second button rather than a menu, as wide as the one above, its
+   words starting where 始终允许's do (the same border and padding, left-aligned); lit as a button is. */
+.context-menu.allow-split-menu .context-item {
+  min-height: var(--control-h);
+  padding: 0 var(--control-pad-x);
+  border: 1px solid var(--spica-border-strong);
+  border-radius: var(--radius-m);
+  background: var(--spica-control);
+}
+
+.context-menu.allow-split-menu .context-item:hover,
+.context-menu.allow-split-menu .context-item:focus-visible {
+  background: var(--spica-control-hover);
+}
+
+.context-menu.allow-split-menu.is-keys .context-item:hover:not(:focus-visible) {
+  background: var(--spica-control);
+}
+
 /* Moving with Up and Down: only the focused item is lit, not also the one under a pointer that has not moved. */
 .context-menu.is-keys .context-item:hover:not(:focus-visible) {
   background: none;

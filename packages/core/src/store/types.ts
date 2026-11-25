@@ -58,6 +58,11 @@ export interface SessionConfig {
    * them the user gave in their messages up to it no longer count as given (write-scope.ts).
    */
   revokedFolders?: { folder: string; upTo: number }[];
+  /**
+   * The tools the user allowed on a card (始终允许) to run without asking: the key their hook gave (ToolDecision
+   * `keep`) and the tool's name; taken back with allowed_folders.
+   */
+  keptTools?: { key: string; tool: string }[];
 }
 
 export interface ToolCallCards {

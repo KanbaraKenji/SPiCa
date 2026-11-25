@@ -68,7 +68,17 @@ describe('services the person adds', () => {
   it('每次询问: each tool asks first; 直接执行: it does not, and the service is not restarted for it', async () => {
     const { rt, s, events } = setup();
     await s.set([notes()]);
-    expect((await decide(rt, 'notes__hello')).decision).toEqual({ action: 'confirm', reason: '「notes」：hello' });
+    const asked = (await decide(rt, 'notes__hello')).decision;
+    expect(asked).toEqual({ action: 'confirm', reason: '「notes」：hello', keep: expect.stringMatching(/^mcp:[0-9a-f]{12}:notes__hello$/) });
+    // 始终允许 is kept per tool, and for the service where it runs: another of its tools, or the same name
+    // running something else, is another key
+    const key = (d: typeof asked) => (d.action === 'confirm' ? d.keep : undefined);
+    expect(key((await decide(rt, 'notes__crash')).decision)).not.toBe(key(asked));
+    await s.set([notes({ args: [script, 'D:\\Other'] })]);
+    expect(key((await decide(rt, 'notes__hello')).decision)).not.toBe(key(asked));
+    await s.set([notes({ env: { NOTES_TOKEN: 'nt-secret-2' } })]);
+    expect(key((await decide(rt, 'notes__hello')).decision)).toBe(key(asked));
+    await s.set([notes()]);
     events.length = 0;
     await s.set([notes({ approval: 'auto' })]);
     expect((await decide(rt, 'notes__hello')).decision).toEqual({ action: 'allow' });

@@ -1230,6 +1230,12 @@ export function InstallList({ preview }: { preview: InstallPreview }) {
   );
 }
 
+/** What 始终允许 keeps on a service tool's card: this conversation, the service, the tool (`server__tool`). */
+function keptToolHint(name: string): string {
+  const cut = name.indexOf('__');
+  return [t('此对话'), ...(cut > 0 ? [name.slice(0, cut), name.slice(cut + 2)] : [name])].join(' · ');
+}
+
 /** The room a confirmation card's words need on its one row (in characters of its size), else its buttons go under. */
 const CONFIRM_WORDS_ROOM = 9;
 
@@ -1260,7 +1266,7 @@ function wordsSqueezed(head: HTMLElement): boolean {
  * back, 拒绝 / 允许 or what was decided), then the command in full (copy at its top right) or the call's arguments.
  * For a command, the title is the app's own reading of it (运行命令 when it cannot tell), not the model's words.
  */
-export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean, allowFolder?: boolean): void }) {
+export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type: 'confirm' }>; onDecide(approved: boolean, always?: boolean): void }) {
   const [sent, setSent] = useState(false);
   const decided = block.approved !== undefined || block.cancelled === true;
   // A narrow card (the chat squeezed by the panel) whose words would be a column a few characters wide: 拒绝 / 允许
@@ -1275,12 +1281,15 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
     ro.observe(el);
     return () => ro.disconnect();
   }, [decided]);
-  const decide = (approved: boolean, allowFolder = false) => {
+  const decide = (approved: boolean, always = false) => {
     if (sent) return;
     setSent(true);
-    if (allowFolder) onDecide(approved, true);
+    if (always) onDecide(approved, true);
     else onDecide(approved);
   };
+  // 始终允许 keeps a folder (a write outside the conversation's folders) or a service's tool (a user MCP service
+  // asking first), for this conversation; its hover text says what
+  const keep = block.outsideFolder ? (block.folderTooWide ? undefined : block.outsideFolder) : block.keepTool ? keptToolHint(block.name) : undefined;
   const input = block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : {};
   const command = block.name === 'run_command' && typeof input.command === 'string' ? input.command : null;
   const facts = command !== null ? commandFacts(command) : [];
@@ -1314,8 +1323,8 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
             <button type="button" className="btn" disabled={sent} onClick={() => decide(false)}>
               {t('拒绝')}
             </button>
-            {block.outsideFolder && !block.folderTooWide ? (
-              <AllowSplit disabled={sent} hint={block.outsideFolder} onAllow={(always) => decide(true, always)} />
+            {keep !== undefined ? (
+              <AllowSplit disabled={sent} hint={keep} onAllow={(always) => decide(true, always)} />
             ) : (
               <button type="button" className="btn btn-primary" disabled={sent} onClick={() => decide(true)}>
                 {t('允许')}

@@ -38,8 +38,12 @@ export type ToolDecision =
    * `byDefault`: set by the registry for irreversible tools nobody waived (an approval mode may pass it).
    * `irreversible`: what the user is asked to allow cannot be undone; the card says so (无法撤销 and the warning
    * mark). It only makes the card more prominent: it never turns a confirmation into none.
+   * `keep`: the card may offer 始终允许 for it, kept with the conversation under this key (a user MCP service's
+   * tool); a later call with the same key is not asked again in that conversation. Kept only when every confirming
+   * hook gave the same key, and never for a guard's confirmation or an irreversible call (marked so by a hook, or a
+   * tool declared irreversible, as an MCP tool with destructiveHint).
    */
-  | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean; irreversible?: boolean }
+  | { action: 'confirm'; reason?: string; input?: unknown; byDefault?: boolean; irreversible?: boolean; keep?: string }
   /** Skip confirmation even for irreversible tools. */
   | { action: 'auto'; input?: unknown };
 
@@ -126,6 +130,8 @@ export class HookRegistry {
   async beforeTool(call: ToolCallDraft, ctx: HookContext): Promise<{ decision: ToolDecision; input: unknown }> {
     let input = call.input;
     let confirm: { reason?: string; irreversible?: true } | undefined;
+    // the key 始终允许 keeps: only while every confirming hook gave the same one (another hook's ask is never waived)
+    let keep: string | null | undefined;
     let auto = false;
     for (const e of this.#entries) {
       const d = await e.hooks.beforeTool?.({ ...call, input }, ctx);
@@ -134,11 +140,12 @@ export class HookRegistry {
       if ('input' in d && d.input !== undefined) input = d.input;
       if (d.action === 'confirm') {
         const marked = d.irreversible === true || confirm?.irreversible === true;
+        keep = keep === undefined ? (d.keep ?? null) : keep && keep === d.keep ? keep : null;
         confirm = { ...(d.reason ? { reason: d.reason } : {}), ...(marked ? { irreversible: true as const } : {}) };
       }
       if (d.action === 'auto') auto = true;
     }
-    if (confirm) return { decision: { action: 'confirm', ...confirm }, input };
+    if (confirm) return { decision: { action: 'confirm', ...confirm, ...(keep && !confirm.irreversible && !call.irreversible ? { keep } : {}) }, input };
     if (call.irreversible && !auto) {
       return { decision: { action: 'confirm', reason: 'irreversible action', byDefault: true }, input };
     }

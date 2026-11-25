@@ -1,7 +1,8 @@
 // 始终允许 as the main button, 允许一次 in its drop-down: a confirmation that can be allowed for good (a write outside
 // the conversation's folders: that folder). One shape: the main part and the arrow share the outer corners, the
 // inner edge is straight on both. Keys: Enter / Space on the main part is 始终允许; on the arrow, or Alt+Down on the
-// main part, the menu opens with 允许一次 focused (Up / Down / Enter / Esc as in every menu).
+// main part, the menu opens with 允许一次 focused (Up / Down / Enter / Esc as in every menu). The menu is drawn as a
+// second button under this one, as wide, its words starting where 始终允许's do.
 import { useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { t } from '../../../shared/i18n';
@@ -44,7 +45,20 @@ export function AllowSplit({ disabled, hint, onAllow }: { disabled: boolean; hin
       </button>
       {/* On the page itself: inside the conversation a fixed position would be taken from the card. */}
       {open
-        ? createPortal(<ContextMenu x={0} y={0} anchor={box} align="end" items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]} onClose={() => setBox(null)} />, document.body)
+        ? createPortal(
+            <ContextMenu
+              x={0}
+              y={0}
+              anchor={box}
+              align="end"
+              className="allow-split-menu"
+              // as wide as the button, so 允许一次 is a second button under it (styles.css .allow-split-menu)
+              minWidth={box.offsetWidth}
+              items={[{ label: t('允许一次'), onSelect: () => onAllow(false) }]}
+              onClose={() => setBox(null)}
+            />,
+            document.body,
+          )
         : null}
     </span>
   );

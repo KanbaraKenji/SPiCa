@@ -214,6 +214,36 @@ describe('AskCard', () => {
 });
 
 describe('ConfirmCard', () => {
+  describe('a user MCP service’s tool asking first', () => {
+    const block = { type: 'confirm' as const, callId: 'm1', name: 'lab__room_temperature', input: { room: 'B2' }, reason: '「lab」：room_temperature', keepTool: true };
+
+    it('拒绝, then 始终允许 with 允许一次 in its menu; the hover on 始终允许 is what it keeps: this conversation, the service, the tool', () => {
+      const onDecide = vi.fn();
+      render(<ConfirmCard block={block} onDecide={onDecide} />);
+      const always = screen.getByRole('button', { name: '始终允许' });
+      expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['拒绝', '始终允许', '']);
+      expect(always.getAttribute('title')).toBe('此对话 · lab · room_temperature');
+      expect(document.querySelector('.confirm-undo')).toBeNull();
+      fireEvent.click(always);
+      expect(onDecide.mock.calls).toEqual([[true, true]]);
+    });
+
+    it('允许一次 from the menu: this once', () => {
+      const onDecide = vi.fn();
+      render(<ConfirmCard block={block} onDecide={onDecide} />);
+      fireEvent.click(screen.getByRole('button', { name: '更多选项' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: '允许一次' }));
+      expect(onDecide.mock.calls).toEqual([[true]]);
+    });
+
+    it('without keepTool (the guard asks, or it cannot be undone): 拒绝 / 允许 as before', () => {
+      const { keepTool: _k, ...plain } = block;
+      void _k;
+      render(<ConfirmCard block={plain} onDecide={vi.fn()} />);
+      expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual(['拒绝', '允许']);
+    });
+  });
+
   describe('a write outside the conversation’s folders', () => {
     const block = { type: 'confirm' as const, callId: 'c9', name: 'edit_file', input: { path: 'D:\\共享资料\\纪要\\会议纪要.md', old_string: 'a', new_string: 'b' }, reason: 'outside', cause: 'outside_folder' as const, outsideFolder: 'D:\\共享资料\\纪要' };
     const card = () => {
@@ -247,6 +277,8 @@ describe('ConfirmCard', () => {
       fireEvent.click(more);
       expect(more.getAttribute('aria-expanded')).toBe('true');
       expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['允许一次']);
+      // one item: it fills the menu (ui/ContextMenu, is-single)
+      expect(screen.getByRole('menu').className).toBe('context-menu is-single allow-split-menu');
       expect(document.activeElement?.textContent).toBe('允许一次');
       fireEvent.click(more);
       expect(screen.queryByRole('menu')).toBeNull();

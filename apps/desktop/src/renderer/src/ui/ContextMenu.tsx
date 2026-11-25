@@ -53,6 +53,7 @@ export function ContextMenu({
   minWidth,
   focusChecked = false,
   align = 'start',
+  className,
 }: {
   x: number;
   y: number;
@@ -66,6 +67,8 @@ export function ContextMenu({
   focusChecked?: boolean;
   /** `end`: the menu's right edge on the anchor's (a button at the right end of a card: the menu stays over the card). */
   align?: 'start' | 'end';
+  /** One more class on the menu (a menu that belongs to one button: allow-split-menu). */
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -74,6 +77,9 @@ export function ContextMenu({
   const hot = useRef<HTMLButtonElement | null>(null);
   // Moving with the keys: only the focused item is lit until the pointer moves again.
   const [keys, setKeys] = useState(false);
+  // One item (复制 on selected words, 允许一次): it fills the menu, so lit it is one shape, not a
+  // lit block inside the menu's frame.
+  const single = items.length === 1;
 
   // Keep it inside the window.
   useLayoutEffect(() => {
@@ -145,7 +151,7 @@ export function ContextMenu({
     // take the focus back to the items, and hover stops lighting them until the pointer moves.
     <div
       ref={ref}
-      className={keys ? 'context-menu is-keys' : 'context-menu'}
+      className={['context-menu', keys ? 'is-keys' : '', single ? 'is-single' : '', className ?? ''].filter(Boolean).join(' ')}
       role="menu"
       tabIndex={-1}
       style={{ left: pos.left, top: pos.top, ...(minWidth ? { minWidth } : {}) }}

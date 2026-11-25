@@ -534,6 +534,14 @@ describe('a question or confirmation stopped while it waits', () => {
     expect(cards(again)[0]).toMatchObject({ type: 'confirm', irreversible: true });
   });
 
+  it('a service tool’s card that can be kept (始终允许) stays so, live and when the page is rebuilt while it waits', () => {
+    const live = applyEvent({ items: [] }, ev(1, { type: 'confirm.request', callId: 'k1', name: 'lab__room_temperature', input: { room: 'B2' }, reason: '「lab」：room_temperature', keepTool: 'mcp:abc:lab__room_temperature' }));
+    expect(cards(live)[0]).toMatchObject({ type: 'confirm', keepTool: true });
+    expect(cards(asked())[1]).not.toHaveProperty('keepTool');
+    const again = fromHistory([], [{ kind: 'confirm', callId: 'k1', toolName: 'lab__room_temperature', input: { room: 'B2' }, reason: '「lab」：room_temperature', keepTool: 'mcp:abc:lab__room_temperature', createdAt: '' }]);
+    expect(cards(again)[0]).toMatchObject({ type: 'confirm', keepTool: true });
+  });
+
   it('the core’s way: status aborted and a cancelled result, no ask.resolved: both cards are cancelled, the answer interrupted', () => {
     let t = asked();
     t = applyEvent(t, ev(3, { type: 'status', status: 'aborted' }));
