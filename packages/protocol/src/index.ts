@@ -805,6 +805,10 @@ export type CoreEventBody =
   | { type: 'mail.feedback'; item: MailItem }
   /** Mail settings changed while running. `running` = polling on its interval. */
   | { type: 'mail.configured'; settings: MailSettings; running: boolean }
+  /** Scheduled tasks (on the event host): one added or changed (its last run included), one removed, a run started or ended. */
+  | { type: 'schedule.changed'; schedule: ScheduleInfo }
+  | { type: 'schedule.deleted'; id: string }
+  | { type: 'schedule.run'; run: ScheduleRun }
   /** Runtime settings changed while running (which groups: providers, defaults, limits, budget, workflows, locale, search, mail). */
   | { type: 'runtime.configured'; changed: string[]; warnings: string[] }
   | { type: 'session.renamed'; title: string | null }
@@ -1499,6 +1503,19 @@ export interface AgentApi {
   pollMail?(): Promise<MailPollResult>;
   /** The user's handling of a triaged mail; teaches the sender memory. */
   mailFeedback?(mailId: string, feedback: { action: MailFeedback['action']; projectId?: string }): Promise<MailItem>;
+  // Scheduled tasks: optional until a backend implements them.
+  listSchedules?(): Promise<ScheduleInfo[]>;
+  /** Adds one, or with `id` changes it (its next run worked out again). */
+  saveSchedule?(input: ScheduleInput & { id?: string }): Promise<ScheduleInfo>;
+  deleteSchedule?(id: string): Promise<boolean>;
+  /** On (its next run worked out from now, the failures forgotten) or off. */
+  setScheduleEnabled?(id: string, enabled: boolean): Promise<ScheduleInfo>;
+  /** Runs it now, outside its times (立即运行). */
+  runSchedule?(id: string): Promise<ScheduleRun>;
+  /** Newest first. */
+  listScheduleRuns?(filter?: { scheduleId?: string; status?: ScheduleRunStatus; limit?: number }): Promise<ScheduleRun[]>;
+  /** The computer woke up (or the clock jumped): look for runs due now. */
+  checkSchedules?(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1565,6 +1582,110 @@ export interface MailPollResult {
   added: number;
   triaged: number;
   routed: number;
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled tasks: a prompt the core sends by itself at set times
+// ---------------------------------------------------------------------------
+
+/** When a time trigger fires, in this computer's time zone. `time` is HH:MM; `days` 0 = Sunday; `at` an ISO time. */
+export type ScheduleRepeat =
+  | { kind: 'daily'; time: string }
+  | { kind: 'weekly'; days: number[]; time: string }
+  | { kind: 'interval'; minutes: number }
+  | { kind: 'once'; at: string };
+
+/** What starts a run. Only time for now; an event (mail, a file) would be another member. */
+export type ScheduleTrigger = { type: 'time'; repeat: ScheduleRepeat };
+
+export interface ScheduleInput {
+  title: string;
+  /** What is sent to the agent at each run. */
+  prompt: string;
+  trigger: ScheduleTrigger;
+  /** The folder it works in; none: a folder of its own. */
+  cwd?: string;
+  providerId?: string;
+  model?: string;
+  /** Run in this conversation (set up from it) instead of a new conversation each time. */
+  sessionId?: string;
+}
+
+export interface ScheduleInfo extends ScheduleInput {
+  id: string;
+  enabled: boolean;
+  /** The next run; null when off or a one-off that has run. */
+  nextAt: string | null;
+  /** Failed runs in a row; at SCHEDULE_FAILURES_TO_PAUSE it is turned off (pausedAfterFailures). */
+  failures: number;
+  pausedAfterFailures?: boolean;
+  createdBy: 'user' | 'agent';
+  createdAt: string;
+  updatedAt: string;
+  lastRun?: ScheduleRun;
+}
+
+export type ScheduleRunStatus = 'running' | 'done' | 'waiting' | 'failed' | 'skipped';
+
+export interface ScheduleRun {
+  id: string;
+  scheduleId: string;
+  /** The time it was due. */
+  dueAt: string;
+  startedAt: string;
+  endedAt?: string;
+  status: ScheduleRunStatus;
+  /** The conversation it ran in. */
+  sessionId?: string;
+  /** Due while the app was closed or the computer slept: run when it came back. */
+  late?: boolean;
+  /** failed: how it ended (RunEndReason, 'interrupted', 'no_model'), with the core's words; skipped: 'previous_waiting'. */
+  reason?: string;
+  detail?: string;
+}
+
+/** Runs failing this many times in a row turn the task off. */
+export const SCHEDULE_FAILURES_TO_PAUSE = 3;
+
+const HM = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+/** The words wrong with a task as given, or null. */
+export function scheduleProblem(input: ScheduleInput): string | null {
+  if (!input.title?.trim()) return 'title is empty';
+  if (!input.prompt?.trim()) return 'prompt is empty';
+  const t = input.trigger;
+  if (!t || t.type !== 'time') return 'trigger must be { type: "time", repeat }';
+  const r = t.repeat as ScheduleRepeat | undefined;
+  if (!r) return 'trigger.repeat is missing';
+  if (r.kind === 'daily') return HM.test(r.time) ? null : 'time must be HH:MM';
+  if (r.kind === 'weekly') {
+    if (!HM.test(r.time)) return 'time must be HH:MM';
+    return Array.isArray(r.days) && r.days.length && r.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6) ? null : 'days must be 0 (Sunday) to 6';
+  }
+  if (r.kind === 'interval') return Number.isInteger(r.minutes) && r.minutes >= 1 && r.minutes <= 7 * 24 * 60 ? null : 'minutes must be 1 to 10080';
+  if (r.kind === 'once') return Number.isNaN(Date.parse(r.at)) ? 'at must be a date and time' : null;
+  return 'repeat.kind must be daily, weekly, interval or once';
+}
+
+/**
+ * The first time strictly after `after` the repeat fires, in this computer's time zone; null for a one-off already
+ * past. An interval counts from `after` (the last run, or when it was set up or turned on).
+ */
+export function nextRun(repeat: ScheduleRepeat, after: Date): Date | null {
+  if (repeat.kind === 'once') {
+    const at = new Date(repeat.at);
+    return at.getTime() > after.getTime() ? at : null;
+  }
+  if (repeat.kind === 'interval') return new Date(after.getTime() + repeat.minutes * 60_000);
+  const m = HM.exec(repeat.time);
+  if (!m) return null;
+  const [h, min] = [Number(m[1]), Number(m[2])];
+  const days = repeat.kind === 'weekly' ? repeat.days : [0, 1, 2, 3, 4, 5, 6];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(after.getFullYear(), after.getMonth(), after.getDate() + i, h, min, 0, 0);
+    if (d.getTime() > after.getTime() && days.includes(d.getDay())) return d;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

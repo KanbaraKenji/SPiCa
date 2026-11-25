@@ -1,7 +1,7 @@
 // Storage contract. The database is the source of truth for sessions,
 // messages, tool calls, pending questions, relays and traceable records.
 // Synchronous on purpose: the default backend is embedded SQLite.
-import type { AgentRole, MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, RequestRecord, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { AgentRole, ScheduleInfo, ScheduleRun, ScheduleRunStatus, MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, PendingItem, ProjectInfo, ProjectLogEntry, RequestRecord, SessionStatus, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 
 export type SenderDecision = { decision: 'project'; projectId: string } | { decision: 'ignore' };
 
@@ -163,6 +163,17 @@ export interface Store {
   listMail(filter?: { status?: MailItem['status']; projectId?: string; limit?: number }): MailItem[];
   /** Sender memory: what the user did with this sender's mail (put it in a project, or ignored it). */
   setSenderDecision(address: string, d: SenderDecision): void;
+
+  /** Scheduled tasks (without lastRun: that is read from the runs). */
+  upsertSchedule(s: ScheduleInfo): void;
+  getSchedule(id: string): ScheduleInfo | undefined;
+  /** Oldest first. */
+  listSchedules(): ScheduleInfo[];
+  /** The task and its runs. */
+  deleteSchedule(id: string): void;
+  upsertScheduleRun(r: ScheduleRun): void;
+  /** Newest first (by when it started). */
+  listScheduleRuns(filter?: { scheduleId?: string; status?: ScheduleRunStatus; sessionId?: string; limit?: number }): ScheduleRun[];
   getSenderDecision(address: string): SenderDecision | undefined;
 
   /** The user's memory across conversations. `id` 0 means a new item: the store gives the next number and returns it. */

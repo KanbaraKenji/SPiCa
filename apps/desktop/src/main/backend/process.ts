@@ -195,6 +195,13 @@ export class ProcessBackend implements AgentBackend {
   listMail: NonNullable<AgentApi['listMail']> = (...a) => this.call('listMail', ...a);
   pollMail: NonNullable<AgentApi['pollMail']> = () => this.call('pollMail');
   mailFeedback: NonNullable<AgentApi['mailFeedback']> = (...a) => this.call('mailFeedback', ...a);
+  listSchedules: NonNullable<AgentApi['listSchedules']> = (...a) => this.call('listSchedules', ...a);
+  saveSchedule: NonNullable<AgentApi['saveSchedule']> = (...a) => this.call('saveSchedule', ...a);
+  deleteSchedule: NonNullable<AgentApi['deleteSchedule']> = (...a) => this.call('deleteSchedule', ...a);
+  setScheduleEnabled: NonNullable<AgentApi['setScheduleEnabled']> = (...a) => this.call('setScheduleEnabled', ...a);
+  runSchedule: NonNullable<AgentApi['runSchedule']> = (...a) => this.call('runSchedule', ...a);
+  listScheduleRuns: NonNullable<AgentApi['listScheduleRuns']> = (...a) => this.call('listScheduleRuns', ...a);
+  checkSchedules: NonNullable<AgentApi['checkSchedules']> = (...a) => this.call('checkSchedules', ...a);
   renameProject: NonNullable<AgentApi['renameProject']> = (...a) => this.call('renameProject', ...a);
   deleteProject: NonNullable<AgentApi['deleteProject']> = (...a) => this.call('deleteProject', ...a);
   setSessionModel: NonNullable<AgentApi['setSessionModel']> = (...a) => this.call('setSessionModel', ...a);

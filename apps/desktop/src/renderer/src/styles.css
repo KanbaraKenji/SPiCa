@@ -9780,6 +9780,224 @@ input[type='radio']:disabled {
   color: var(--spica-muted);
 }
 
+/* 定时任务. The list: one box, rows split by thin lines (as a settings box); a row: the name and when on
+   the left, the last run, the switch and 更多 on the right. */
+.schedule-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--spica-border);
+  border-radius: var(--radius-l);
+  background: var(--spica-surface);
+}
+
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+}
+
+.schedule-row + .schedule-row {
+  border-top: 1px solid var(--spica-divider);
+}
+
+.schedule-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schedule-main:disabled {
+  cursor: default;
+}
+
+.schedule-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-weight: 600;
+  color: var(--spica-ink);
+}
+
+.schedule-when {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  color: var(--spica-muted);
+}
+
+.schedule-when.is-failed {
+  color: var(--spica-danger);
+}
+
+.schedule-row.is-off .schedule-name,
+.schedule-setting.is-off .schedule-title-btn {
+  color: var(--spica-muted);
+}
+
+.schedule-run {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-footnote);
+  line-height: var(--lh-footnote);
+  color: var(--spica-muted);
+  white-space: nowrap;
+}
+
+.schedule-run.is-failed {
+  color: var(--spica-danger);
+}
+
+.schedule-title-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.schedule-setting .setting-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The form: 重复 as segments (星期 under them for 每周), then the time fields. */
+.schedule-dialog {
+  width: min(520px, calc(100vw - 32px));
+}
+
+.schedule-repeat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.schedule-form-group .setting-row.is-stack .input {
+  width: 100%;
+}
+
+.form-inline.schedule-when-fields .input,
+.form-inline.schedule-when-fields .schedule-unit {
+  flex: none;
+}
+
+.schedule-when-fields .schedule-num {
+  width: 72px;
+}
+
+.schedule-when-fields .schedule-time {
+  width: 88px;
+}
+
+.schedule-when-fields .schedule-date {
+  width: 120px;
+}
+
+.schedule-when-fields .schedule-unit {
+  width: 96px;
+}
+
+/* The agent's card and the details: the fields read-only, names left, values right. */
+.schedule-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0 16px 14px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+}
+
+.schedule-facts dt {
+  color: var(--spica-muted);
+}
+
+.schedule-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* What the task says: its own lines kept, at most eight of them in sight (the card's head and buttons stay in view). */
+.schedule-facts .schedule-prompt {
+  white-space: pre-wrap;
+  max-height: calc(var(--lh-body) * 8);
+  overflow-y: auto;
+}
+
+.schedule-facts .schedule-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.schedule-runs {
+  margin-top: 8px;
+}
+
+.schedule-run-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+button.schedule-run-line {
+  cursor: pointer;
+}
+
+.mail-tag.is-run::before {
+  display: none;
+}
+
+.mail-tag.is-run {
+  color: var(--spica-muted);
+}
+
+.mail-tag.is-run.is-failed {
+  color: var(--spica-danger);
+}
+
+.run-card .mail-from {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 /* 新子项目 under a project's sub-projects: the sidebar's 新项目 as a row of the list. */
 .project-new {
   color: var(--spica-muted);
@@ -9795,4 +10013,9 @@ input[type='radio']:disabled {
   display: flex;
   align-items: center;
   font-weight: 400;
+}
+
+/* 定时任务 cards above the mail in 收件箱: the list's gap below them too. */
+.inbox-before {
+  margin-bottom: 10px;
 }

@@ -6,6 +6,8 @@ const LABELS: Record<string, string> = {
   read_file: N_('读取文件'),
   write_file: N_('写入文件'),
   edit_file: N_('修改文件'),
+  schedule_task: N_('定时任务'),
+  list_schedules: N_('定时任务'),
   list_dir: N_('查看文件夹'),
   glob: N_('查找文件'),
   grep: N_('搜索内容'),

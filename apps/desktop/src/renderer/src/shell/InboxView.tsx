@@ -1,7 +1,7 @@
 // 收件箱: mail the core fetched through a mail plugin and sorted into projects.
 // Each mail shows where it went and why; the user accepts, ignores or moves
 // it. Only suggestions: nothing here sends, moves or marks mail.
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { MailItem } from '@spica/protocol';
 import { byReceived, mailTime, needsYou, reasonOf, surenessOf, verdictOf } from '../../../shared/mail';
 import type { MailPrefs } from '../../../shared/settings';
@@ -35,6 +35,10 @@ export interface InboxViewProps {
   onDismissProblem(): void;
   /** For tests and screenshots. */
   now?: Date;
+  /** Cards above the mail under 待确认 (定时任务 runs waiting for the user, tasks off after failing). */
+  before?: ReactNode;
+  /** False: no mail plugin, the inbox is there only for `before` (no tabs, no mail status, no 「没有邮件」). Default true. */
+  mailShown?: boolean;
 }
 
 type Filter = 'todo' | 'all';
@@ -131,6 +135,14 @@ export function InboxView(props: InboxViewProps) {
         .filter(Boolean)
         .join(' · ');
 
+  // No mail plugin: the inbox is only what waits from elsewhere (定时任务); nothing about mail that is not there.
+  if (props.mailShown === false)
+    return (
+      <div className="inbox">
+        <div className="inbox-column">{props.before ? <div className="mail-list">{props.before}</div> : null}</div>
+      </div>
+    );
+
   return (
     <div className="inbox">
       <div className="inbox-column">
@@ -174,6 +186,7 @@ export function InboxView(props: InboxViewProps) {
           </div>
         ) : null}
 
+        {filter === 'todo' && props.before ? <div className="mail-list inbox-before">{props.before}</div> : null}
         {!mail.supported ? (
           <p className="inbox-empty">{t('当前版本不支持邮件。')}</p>
         ) : !mail.loaded ? null : sorted.length === 0 ? (

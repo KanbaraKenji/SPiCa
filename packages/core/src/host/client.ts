@@ -80,6 +80,13 @@ const API_METHODS = [
   'listMail',
   'pollMail',
   'mailFeedback',
+  'listSchedules',
+  'saveSchedule',
+  'deleteSchedule',
+  'setScheduleEnabled',
+  'runSchedule',
+  'listScheduleRuns',
+  'checkSchedules',
 ] as const;
 
 export function connectBackend(port: PortLike, opts: { timeoutMs?: number; hostMethods?: HostMethods } = {}): BackendClient {

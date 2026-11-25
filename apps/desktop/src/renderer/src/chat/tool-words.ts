@@ -236,6 +236,10 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
       const k = Array.isArray(paths) ? paths.length : 0;
       return { verb: 'Presented', object: k === 1 ? '1 file' : `${k} files` };
     }
+    case 'list_schedules':
+      return { verb: 'Listed', object: 'scheduled tasks' };
+    case 'schedule_task':
+      return arg(c, 'title') ? { verb: 'Scheduled', object: named(arg(c, 'title')) } : { verb: 'Scheduled', object: 'a task' };
     case 'create_project':
       return arg(c, 'name') ? { verb: 'Created project', object: named(arg(c, 'name')) } : { verb: 'Created', object: 'a project' };
     case 'set_stage':
@@ -293,6 +297,7 @@ export function runningWords(c: ToolCall): string {
     Recorded: 'Recording',
     Presented: 'Presenting',
     'Created project': 'Creating project',
+    Scheduled: 'Scheduling',
     Moved: 'Moving',
     Added: 'Adding',
     Checked: 'Checking',
@@ -431,6 +436,8 @@ function phrase(c: ToolCall, card?: FileCardMeta): { key: string; say(n: number)
       return { key: 'decision', say: (n) => (n === 1 ? 'recorded a decision' : `recorded ${n} decisions`) };
     case 'present_files':
       return { key: 'presented', say: () => toolLineText(c).replace(/^Presented/, 'presented') };
+    case 'schedule_task':
+      return { key: 'scheduled', say: (n) => (n === 1 ? 'scheduled a task' : `scheduled ${n} tasks`) };
     case 'create_project':
       return { key: 'created-project', say: (n) => (n === 1 ? 'created a project' : `created ${n} projects`) };
     case 'set_stage':

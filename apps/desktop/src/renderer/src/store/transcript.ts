@@ -6,6 +6,7 @@ import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
 import { N_, t, tx } from '../../../shared/i18n';
+import { whenText } from '../schedule/model';
 import { COMPUTER_ACCESS, computerCard, settleComputer, type ComputerBlock } from './computer-card';
 
 export { humanError } from '../../../shared/errors';
@@ -167,6 +168,17 @@ function noteItem(m: Message): Item | undefined {
   }
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
+}
+
+/**
+ * A run a 定时任务 started (meta.scheduleRun on the prompt the core sent): a line above it with the task and when it was
+ * due (补跑 when it ran late: the app was closed or the computer asleep at that time).
+ */
+export function scheduleRunNote(m: Message): Item | undefined {
+  const run = m.meta?.scheduleRun as { title?: unknown; dueAt?: unknown; late?: unknown } | undefined;
+  if (!run || typeof run.title !== 'string' || typeof run.dueAt !== 'string') return undefined;
+  const words = `${t('定时任务「{title}」', { title: run.title })} · ${whenText(run.dueAt, new Date())}${run.late === true ? ` · ${t('补跑')}` : ''}`;
+  return { kind: 'note', id: `${m.id}:schedule`, text: words };
 }
 
 /** Mail the core handed to a project manager (meta.mails on its message): ids into the inbox. */
@@ -676,7 +688,11 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
     }
     const mailIds = mailIdsOf(m);
     if (mailIds) items.push(mailItem(m, mailIds));
-    else if (m.kind === 'user' || m.kind === 'steer') items.push(userItem(m));
+    else if (m.kind === 'user' || m.kind === 'steer') {
+      const run = scheduleRunNote(m);
+      if (run) items.push(run);
+      items.push(userItem(m));
+    }
     else {
       const note = noteItem(m);
       if (note) items.push(note);
@@ -816,7 +832,11 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (mailIds) {
         if (!items.some((i) => i.id === m.id)) items.push(mailItem(m, mailIds));
       } else if (m.role === 'user' && (m.kind === 'user' || m.kind === 'steer')) {
-        if (!items.some((i) => i.id === m.id)) items.push(userItem(m));
+        if (!items.some((i) => i.id === m.id)) {
+          const run = scheduleRunNote(m);
+          if (run) items.push(run);
+          items.push(userItem(m));
+        }
         if (t.queued?.some((q) => q.id === m.id)) t.queued = t.queued.filter((q) => q.id !== m.id);
         // the user wrote: the count of messages to other agents starts over
         if ((m.meta?.author ?? 'user') === 'user') delete t.agentLimit;

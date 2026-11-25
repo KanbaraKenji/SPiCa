@@ -22,6 +22,7 @@
 14. [存储与恢复](#14-存储与恢复)
 15. [项目与流程](#15-项目与流程)
 16. [邮件流水线](#16-邮件流水线)
+16a. [定时任务](#16a-定时任务)
 17. [后端进程与运行中改设置](#17-后端进程与运行中改设置)
 18. [本程序的 MCP 服务](#18-本程序的-mcp-服务)
 19. [评测与验收](#19-评测与验收)
@@ -409,6 +410,22 @@
 - **转给项目经理**：每轮每个项目经理只收一条消息（`meta.mails` 是邮件 id 数组，`meta.untrusted` 是围栏标记），要求先读全文、用 `suggest_actions` 给下一步、回复只写草稿不发送、移动和标记照插件的确认规则；消息末尾写明用界面语言。每封信记一条 `mail` 关键操作。发 `mail.routed`。
 - **用户处理**：`mailFeedback(mailId, { action: accept | ignore | reassign, projectId? })`；改归属时转给新的项目经理；采纳和改归属更新发件人记忆；发 `mail.feedback`。
 - 内核不发邮件，不认任何特定的邮箱或规则；归类规则只能由配置或插件注入。
+
+## 16a. 定时任务
+
+到点由内核自己发一段话给 Agent（`packages/core/src/schedule.ts`，2026-11-25）。
+
+- **存**：两张表 `schedules`（一件一行，JSON 放 `data`）和 `schedule_runs`（每次运行：到期时间、开始结束、状态、所在对话、原因）。`ScheduleInfo.trigger` 是带类型的 `{ type: 'time', repeat }`，`repeat` 是每天 / 每周 / 间隔 / 一次；以后由事件触发（邮件、文件）就是 trigger 多一种，表和运行记录不动。时间按这台电脑的时区算（`nextRun`，在 protocol 里，假后端也用）。
+- **钟**：`Scheduler.start()`（后端起来时由 host 调）每分钟对一次表，启动 5 秒后先对一次；外壳在电脑醒来时（`powerMonitor` 的 resume）调 `checkSchedules`。不向系统登记任何计划任务，应用关着什么都不跑。
+- **到点**：`createSession`（标题是任务名，文件夹、模型照任务的；没给模型用默认的）+ `send(prompt, { author: 'runtime', meta: { scheduleRun } })`，和邮件分拣同一条路。任务若记着 `sessionId`（Agent 在对话里建的默认如此，除非它传 `new_conversation: true`），就发回那个对话，接着那段对话往下做。
+- **结果**：看那个对话的 `run.end`：completed / max_turns 记「已完成」；awaiting_confirm / awaiting_answer 记「等待确认」，等他点完那一轮再结束时改记；budget、error、repeated、aborted 记「失败」带原因。应用退出时还在跑的，下次启动记「失败 · interrupted」。
+- **没人看着**：遇到要确认的就停，和平常对话一样（Manual 全停；Auto 只放行默认确认，护栏要的照停；到点的那段话不是他打的字，读过文件、邮件后再跑命令、发邮件都会停）。不替他点，没有放行名单。
+- **文件夹**：保存时（表单和 Agent 建的都算）文件夹必须是整条路径、真的在、里面没有控制字符（Agent 字符串里的 `` 这类），否则不存，错误以 `folder_missing` / `folder_invalid` 开头；到点时新开对话的那种若文件夹已不在，这次记失败 `folder_missing`，不建对话、不跑。
+- **哪次算数**：列表和收件箱看的是「还在跑或等确认的那次」，没有才看最近跑过的一次（跳过的不算）；等确认那次的对话被删了，它记「失败 · conversation_deleted」，任务照常往下跑。改一件任务时开关和失败次数照旧。
+- **规矩**：错过的（应用关着、电脑睡着，到期超过 2 分钟才跑）只补最近一次，记 `late`；上一次还在跑或等确认时又到点，记一次「已跳过」，不叠着开；连续失败 `SCHEDULE_FAILURES_TO_PAUSE`（3）次自动关掉，`pausedAfterFailures`；重新打开时清零。一次性的跑过就关。「立即运行」不改下次时间。
+- **工具**：`schedule_task`（建，带 id 是改）和 `list_schedules`。建和改都由 `core:schedule` 钩子要确认（钩子的确认 Auto 也不放行）。工具说明只写做什么。
+- **接口**：`AgentApi.listSchedules / saveSchedule / deleteSchedule / setScheduleEnabled / runSchedule / listScheduleRuns / checkSchedules`；事件 `schedule.changed / schedule.deleted / schedule.run`（在事件主机上，sessionId 为空）。
+- 测试：`schedule.test.ts`（到点、补跑、等确认时跳过、连续失败关掉、回原对话、一次性、退出时中断、工具要确认）、`store/store-contract.test.ts`（两种存储一致）。
 
 ## 17. 后端进程与运行中改设置
 
