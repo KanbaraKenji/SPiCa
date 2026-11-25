@@ -16,6 +16,9 @@ export const COORD_IDS = {
   numbers: 's-cd-numbers',
 } as const;
 
+/** Sub-agents whose confirmation only the user may answer (无法撤销): never asked of the upper agent. */
+export const COORD_USER_ONLY: readonly string[] = [COORD_IDS.clean];
+
 export const COORD_PROJECT = { id: 'p-cd', name: '样机测试', folder: 'D:\\工作\\样机测试' } as const;
 
 const UPPER: ConfirmDelegate = { sessionId: COORD_IDS.pm, title: COORD_PROJECT.name };
@@ -24,7 +27,7 @@ const ASKING: ConfirmHandover = { ...UPPER, state: 'asking' };
 /** What the upper agent does with a call asked of it, once the sub-agent's conversation was first opened. */
 export type CoordAnswer =
   | { callId: string; allow: true; answer: ConfirmAnswer; result: string; durationMs: number; after: string }
-  | { callId: string; allow: false; handover: ConfirmHandover; reminder: string };
+  | { callId: string; allow: false; handover: ConfirmHandover; reminder: string; result: string; after: string };
 
 export const COORD_ANSWERS: Record<string, CoordAnswer> = {
   [COORD_IDS.report]: {
@@ -40,6 +43,9 @@ export const COORD_ANSWERS: Record<string, CoordAnswer> = {
     allow: false,
     handover: { ...UPPER, state: 'returned', reason: '任务要求结果留在项目文件夹内，写入 D:\\共享\\评审 需要你确认' },
     reminder: '「同步评审表」要写入 D:\\共享\\评审\\评审表.xlsx，在项目文件夹以外，我没有放行。需要的话请点「处理」确认。',
+    // allowed by the user's words in the upper conversation (放行)
+    result: '已写入 D:\\共享\\评审\\评审表.xlsx',
+    after: '评审表已更新为最新的测试结论。',
   },
 };
 

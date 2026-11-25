@@ -30,6 +30,16 @@ describe('humanOnly', () => {
     expect(humanOnly({ ...base, toolName: 'read_file', cause: 'sensitive_file' })).toBe('guard');
   });
 
+  it('what counts as outside content is one setting: any file, files outside the project (default), or web and plugin data only', () => {
+    const inProject = { ...command, cause: 'untrusted_turn' as const, outside: { kind: 'file' as const, inProject: true } };
+    const elsewhere = { ...command, cause: 'untrusted_turn' as const, outside: { kind: 'file' as const } };
+    expect(humanOnly(inProject, 'any_file')).toBe('outside_content');
+    expect(humanOnly(inProject)).toBeUndefined();
+    expect(humanOnly(elsewhere)).toBe('outside_content');
+    expect(humanOnly(elsewhere, 'web_only')).toBeUndefined();
+    expect(humanOnly({ ...command, outside: { kind: 'web' } }, 'web_only')).toBe('outside_content');
+  });
+
   it('keeps with the user whatever a step of a running call asks (one of a batch)', () => {
     expect(humanOnly({ ...command, step: true })).toBe('step');
   });

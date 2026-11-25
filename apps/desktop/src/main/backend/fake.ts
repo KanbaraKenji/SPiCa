@@ -55,7 +55,7 @@ import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPE
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
-import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, coordSeed } from './fake-coord';
+import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, COORD_USER_ONLY, coordSeed } from './fake-coord';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
@@ -348,6 +348,36 @@ export class FakeBackend implements AgentBackend {
 
   #coordWait = 'cd-wait-1';
 
+  /**
+   * The user says 放行 in the upper conversation: the cards it handed back are allowed (it could have allowed them
+   * itself); a card only the user may answer stays, and it says so.
+   */
+  #coordTyped(text: string): void {
+    const allowed: string[] = [];
+    for (const [sessionId, plan] of Object.entries(COORD_ANSWERS)) {
+      const item = this.#pending.get(sessionId)?.find((x) => x.callId === plan.callId);
+      if (plan.allow || item?.kind !== 'confirm' || item.delegated?.state !== 'returned') continue;
+      const answer = { sessionId: COORD_IDS.pm, title: COORD_PROJECT.name, reason: `你在「${COORD_PROJECT.name}」里回复：${text}` };
+      this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== plan.callId));
+      this.#emit(sessionId, { type: 'confirm.resolved', callId: plan.callId, approved: true, by: answer });
+      this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result, durationMs: 300 });
+      this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', agentAnswered: { [plan.callId]: answer } });
+      this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
+      this.#setStatus(sessionId, 'done');
+      const title = this.#sessions.get(sessionId)?.title ?? '';
+      const callId = `cd-typed-${sessionId}`;
+      this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'tool_use', id: callId, name: 'answer_confirmation', input: { agent: sessionId, call_id: plan.callId, allow: true, reason: answer.reason } }]);
+      this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: callId, content: `Allowed once. ${title} goes on.` }], { author: 'runtime', toolInfo: { [callId]: { category: 'agent', title } } });
+      allowed.push(title);
+    }
+    // cards only the user may answer (无法撤销 and the like) stay with the user's click
+    const userOnly = COORD_USER_ONLY.filter((id) => this.#pending.get(id)?.length).map((id) => this.#sessions.get(id)?.title ?? '');
+    const said = [allowed.length ? `已放行${allowed.map((x) => `「${x}」`).join('')}。` : '没有交回给你、我能放行的确认。', ...userOnly.map((x) => `「${x}」只能你在卡上点。`)].join('');
+    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'text', text: said }]);
+    this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
+    this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
+  }
+
   /** What the upper agent's conversation keeps of it: wait_agents came back with the ask, its answer, its reminder, waiting again. */
   #coordUpper(sessionId: string, plan: (typeof COORD_ANSWERS)[string]): void {
     const title = this.#sessions.get(sessionId)?.title ?? '';
@@ -363,14 +393,19 @@ export class FakeBackend implements AgentBackend {
     this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
   }
 
-  /** The demo's project switch off: nothing is asked of the upper agent, every card is shown as without it. */
+  /**
+   * The demo's project switch off: nothing is asked of the upper agent, every card is shown as without it. A card shown
+   * so stays the user's when the switch is turned on later; one already asked of the upper agent stays with it.
+   */
   #coordOff(sessionId: string, list: PendingItem[]): PendingItem[] {
+    if (this.#coordAsked.has(sessionId)) return list;
     const out = list.map((p) => {
       if (p.kind !== 'confirm' || !p.delegated) return p;
       const plain = { ...p };
       delete plain.delegated;
       return plain;
     });
+    this.#pending.set(sessionId, out);
     if (out.length && this.#sessions.get(sessionId)?.status === 'tool') this.#setStatus(sessionId, 'awaiting_confirm', out[0]!.kind === 'confirm' ? out[0]!.toolName : undefined);
     return out;
   }
@@ -573,6 +608,10 @@ export class FakeBackend implements AgentBackend {
     const attachments = pictureAttachments(opts?.attachments);
     if (run) return this.#steer(sessionId, text, 'next', attachments);
     const message = this.#append(sessionId, 'user', 'user', [{ type: 'text', text }], { author: 'user', ...(attachments ? { attachments } : {}) });
+    if (this.#coordDemo && sessionId === COORD_IDS.pm && /放行/.test(text)) {
+      this.#coordTyped(text);
+      return { messageId: message.id, started: true };
+    }
     void this.#run(sessionId, text);
     return { messageId: message.id, started: true };
   }

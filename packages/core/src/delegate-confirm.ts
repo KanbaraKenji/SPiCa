@@ -62,14 +62,26 @@ export interface DelegateQuery {
 /** The guard's causes the upper agent may answer: a write outside the conversation's folders, a read in another project's. */
 const DELEGABLE_CAUSES: ReadonlySet<GuardCause> = new Set<GuardCause>(['outside_folder', 'other_project']);
 
+/**
+ * Which outside content keeps a confirmation with the user (not decided yet; one place to change):
+ * 'any_file' every file read counts; 'outside_project' files inside the project's folders do not (the default);
+ * 'web_only' only web pages, mail, MCP and plugin data count.
+ */
+export type ReadPolicy = 'any_file' | 'outside_project' | 'web_only';
+
+function counts(o: DelegateQuery['outside'], policy: ReadPolicy): boolean {
+  if (!o) return false;
+  if (o.kind !== 'file') return true;
+  return policy === 'any_file' || (policy === 'outside_project' && !o.inProject);
+}
+
 /** Undefined: the upper agent is asked first. Otherwise why only the user may answer it. */
-export function humanOnly(q: DelegateQuery): HumanOnly | undefined {
+export function humanOnly(q: DelegateQuery, policy: ReadPolicy = 'outside_project'): HumanOnly | undefined {
   if (q.step) return 'step';
   if (q.scheduledRun) return 'scheduled';
   // files read inside the project are the project's own; anything else from outside stays with the user, read by
   // the sub-agent or by the upper agent that would answer
-  const outside = (o: DelegateQuery['outside']) => !!o && !(o.kind === 'file' && o.inProject);
-  if (outside(q.outside) || outside(q.upperOutside)) return 'outside_content';
+  if (counts(q.outside, policy) || counts(q.upperOutside, policy)) return 'outside_content';
   if (q.cause === 'outside_link' || q.cause === 'sensitive_file') return 'guard';
   if (q.cause === 'python_install' || q.install) return 'install';
   // untrusted_turn: an irreversible tool after outside content; only project files reach here (see above)
