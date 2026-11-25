@@ -6783,13 +6783,15 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
 }
 
-/* 项目经理确认中: after the title as 无法撤销 is, the same size, grey (nobody has answered yet). */
-.confirm-by {
-  flex: none;
+/* A call's row while its confirmation is asked of the upper agent (no card): the running mark and 等…确认, grey. */
+.tool-asking {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--spica-muted);
 }
 
-/* In a call's detail: the sub-agent's manager answered its confirmation, and why. */
+/* In a call's detail: the upper agent allowed it for the user, and why. */
 .tool-by {
   margin: 2px 0 0;
   color: var(--spica-muted);
@@ -10027,8 +10029,8 @@ button.schedule-run-line {
   font-weight: 400;
 }
 
-/* 详情栏 › 确认子任务的操作 (per-project placement, shown for a choice): a row of its own, the switch at the right
-   end, so its label does not widen the names' column. */
+/* 详情 of a project's own conversation › whether its sub-agents ask it first: a row of its own, the switch at the
+   right end, so its label does not widen the names' column. */
 .detail-facts > .detail-switch {
   grid-column: 1 / -1;
   display: flex;

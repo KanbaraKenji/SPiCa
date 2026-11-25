@@ -480,17 +480,6 @@ function Workflows({ settings, onChange, workflows, pickFolder, onBackendRestart
   );
 }
 
-/** 项目: a project's manager answers its sub-agents' confirmations for the user (off by default). */
-function Projects({ settings, onChange }: GeneralProps) {
-  return (
-    <Group title={t('项目')}>
-      <Row title={t('由项目经理确认子任务的操作')}>
-        <Switch on={settings.managerConfirms} label={t('由项目经理确认子任务的操作')} onChange={(v) => onChange({ managerConfirms: v })} />
-      </Row>
-    </Group>
-  );
-}
-
 export function General(props: GeneralProps) {
   return (
     <section className="settings-section">
@@ -498,7 +487,6 @@ export function General(props: GeneralProps) {
       <FilePreviews {...props} />
       <Browser {...props} />
       {props.computerUse ? <ComputerUse settings={props.settings} onChange={props.onChange} {...(props.pickFiles ? { pickFiles: props.pickFiles } : {})} /> : null}
-      {document.documentElement.dataset.coordApprove !== 'project' ? <Projects {...props} /> : null}
       <Workflows {...props} />
       <Network {...props} />
       <UsageLog {...props} />

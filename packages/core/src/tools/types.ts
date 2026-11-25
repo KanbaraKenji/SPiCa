@@ -80,6 +80,11 @@ export interface Tool {
   /** Irreversible actions (sending mail, writing external systems) need confirmation by default. */
   irreversible?: boolean;
   /**
+   * Its confirmation is the user's alone: an agent that answers sub-agents' confirmations for the user (the upper
+   * agent, delegate-confirm.ts) never gets it. Setting up a scheduled task, 操作电脑's access.
+   */
+  confirmByUser?: true;
+  /**
    * Only reads (files, the web, history, project state): calling it changes nothing. A round that ran any tool not
    * declared read-only cannot be regenerated, because running it again would do it twice.
    */

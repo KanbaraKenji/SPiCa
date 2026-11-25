@@ -791,3 +791,25 @@ describe('files under an answer: cards when few, a list when many', () => {
     expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
   });
 });
+
+describe('a sub-agent confirmation asked of the upper agent first', () => {
+  const upper = { sessionId: 's-up', title: '样机测试' };
+  const base = { type: 'confirm' as const, callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action' };
+
+  it('handed back: the card as always, its last line the upper agent’s reason; no answer: says so', () => {
+    render(<ConfirmCard block={{ ...base, delegated: { ...upper, state: 'returned', reason: '写到项目文件夹以外' } }} onDecide={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '拒绝' })).toBeTruthy();
+    expect(screen.getByText('上级 Agent 未放行：写到项目文件夹以外')).toBeTruthy();
+    cleanup();
+    render(<ConfirmCard block={{ ...base, delegated: { ...upper, state: 'no_answer' } }} onDecide={vi.fn()} />);
+    expect(screen.getByText('上级 Agent 没有回复')).toBeTruthy();
+  });
+
+  it('while asking, the call’s row says so; once allowed, the row says who where Auto would be', () => {
+    render(<ToolGroup blocks={[{ type: 'tool', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, state: 'pending', asking: { ...upper, state: 'asking' } }]} />);
+    expect(screen.getByText('等上级 Agent 确认')).toBeTruthy();
+    cleanup();
+    render(<ToolGroup blocks={[{ type: 'tool', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, state: 'done', durationMs: 2100, agentAnswered: { ...upper, reason: '只写入 汇总.xlsx' } }]} />);
+    expect(document.body.textContent).toContain('上级 Agent · 2s');
+  });
+});

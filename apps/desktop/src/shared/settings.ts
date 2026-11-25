@@ -150,6 +150,11 @@ export interface ShellSettings {
   doneNews: string[];
   /** Projects pinned to the top of the sidebar (project ids, in the order they were pinned). */
   pinnedProjects: string[];
+  /**
+   * Projects whose sub-agents ask the project's own conversation (the upper agent) before the user (详情 of that
+   * conversation; off by default). The demo reads it; the core will keep it on the project instead (see the 说明).
+   */
+  upperApproves: string[];
   /** The 监控台 is switched on (its title bar button shows): nine clicks on the version in 设置 › 关于, nine again off. */
   monitor: boolean;
   network: NetworkPrefs;
@@ -179,8 +184,6 @@ export interface ShellSettings {
   openAtLogin: boolean;
   /** The one notification about being minimized to the tray was shown. */
   backgroundHintShown: boolean;
-  /** 常规 › 项目 › 由项目经理确认子任务的操作: a manager answers its sub-agents' confirmations for the user, once each. Off by default. */
-  managerConfirms: boolean;
   /** After the first 定时任务 was saved, the user was asked once whether × should minimize to the tray. */
   scheduleTrayAsked: boolean;
   /**
@@ -290,6 +293,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   mail: { enabled: false, consentedAt: null, intervalMinutes: 5, ignore: { from: [], subject: [] } },
   workflowsDir: '',
   pinnedProjects: [],
+  upperApproves: [],
   monitor: false,
   network: DEFAULT_NETWORK,
   localConnect: false,
@@ -306,7 +310,6 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   linkOpen: 'ask',
   openAtLogin: false,
   backgroundHintShown: false,
-  managerConfirms: false,
   scheduleTrayAsked: false,
   agentMessageLimit: 10,
   account: '',
@@ -379,6 +382,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   };
   const workflowsDir = typeof v.workflowsDir === 'string' ? v.workflowsDir.trim().slice(0, 500) : '';
   const doneNews = Array.isArray(v.doneNews) ? [...new Set(v.doneNews.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(-500) : [];
+  const upperApproves = Array.isArray(v.upperApproves) ? [...new Set(v.upperApproves.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(0, 200) : [];
   const pinnedProjects = Array.isArray(v.pinnedProjects)
     ? [...new Set(v.pinnedProjects.filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200))].slice(0, 200)
     : [];
@@ -413,7 +417,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { computerUse: computerUseValue(v.computerUse), account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, scheduleTrayAsked: v.scheduleTrayAsked === true, managerConfirms: v.managerConfirms === true, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { computerUse: computerUseValue(v.computerUse), account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, scheduleTrayAsked: v.scheduleTrayAsked === true, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, upperApproves, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

@@ -1143,6 +1143,17 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         activity={project ? (state.activity[project.id] ?? []) : []}
         hideHeading={panelPages.length > 0}
         onStopJob={(jobId) => void agent.stopJob(jobId)}
+        {...(project
+          ? {
+              upperApproves: {
+                on: (settings.upperApproves ?? []).includes(project.id),
+                set: (on: boolean) => {
+                  const rest = (settings.upperApproves ?? []).filter((x) => x !== project.id);
+                  shell.update({ upperApproves: on ? [...rest, project.id] : rest });
+                },
+              },
+            }
+          : {})}
         {...(subTasks ? { subTasks } : {})}
         {...(schedOfSession
           ? {

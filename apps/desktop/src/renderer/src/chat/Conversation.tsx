@@ -255,6 +255,8 @@ function Response({
             // Waiting, it stands above the message box (Conversation: openAsks); here once answered or stopped.
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
+            // asked of the upper agent: no card while it asks (the row says so), none at all once it allowed it
+            if (b.by || (b.delegated?.state === 'asking' && b.approved === undefined && !b.cancelled)) return null;
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'computer':
             return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;

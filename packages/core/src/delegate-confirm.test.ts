@@ -1,28 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import { humanOnly, type DelegateQuery } from './delegate-confirm.ts';
+import { scheduleTaskTool } from './tools/schedule-tools.ts';
 
 const base: DelegateQuery = { step: false, toolName: 'write_file' };
 const plainCommand = { danger: false, installs: false, downloads: false };
 const command: DelegateQuery = { ...base, toolName: 'run_command', byDefault: true, command: plainCommand };
 
 describe('humanOnly', () => {
-  it('leaves to the manager: a plain command in Manual, a write outside the folders, a read in another project, a user-added MCP tool', () => {
+  it('goes to the upper agent first: a plain command in Manual, a write outside the folders, a read in another project, a user-added MCP tool', () => {
     expect(humanOnly(command)).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder' })).toBeUndefined();
     expect(humanOnly({ ...base, toolName: 'read_file', cause: 'other_project' })).toBeUndefined();
     expect(humanOnly({ ...base, toolName: 'notes__add', hookDelegable: true })).toBeUndefined();
   });
 
-  it('still leaves to the manager after reading files inside the project (the guard asks about the command then)', () => {
+  it('still goes to the upper agent first after reading files inside the project (the guard asks about the command then)', () => {
     expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'file', inProject: true } })).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'file', inProject: true } })).toBeUndefined();
   });
 
-  it('keeps with the user anything asked after a web page, mail, MCP data or a file outside the project', () => {
+  it('keeps with the user anything asked after a web page, mail, MCP data or a file outside the project, read by either agent', () => {
     expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'web' } })).toBe('outside_content');
     expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'mail' } })).toBe('outside_content');
     expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'mcp' } })).toBe('outside_content');
     expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'file' } })).toBe('outside_content');
+    expect(humanOnly({ ...command, upperOutside: { kind: 'web' } })).toBe('outside_content');
+    expect(humanOnly({ ...command, upperOutside: { kind: 'file', inProject: true } })).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_link' })).toBe('guard');
     expect(humanOnly({ ...base, toolName: 'read_file', cause: 'sensitive_file' })).toBe('guard');
   });
@@ -48,6 +51,12 @@ describe('humanOnly', () => {
 
   it('keeps with the user a tool that says so (操作电脑, scheduled tasks)', () => {
     expect(humanOnly({ ...command, toolHumanOnly: true })).toBe('tool');
+    expect(humanOnly({ ...base, toolName: 'schedule_task', toolHumanOnly: !!scheduleTaskTool.confirmByUser })).toBe('tool');
+  });
+
+  it("keeps with the user whatever a scheduled task's run asks, a command it could answer otherwise too", () => {
+    expect(humanOnly({ ...command, scheduledRun: true })).toBe('scheduled');
+    expect(humanOnly({ ...base, cause: 'outside_folder', scheduledRun: true })).toBe('scheduled');
   });
 
   it('keeps with the user an irreversible tool other than a command read by the card (JavaScript, an MCP tool marked destructive)', () => {

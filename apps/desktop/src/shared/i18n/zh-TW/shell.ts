@@ -52,7 +52,6 @@ export const ZH_TW_SHELL: Catalog = {
   // shell/DetailPanel.tsx
   对话: '對話',
   项目经理: '專案經理',
-  确认子任务的操作: '確認子任務的操作',
   关闭详情: '關閉詳細資料',
   类型: '類型',
   所属: '所屬',

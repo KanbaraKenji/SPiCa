@@ -1,14 +1,17 @@
-// Which confirmations a sub-agent's manager may answer for the user (设置: the manager answers its sub-agents'
-// confirmations, off by default). An allow-list: a confirmation is the manager's to answer only when it comes from one
-// of the sources below and nothing about it is human-only; any other source, including ones added later, stays with
-// the user. The manager answers once (allow or decline, with a reason), never 始终允许, and the user can still answer.
+// Which confirmations a sub-agent's upper agent is asked first (a project's switch, off by default). An allow-list: a
+// confirmation goes to the upper agent only when it comes from one of the sources below and nothing about it is
+// human-only; any other source, including ones added later, gets its card at once, as without the switch. The upper
+// agent is asked in the background, with no card: it allows the call once (with a reason, never 始终允许) or hands it
+// back, and a handed-back or unanswered one gets its card for the user. It cannot decline for the user.
 import type { GuardCause, UntrustedKind } from '@spica/protocol';
 
 /** Why a confirmation is the user's alone; the first that applies. */
 export type HumanOnly =
   /** A step inside a running call (browser_batch, computer_batch …): asked right then, not stored. */
   | 'step'
-  /** The conversation acts on outside content (a web page, mail, MCP or plugin data, a file outside the project). */
+  /** The conversation is on a scheduled task's run: nobody started it, so nobody is watching what the upper agent allows. */
+  | 'scheduled'
+  /** The conversation, or the upper agent's, acts on outside content (a web page, mail, MCP or plugin data, a file outside the project). */
   | 'outside_content'
   /** The guard asks about a link from outside content or a credential file. */
   | 'guard'
@@ -27,18 +30,22 @@ export type HumanOnly =
 export interface DelegateQuery {
   /** A step of a running call (askOutsideSession), not a call of its own. */
   step: boolean;
+  /** The turn was started by a scheduled task (its message's meta.scheduleRun), in this conversation or one above it. */
+  scheduledRun?: boolean;
   /**
    * The outside content the session acts on since the user last wrote (Session.outsideKind; every read_file and grep
    * counts, inside the project too). `inProject`: for 'file', all of it was read inside the project's folders.
    */
   outside?: { kind: UntrustedKind; inProject?: boolean };
+  /** The same, for the upper agent's own conversation: what it acts on would sway what it allows. */
+  upperOutside?: { kind: UntrustedKind; inProject?: boolean };
   /** Why the guard asks, if it does. */
   cause?: GuardCause;
   /** The registry's default confirmation of an irreversible-by-declaration tool. Only run_command's may be handed over. */
   byDefault?: boolean;
   /** The tool's name. */
   toolName: string;
-  /** A hook asked and said its confirmation may be answered by a manager (a user-added MCP server's tool, a plugin tool not marked irreversible). */
+  /** A hook asked and said its confirmation may be answered by the upper agent (a user-added MCP server's tool, a plugin tool not marked irreversible). */
   hookDelegable?: boolean;
   /** Marked irreversible (无法撤销). */
   irreversible?: boolean;
@@ -46,20 +53,23 @@ export interface DelegateQuery {
   folderTooWide?: boolean;
   /** A python_env download. */
   install?: boolean;
-  /** The tool declares that only the user answers its confirmation. */
+  /** The tool declares that only the user answers its confirmation (Tool.confirmByUser). */
   toolHumanOnly?: boolean;
   /** For run_command: what it does, as the card reads it (command-plain's facts). Without it a command is not handed over. */
   command?: { danger: boolean; installs: boolean; downloads: boolean };
 }
 
-/** The guard's causes a manager may answer: a write outside the conversation's folders, a read in another project's. */
+/** The guard's causes the upper agent may answer: a write outside the conversation's folders, a read in another project's. */
 const DELEGABLE_CAUSES: ReadonlySet<GuardCause> = new Set<GuardCause>(['outside_folder', 'other_project']);
 
-/** Undefined: the manager may answer it. Otherwise why only the user may. */
+/** Undefined: the upper agent is asked first. Otherwise why only the user may answer it. */
 export function humanOnly(q: DelegateQuery): HumanOnly | undefined {
   if (q.step) return 'step';
-  // files read inside the project are the project's own; anything else from outside stays with the user
-  if (q.outside && !(q.outside.kind === 'file' && q.outside.inProject)) return 'outside_content';
+  if (q.scheduledRun) return 'scheduled';
+  // files read inside the project are the project's own; anything else from outside stays with the user, read by
+  // the sub-agent or by the upper agent that would answer
+  const outside = (o: DelegateQuery['outside']) => !!o && !(o.kind === 'file' && o.inProject);
+  if (outside(q.outside) || outside(q.upperOutside)) return 'outside_content';
   if (q.cause === 'outside_link' || q.cause === 'sensitive_file') return 'guard';
   if (q.cause === 'python_install' || q.install) return 'install';
   // untrusted_turn: an irreversible tool after outside content; only project files reach here (see above)

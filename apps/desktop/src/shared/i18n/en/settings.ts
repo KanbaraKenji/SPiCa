@@ -23,7 +23,6 @@ export const EN_SETTINGS: Catalog = {
   打开文件夹: 'Open folder',
   启动与托盘: 'Startup and tray',
   开机时启动: 'Start at login',
-  由项目经理确认子任务的操作: 'Project manager confirms subtask steps',
   '登录 Windows 后自动启动。': 'Starts when you sign in to Windows.',
   '开发版不能开机启动，只有安装版能用。': 'Not available in the development build. Only the installed version can start at login.',
   '便携版不能开机启动，只有安装版能用。': 'Not available in the portable version. Only the installed version can start at login.',

@@ -11,6 +11,7 @@ import { resultBody, type Block } from '../store/transcript';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { t } from '../../../shared/i18n';
+import { upperName } from './upper-agent';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -323,9 +324,9 @@ export function CallDetail({ block, card, args = true }: { block: ToolBlock; car
   return (
     <div className="tool-detail">
       {args ? input : null}
-      {/* the sub-agent's manager answered its confirmation: which way and why (its 已拒绝 is this line, not the red one) */}
-      {block.agentAnswered ? <p className="tool-by">{block.agentAnswered.approved ? t('项目经理已允许：{reason}', { reason: block.agentAnswered.reason }) : t('项目经理已拒绝：{reason}', { reason: block.agentAnswered.reason })}</p> : null}
-      {status && !(block.agentAnswered && !block.agentAnswered.approved && status === t('已拒绝')) ? <p className="tool-status">{status}</p> : null}
+      {/* the upper agent allowed it for the user (asked first, no card): and why */}
+      {block.agentAnswered ? <p className="tool-by">{t('{name}已放行：{reason}', { name: upperName(block.agentAnswered, true), reason: block.agentAnswered.reason })}</p> : null}
+      {status ? <p className="tool-status">{status}</p> : null}
       {out ? <CallOutput text={out} /> : null}
       {args && empty && !status && !out ? <p className="tool-empty">—</p> : null}
     </div>

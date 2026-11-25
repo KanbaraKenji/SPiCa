@@ -399,7 +399,7 @@ export interface MessageMeta {
   suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
-  /** tool_results: confirmations answered by an agent for the user (the sub-agent's manager), per tool call id. */
+  /** tool_results: confirmations the upper agent allowed for the user (it is asked first), per tool call id. */
   agentAnswered?: Record<string, ConfirmAnswer>;
   /** Runtime note: the user chose the working folder; what was made before moved there. */
   cwdChange?: CwdChangeMeta;
@@ -637,16 +637,29 @@ export interface PluginToolResult {
  * `irreversible` on a confirmation: what it allows cannot be undone (a plugin hook said so, or the plugin declared
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
-/** Who a sub-agent's confirmation is handed to besides the user: today its manager (a model chosen for a scheduled task later). */
+/**
+ * Who a sub-agent's confirmation is asked of before the user: its upper agent (the project's own conversation). A
+ * function of the conversation picks it, so it could be the conversation right above, or a model a scheduled task names.
+ */
 export interface ConfirmDelegate {
   sessionId: string;
   title?: string;
 }
 
-/** A confirmation answered by an agent for the user: which, its decision and the reason it gave. */
+/** A confirmation the upper agent allowed for the user (once): which agent, and the reason it gave. It never declines. */
 export interface ConfirmAnswer extends ConfirmDelegate {
-  approved: boolean;
   reason: string;
+}
+
+/**
+ * A confirmation asked of the upper agent first. `asking`: in the background, no card (the call's row says so).
+ * `returned`: it did not allow it and handed it to the user, with its reason. `no_answer`: it could not answer (it
+ * waits on the user itself, its turn failed or was stopped or hit the spend limit, the app restarted, or no answer in
+ * time); the card is the user's then, as without the switch.
+ */
+export interface ConfirmHandover extends ConfirmDelegate {
+  state: 'asking' | 'returned' | 'no_answer';
+  reason?: string;
 }
 
 export type PendingItem =
@@ -664,8 +677,8 @@ export type PendingItem =
       /** `outsideFolder` is a drive's root or the home folder: it is never kept as allowed, so the card offers allowing it this once only. */
       folderTooWide?: boolean;
       install?: InstallPreview;
-      /** Handed to the agent that answers for the user (the sub-agent's manager); the user can still answer. */
-      delegated?: ConfirmDelegate;
+      /** Asked of the upper agent first (see ConfirmHandover): no card while it is asking. */
+      delegated?: ConfirmHandover;
       createdAt: string;
     }
   /**
@@ -760,8 +773,11 @@ export type CoreEventBody =
       preview: string;
       durationMs: number;
     }
-  /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmDelegate }
+  /**
+   * `irreversible`: as on a pending confirmation (the card shows 无法撤销). `delegated`: asked of the upper agent first;
+   * sent again for the same call when it is handed back or gets no answer (its card is shown then).
+   */
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmHandover }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -772,7 +788,7 @@ export type CoreEventBody =
   | { type: 'settings.changed'; change: SettingsChangeMeta }
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
-  /** `by`: answered by an agent for the user (absent: the user answered). */
+  /** `by`: the upper agent allowed it for the user (absent: the user answered). */
   | { type: 'confirm.resolved'; callId: string; approved: boolean; by?: ConfirmAnswer }
   | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }

@@ -217,7 +217,8 @@ export function toolWords(c: ToolCall, card?: FileCardMeta): ToolWords {
     case 'stop_agent':
       return { verb: 'Stopped', object: 'a sub-agent' };
     case 'answer_confirmation':
-      return { verb: (c.input as { approve?: unknown } | undefined)?.approve === true ? 'Allowed' : 'Declined', object: c.title ? t('「{name}」的操作', { name: c.title }) : "a sub-agent's step" };
+      // it allows the step, or hands it to the user (it cannot decline)
+      return { verb: (c.input as { allow?: unknown } | undefined)?.allow === true ? 'Allowed' : 'Handed to you', object: c.title ? t('「{name}」的操作', { name: c.title }) : "a sub-agent's step" };
     case 'wait_agents': {
       const ids = (c.input as { ids?: unknown } | undefined)?.ids;
       const k = Array.isArray(ids) ? ids.length : 0;

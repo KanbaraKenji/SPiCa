@@ -29,6 +29,8 @@ function line(s: ScheduleInfo): string {
 
 export const scheduleTaskTool: Tool = {
   category: 'other',
+  // it runs later with nobody watching: only the user says yes to it
+  confirmByUser: true,
   summaryParam: 'title',
   spec: {
     name: 'schedule_task',

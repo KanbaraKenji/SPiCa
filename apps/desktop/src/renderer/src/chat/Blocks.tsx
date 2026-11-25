@@ -7,6 +7,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
+import { upperName } from './upper-agent';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
@@ -618,14 +619,22 @@ export const ToolCardsContext = createContext<Record<string, FileCardMeta> | und
 
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
 function toolMeta(block: ToolBlock, done = false): ReactNode {
+  // asked of the upper agent in the background: said quietly where the time goes, no card
+  if (block.state === 'pending' && block.asking)
+    return (
+      <span className="tool-asking">
+        <SpicaStatusIcon name="running" size={14} />
+        {t('等{name}确认', { name: upperName(block.asking, true) })}
+      </span>
+    );
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return t('已停用，未执行');
   if (block.state === 'repeated') return t('重复，未执行');
   if (block.state === 'timeout') return t('已超时');
   if (block.state === 'running') return null;
-  // allowed by the sub-agent's manager for the user: said where Auto would be
-  const by = block.agentAnswered ? t('项目经理') : block.autoApproved ? 'Auto' : null;
+  // allowed by the upper agent for the user: said where Auto would be
+  const by = block.agentAnswered ? upperName(block.agentAnswered) : block.autoApproved ? 'Auto' : null;
   if (block.durationMs !== undefined && !done) return by ? `${by} · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
   return by;
 }
@@ -1305,13 +1314,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
         {/* a write outside the conversation's folders: said as a tag, as 无法撤销 is (the path is in the change below) */}
         {/* reading in another project's folder: said the same way, with which (the folder is on the main button's hover) */}
         {block.outsideFolder ? <span className="confirm-undo">{block.cause === 'other_project' ? t('其他项目') : t('工作文件夹以外')}</span> : null}
-        {/* handed to the sub-agent's manager as well: it may answer first (the user still can) */}
-        {block.delegated && !decided ? <span className="confirm-by" title={block.delegated.title}>{t('项目经理确认中')}</span> : null}
         <span className="confirm-spacer" />
         {decided ? (
           <p className={block.cancelled === true && block.approved === undefined ? 'card-answer is-stopped' : 'card-answer'}>
             <SpicaStatusIcon name={block.approved ? 'done' : 'stopped'} size={15} />
-            <span title={block.by?.title}>{block.by ? (block.by.approved ? t('项目经理已允许') : t('项目经理已拒绝')) : block.approved ? t('已允许') : block.approved === false ? t('已拒绝') : t(CARD_STOPPED)}</span>
+            <span>{block.approved ? t('已允许') : block.approved === false ? t('已拒绝') : t(CARD_STOPPED)}</span>
           </p>
         ) : (
           <div className="card-actions">
@@ -1336,7 +1343,9 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       ) : null}
       {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
-      {block.by ? <p className="card-why">{t('理由：{reason}', { reason: block.by.reason })}</p> : null}
+      {/* asked of the upper agent first: handed back to the user with its reason, or it could not answer */}
+      {block.delegated?.state === 'returned' ? <p className="card-why">{t('{name}未放行：{reason}', { name: upperName(block.delegated, true), reason: block.delegated.reason ?? '' })}</p> : null}
+      {block.delegated?.state === 'no_answer' ? <p className="card-why">{t('{name}没有回复', { name: upperName(block.delegated, true) })}</p> : null}
     </section>
   );
 }

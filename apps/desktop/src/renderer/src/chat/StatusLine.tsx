@@ -6,6 +6,8 @@ import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 import { t } from '../../../shared/i18n';
+import type { ConfirmHandover } from '@spica/protocol';
+import { upperName } from './upper-agent';
 
 export const DONE_LINGER_MS = 1400;
 
@@ -22,6 +24,11 @@ function runningTool(t: Transcript): string | undefined {
   return t.run?.detail;
 }
 
+function askingUpper(tr: Transcript): ConfirmHandover | undefined {
+  for (const it of tr.items) if (it.kind === 'response') for (const b of it.blocks) if (b.type === 'tool' && b.asking && b.state === 'pending') return b.asking;
+  return undefined;
+}
+
 export function phaseOf(tr: Transcript): { mark: MarkState; text: string } | null {
   const run = tr.run;
   if (!run) return null;
@@ -29,6 +36,9 @@ export function phaseOf(tr: Transcript): { mark: MarkState; text: string } | nul
     case 'queued':
       return { mark: 'await', text: run.queuePosition ? t('排队中（前面 {n} 个）', { n: Math.max(0, run.queuePosition - 1) }) : t('排队中') };
     case 'tool': {
+      // a call's confirmation asked of the upper agent in the background: waiting on it, not running anything
+      const asking = askingUpper(tr);
+      if (asking) return { mark: 'await', text: t('等{name}确认', { name: upperName(asking, true) }) };
       const name = runningTool(tr);
       return { mark: 'tool', text: name ? t('正在{tool}', { tool: toolLabel(name) }) : t('正在调用工具') };
     }
@@ -52,7 +62,8 @@ export function shownInAnswer(t: Transcript): boolean {
   if (!t.run) return false;
   const last = t.items[t.items.length - 1];
   if (last?.kind !== 'response') return false;
-  const blocks = last.blocks;
+  // a confirmation asked of the upper agent has no card yet: its call's row is the end of the answer
+  const blocks = last.blocks.filter((b) => !(b.type === 'confirm' && b.delegated?.state === 'asking' && b.approved === undefined && !b.cancelled));
   const end = blocks[blocks.length - 1];
   if (end?.type === 'thinking') return t.run.status === 'thinking';
   // remember / forget show nothing while they run (their line comes with the result): the status line says it.
@@ -61,7 +72,8 @@ export function shownInAnswer(t: Transcript): boolean {
   // The tools at the end of the answer, as one group.
   let i = blocks.length - 1;
   while (i > 0 && grouped(blocks[i - 1])) i--;
-  return blocks.slice(i).some((b) => b.type === 'tool' && b.state === 'running');
+  // a call asked of the upper agent says so on its own row (等上级 Agent 确认)
+  return blocks.slice(i).some((b) => b.type === 'tool' && (b.state === 'running' || (b.state === 'pending' && !!b.asking)));
 }
 
 export function StatusLine({ transcript }: { transcript: Transcript }) {

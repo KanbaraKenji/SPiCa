@@ -52,7 +52,6 @@ export const EN_SHELL: Catalog = {
   // shell/DetailPanel.tsx
   对话: 'Conversation',
   项目经理: 'Project manager',
-  确认子任务的操作: 'Confirms subtask steps',
   关闭详情: 'Close details',
   类型: 'Type',
   所属: 'Parent',

@@ -55,7 +55,7 @@ import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPE
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
-import { COORD_ANSWERS, COORD_PROJECT, coordSeed } from './fake-coord';
+import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, coordSeed } from './fake-coord';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
@@ -77,8 +77,8 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
-  /** The demo of 由项目经理确认子任务的操作 (fake-coord.ts): its project; the manager answers cards while this says the setting is on. */
-  coordDemo?: (() => boolean) | undefined;
+  /** The demo of sub-agents asking the upper agent first (fake-coord.ts): its project; asked only while this says the project's switch is on. */
+  coordDemo?: ((projectId: string) => boolean) | undefined;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -316,24 +316,63 @@ export class FakeBackend implements AgentBackend {
     for (const s of this.#sessions.values()) s.regenerate = this.#regenerateState(s.id);
   }
 
-  #coordDemo: (() => boolean) | undefined;
+  #coordDemo: ((projectId: string) => boolean) | undefined;
   readonly #coordAsked = new Set<string>();
 
-  /** The demo's manager answers a card handed to it a few seconds after the card is first shown, unless the user did. */
-  #coordAnswer(sessionId: string, list: PendingItem[]): void {
-    for (const p of list) {
-      const answer = p.kind === 'confirm' && p.delegated ? COORD_ANSWERS[p.callId] : undefined;
-      if (!answer || this.#coordAsked.has(p.callId)) continue;
-      this.#coordAsked.add(p.callId);
-      setTimeout(() => {
-        if (!this.#pending.get(sessionId)?.some((x) => x.callId === p.callId)) return; // the user answered first
-        // the card stays as answered (the demo does not go on with the sub-agent's run)
-        this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== p.callId));
-        this.#setStatus(sessionId, answer.approved ? 'tool' : 'thinking');
-        if (!answer.approved) this.#declined.add(p.callId);
-        this.#emit(sessionId, { type: 'confirm.resolved', callId: p.callId, approved: answer.approved, by: answer });
-      }, 6000);
-    }
+  /** The demo's upper agent answers what a sub-agent asked of it a few seconds after that conversation is first opened. */
+  #coordAnswer(sessionId: string): void {
+    const plan = COORD_ANSWERS[sessionId];
+    if (!plan || this.#coordAsked.has(sessionId)) return;
+    this.#coordAsked.add(sessionId);
+    setTimeout(() => {
+      const item = this.#pending.get(sessionId)?.find((x) => x.callId === plan.callId);
+      if (item?.kind !== 'confirm' || item.delegated?.state !== 'asking') return;
+      if (plan.allow) {
+        // allowed: no card ever; the call runs and its row keeps who allowed it and why
+        this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== plan.callId));
+        this.#emit(sessionId, { type: 'confirm.resolved', callId: plan.callId, approved: true, by: plan.answer });
+        this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result.slice(0, 160), durationMs: plan.durationMs });
+        this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', agentAnswered: { [plan.callId]: plan.answer } });
+        this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
+        this.#setStatus(sessionId, 'done');
+        this.#coordUpper(sessionId, plan);
+        return;
+      }
+      // handed back: its card for the user, and the upper agent says so in its own conversation
+      item.delegated = plan.handover;
+      this.#setStatus(sessionId, 'awaiting_confirm', item.toolName);
+      this.#emit(sessionId, { type: 'confirm.request', callId: item.callId, name: item.toolName, input: item.input, reason: item.reason, ...(item.cause ? { cause: item.cause } : {}), ...(item.outsideFolder ? { outsideFolder: item.outsideFolder } : {}), delegated: plan.handover });
+      this.#coordUpper(sessionId, plan);
+    }, 6000);
+  }
+
+  #coordWait = 'cd-wait-1';
+
+  /** What the upper agent's conversation keeps of it: wait_agents came back with the ask, its answer, its reminder, waiting again. */
+  #coordUpper(sessionId: string, plan: (typeof COORD_ANSWERS)[string]): void {
+    const title = this.#sessions.get(sessionId)?.title ?? '';
+    const callId = `cd-ans-${sessionId}`;
+    const reason = plan.allow ? plan.answer.reason : (plan.handover.reason ?? '');
+    this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: this.#coordWait, content: `${title} asks to confirm a step (${plan.callId}).` }], { author: 'runtime' });
+    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'tool_use', id: callId, name: 'answer_confirmation', input: { agent: sessionId, call_id: plan.callId, allow: plan.allow, reason } }]);
+    this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: callId, content: plan.allow ? `Allowed once. ${title} goes on.` : `Handed to the user: ${title} waits on its card.` }], { author: 'runtime', toolInfo: { [callId]: { category: 'agent', title } } });
+    this.#coordWait = `cd-wait-${sessionId}`;
+    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [...(plan.allow ? [] : [{ type: 'text' as const, text: plan.reminder }]), { type: 'tool_use', id: this.#coordWait, name: 'wait_agents', input: {} }]);
+    // the window draws it from the history (a run.end reloads it), still waiting on its sub-agents
+    this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
+    this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
+  }
+
+  /** The demo's project switch off: nothing is asked of the upper agent, every card is shown as without it. */
+  #coordOff(sessionId: string, list: PendingItem[]): PendingItem[] {
+    const out = list.map((p) => {
+      if (p.kind !== 'confirm' || !p.delegated) return p;
+      const plain = { ...p };
+      delete plain.delegated;
+      return plain;
+    });
+    if (out.length && this.#sessions.get(sessionId)?.status === 'tool') this.#setStatus(sessionId, 'awaiting_confirm', out[0]!.kind === 'confirm' ? out[0]!.toolName : undefined);
+    return out;
   }
 
   // ----- events -------------------------------------------------------------
@@ -520,10 +559,10 @@ export class FakeBackend implements AgentBackend {
   }
 
   async getPending(sessionId: string): Promise<PendingItem[]> {
-    if (this.#coordDemo) {
-      // the setting off: nothing is handed to the manager, the cards are as without it
-      if (!this.#coordDemo()) return structuredClone((this.#pending.get(sessionId) ?? []).map((p) => (p.kind === 'confirm' && p.delegated ? (({ delegated: _, ...rest }) => rest)(p) : p)));
-      this.#coordAnswer(sessionId, this.#pending.get(sessionId) ?? []);
+    const coordProject = this.#coordDemo ? this.#sessions.get(sessionId)?.projectId : undefined;
+    if (this.#coordDemo && coordProject === COORD_PROJECT.id) {
+      if (!this.#coordDemo(coordProject)) return structuredClone(this.#coordOff(sessionId, this.#pending.get(sessionId) ?? []));
+      this.#coordAnswer(sessionId);
     }
     return structuredClone(this.#pending.get(sessionId) ?? []);
   }
