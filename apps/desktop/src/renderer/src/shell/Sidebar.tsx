@@ -32,6 +32,8 @@ export interface SidebarProps {
   onRename?: (id: string, title: string | null) => void;
   /** The 收件箱 row; absent when the backend has no mail. `count` = mails waiting for the user. */
   inbox?: { count: number; open: boolean; onOpen(): void };
+  /** 定时任务 (mock-up: the sidebar placement), under 收件箱. */
+  schedule?: { open: boolean; onOpen(): void };
   /** Finished sub-tasks not opened since they finished: news on their row (and on a collapsed row above them). */
   unseenDone?: ReadonlySet<string>;
   /** Project ids pinned to the top, in pin order. */
@@ -345,6 +347,7 @@ export function Sidebar({
   settingsOpen,
   onRename,
   inbox,
+  schedule,
   unseenDone,
   pinned = [],
   onPin,
@@ -526,6 +529,11 @@ export function Sidebar({
               {inbox.count ? <span className="rail-badge">{inbox.count}</span> : null}
             </button>
           ) : null}
+          {schedule ? (
+            <button type="button" className={schedule.open ? 'side-action is-active' : 'side-action'} onClick={schedule.onOpen} aria-current={schedule.open ? 'page' : undefined} aria-label={t('定时任务')} title={t('定时任务')}>
+              <Icon name="clock" />
+            </button>
+          ) : null}
         </div>
         </div>
         {pluginPages.length ? (
@@ -578,6 +586,12 @@ export function Sidebar({
                 {inbox.count}
               </span>
             ) : null}
+          </button>
+        ) : null}
+        {schedule ? (
+          <button type="button" className={schedule.open ? 'side-action is-active' : 'side-action'} onClick={schedule.onOpen} aria-current={schedule.open ? 'page' : undefined}>
+            <Icon name="clock" />
+            <span>{t('定时任务')}</span>
           </button>
         ) : null}
       </div>

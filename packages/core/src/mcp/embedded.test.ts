@@ -14,7 +14,7 @@ import { base64Size, EMBEDDED_LIMIT, embeddedName, keepEmbedded, nameFromUri, sa
 
 vi.setConfig({ testTimeout: 60_000 });
 
-// `make` answers with the content items it is given; `big` with one file of `bytes` zero bytes (made there, so the
+// `make` answers with the content items it is given (and with overLimit, a file just over the limit); `big` with one file of `bytes` zero bytes (made there, so the
 // test does not send it)
 const SERVER = `
 const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...m }) + '\\n');
@@ -27,7 +27,9 @@ require('node:readline').createInterface({ input: process.stdin }).on('line', (l
     const blob = Buffer.alloc(m.params.arguments.bytes).toString('base64');
     return send({ id: m.id, result: { content: [{ type: 'resource', resource: { uri: 'file:///out/big.bin', mimeType: 'application/octet-stream', blob } }] } });
   }
-  return send({ id: m.id, result: { content: m.params.arguments.content } });
+  // overLimit: one more file of that much base64, made here (so the model's call does not carry it)
+  const over = m.params.arguments.overLimit ? [{ type: 'resource', resource: { uri: 'file:///srv/huge.bin', blob: 'A'.repeat(m.params.arguments.overLimit) } }] : [];
+  return send({ id: m.id, result: { content: [...m.params.arguments.content, ...over] } });
 });
 `;
 
@@ -240,8 +242,9 @@ describe('where a conversation keeps them, and their cards', () => {
     const legacy = join(dir, 'legacy');
     mkdirSync(legacy, { recursive: true });
     const rt = makeRuntime(gw, { sessionFilesDir: join(dir, 'app', 'sessions'), mediaDir: join(dir, 'app', 'media'), cwd: join(dir, 'default'), legacyDefaultCwd: legacy });
-    const content = [blob('file:///srv/spec.pdf', b64('%PDF'), 'application/pdf'), blob('file:///srv/huge.bin', 'A'.repeat(4 * Math.ceil((EMBEDDED_LIMIT + 1) / 3)))];
-    gw.enqueue({ toolCalls: [{ id: 'e1', name: 'dl__make', args: { content } }] }, { text: 'done' });
+    // the file over the limit is made by the server: in the model's call, 67 MB would go through the whole round
+    const args = { content: [blob('file:///srv/spec.pdf', b64('%PDF'), 'application/pdf')], overLimit: 4 * Math.ceil((EMBEDDED_LIMIT + 1) / 3) };
+    gw.enqueue({ toolCalls: [{ id: 'e1', name: 'dl__make', args }] }, { text: 'done' });
     try {
       await rt.connectMcp({ name: 'dl', command: process.execPath, args: ['-e', SERVER] });
       const projectFolder = join(dir, 'project');

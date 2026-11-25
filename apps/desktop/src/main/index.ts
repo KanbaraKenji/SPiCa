@@ -634,6 +634,13 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'listMail',
   'pollMail',
   'mailFeedback',
+  'listSchedules',
+  'saveSchedule',
+  'deleteSchedule',
+  'setScheduleEnabled',
+  'runSchedule',
+  'listScheduleRuns',
+  'checkSchedules',
   'renameProject',
   'deleteProject',
   'setSessionModel',
@@ -2145,6 +2152,8 @@ void app.whenReady().then(() => {
       checkApp: () => updates.check(),
       checkPlugins: async () => updates.setPluginUpdates(pluginUpdateCount((await pluginService.run({ op: 'checkUpdates' })).state)),
     });
+    // Scheduled tasks: the core looks every minute; after the computer slept it looks at once (a run missed asleep runs now).
+    powerMonitor.on('resume', () => void backend.checkSchedules?.().catch(() => undefined));
     // A downloaded update installs itself when idle: 自动更新 on, or a version that must update.
     setInterval(() => {
       if (idleInstallDue({ update: updates.state, whenIdle: settings.get().updateWhenIdle, busy: running.any(), idleSeconds: powerMonitor.getSystemIdleTime() })) updates.install();

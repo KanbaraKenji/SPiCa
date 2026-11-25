@@ -1,5 +1,5 @@
 // In-memory store (tests and ephemeral runs).
-import type { MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { ScheduleInfo, ScheduleRun, ScheduleRunStatus, MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const clone = <T>(v: T): T => structuredClone(v);
@@ -17,6 +17,8 @@ export class MemoryStore implements Store {
   readonly #projectLog: ProjectLogEntry[] = [];
   readonly #objects = new Map<string, WorkObject>();
   readonly #mail = new Map<string, MailItem>();
+  readonly #schedules = new Map<string, ScheduleInfo>();
+  readonly #scheduleRuns = new Map<string, ScheduleRun>();
   readonly #senders = new Map<string, SenderDecision>();
   readonly #memories = new Map<number, MemoryItem>();
   #memorySeq = 0;
@@ -89,6 +91,34 @@ export class MemoryStore implements Store {
       .filter((m) => m.owner === owner && (opts.all || m.status === 'active'))
       .sort((a, b) => a.id - b.id)
       .map(clone);
+  }
+
+  upsertSchedule(s: ScheduleInfo): void {
+    const data = { ...s };
+    delete data.lastRun;
+    this.#schedules.set(s.id, clone(data));
+  }
+  getSchedule(id: string): ScheduleInfo | undefined {
+    const s = this.#schedules.get(id);
+    return s && clone(s);
+  }
+  listSchedules(): ScheduleInfo[] {
+    return [...this.#schedules.values()].map(clone);
+  }
+  deleteSchedule(id: string): void {
+    this.#schedules.delete(id);
+    for (const [k, r] of this.#scheduleRuns) if (r.scheduleId === id) this.#scheduleRuns.delete(k);
+  }
+  upsertScheduleRun(r: ScheduleRun): void {
+    this.#scheduleRuns.set(r.id, clone(r));
+  }
+  listScheduleRuns(filter: { scheduleId?: string; status?: ScheduleRunStatus; sessionId?: string; limit?: number } = {}): ScheduleRun[] {
+    const all = [...this.#scheduleRuns.values()]
+      .filter((r) => (filter.scheduleId === undefined || r.scheduleId === filter.scheduleId) && (filter.status === undefined || r.status === filter.status) && (filter.sessionId === undefined || r.sessionId === filter.sessionId))
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => b.r.startedAt.localeCompare(a.r.startedAt) || b.i - a.i)
+      .map(({ r }) => clone(r));
+    return filter.limit !== undefined && filter.limit >= 0 ? all.slice(0, filter.limit) : all;
   }
 
   upsertMail(m: MailItem): void {

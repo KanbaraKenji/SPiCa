@@ -181,6 +181,8 @@ export interface ShellSettings {
   backgroundHintShown: boolean;
   /** 常规 › 项目 › 由项目经理确认子任务的操作: a manager answers its sub-agents' confirmations for the user, once each. Off by default. */
   managerConfirms: boolean;
+  /** After the first 定时任务 was saved, the user was asked once whether × should minimize to the tray. */
+  scheduleTrayAsked: boolean;
   /**
    * 模型 › 代理互发消息上限: how many messages one conversation may send to other agents since the user last wrote
    * in it; then it stops and waits for the user (he wanted Claude desktop's guard, 2026-11-12). null = no limit.
@@ -305,6 +307,7 @@ export const DEFAULT_SETTINGS: ShellSettings = {
   openAtLogin: false,
   backgroundHintShown: false,
   managerConfirms: false,
+  scheduleTrayAsked: false,
   agentMessageLimit: 10,
   account: '',
   callName: '',
@@ -410,7 +413,7 @@ export function sanitizeSettings(value: unknown): ShellSettings {
   const closeWindow: CloseWindow = v.closeWindow === 'tray' || v.closeWindow === 'quit' || v.closeWindow === 'ask' ? v.closeWindow : v.keepInBackground === true ? 'tray' : 'ask';
   const openAtLogin = v.openAtLogin === true;
   const backgroundHintShown = v.backgroundHintShown === true;
-  return { computerUse: computerUseValue(v.computerUse), account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, managerConfirms: v.managerConfirms === true, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
+  return { computerUse: computerUseValue(v.computerUse), account: accountValue(v.account), callName: callNameValue(v.callName), agentMessageLimit: agentMessages(v.agentMessageLimit), closeWindow, linkOpen: v.linkOpen === 'panel' || v.linkOpen === 'system' ? v.linkOpen : 'ask', openAtLogin, backgroundHintShown, scheduleTrayAsked: v.scheduleTrayAsked === true, managerConfirms: v.managerConfirms === true, codeTheme, codeSize: codeSize(v.codeSize), textSize, uiFont, language, previewers, localConnect, memory, memoryAutoTidy, network, skin, customSkins, zoom, panels, panelWidths, splash, splashShownOn, updateWhenIdle, channelMove, dismissedNotices, noticesCache, mail, workflowsDir, doneNews, pinnedProjects, monitor: v.monitor === true };
 }
 
 export function applyPatch(current: ShellSettings, patch: SettingsPatch): ShellSettings {

@@ -6,6 +6,8 @@ import { HookRegistry } from './hooks.ts';
 import { RateLimiter, type LimiterConfig } from './limiter.ts';
 import type { Provider } from './providers/types.ts';
 import { Session, type RunResult } from './session.ts';
+import { Scheduler } from './schedule.ts';
+import { scheduleTools } from './tools/schedule-tools.ts';
 import { MemoryStore } from './store/memory.ts';
 import type { RelayRecord, SessionConfig, SessionRecord, Store } from './store/types.ts';
 import { agentTools } from './tools/agent-tools.ts';
@@ -373,6 +375,8 @@ export class Runtime implements RuntimeInternals {
   readonly #viewLimiters = new Map<string, RateLimiter>();
   /** The user's memory: list, edit, forget, restore, undo, clear, and the on / off switch. */
   readonly memory: MemoryBook;
+  /** Scheduled tasks: the clock starts with start() (the host does), not here. */
+  readonly schedules: Scheduler;
 
   constructor(opts: RuntimeOptions) {
     this.#opts = opts;
@@ -382,6 +386,7 @@ export class Runtime implements RuntimeInternals {
     this.mail = new MailPipeline(this, opts.mail ?? {});
     this.store = opts.store ?? new MemoryStore();
     this.memory = new MemoryBook(this, opts.memory ?? {});
+    this.schedules = new Scheduler(this);
     this.addRedactions(opts.redactions ?? []);
     this.tracer = new Tracer(this.store, this.events, (text) => redact(text, [...this.#secrets]));
     this.ledger = new CostLedger(opts.prices ?? DEFAULT_PRICES, opts.budget ?? {});
@@ -432,6 +437,7 @@ export class Runtime implements RuntimeInternals {
       ...agentTools,
       updatePlanTool,
       ...projectTools,
+      ...scheduleTools,
       ...historyTools,
       ...folderTools,
       ...createMemoryTools(this),
@@ -462,6 +468,14 @@ export class Runtime implements RuntimeInternals {
           return { action: 'deny', reason: `do not wait with sleep commands; use wait_agents to wait for sub-agents or project managers${this.#jobs ? ', command_output with wait_seconds for a background command' : ''}` };
         }
         return undefined;
+      },
+    });
+    // A scheduled task runs later with nobody watching: setting one up or changing it is confirmed, in auto mode too.
+    this.hooks.register('core:schedule', {
+      beforeTool: (call) => {
+        if (call.name !== 'schedule_task') return;
+        const id = (call.input as { id?: unknown } | null)?.id;
+        return { action: 'confirm', reason: typeof id === 'string' && id ? 'change a scheduled task' : 'set up a scheduled task' };
       },
     });
     // The assistant's conversations see what it remembers about the user.
@@ -1555,6 +1569,7 @@ export class Runtime implements RuntimeInternals {
   async close(): Promise<void> {
     this.#shutdown.abort();
     this.mail.stop();
+    this.schedules.stop();
     this.memory.close();
     await Promise.all([...this.#sessions.values()].map((s) => s.shutdown()));
     await this.#jobs?.close();

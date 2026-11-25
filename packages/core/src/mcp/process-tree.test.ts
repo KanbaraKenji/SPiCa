@@ -60,6 +60,10 @@ const alive = (pid: number) => {
     return false;
   }
 };
+/** Until every one of `pids` has ended (a busy machine ends processes slowly), up to 20 s. */
+async function ended(...pids: number[]): Promise<void> {
+  for (const t0 = Date.now(); pids.some(alive) && Date.now() - t0 < 20_000; ) await new Promise((r) => setTimeout(r, 50));
+}
 
 // A test process: registers its PID under its role and stays until ended.
 const STAY = `require('node:fs').writeFileSync(require('node:path').join(process.env.REG, process.argv[1] + '-' + process.pid + '-' + process.ppid), ''); setInterval(() => {}, 1 << 30);`;
@@ -139,7 +143,8 @@ describe.runIf(win)('stopping a server with endTree (Windows)', () => {
     await c.connect();
     // end it the way a crash would, without close()
     process.kill(c.pid!);
-    await new Promise((r) => setTimeout(r, 500));
+    await ended(c.pid!);
+    await new Promise((r) => setTimeout(r, 500)); // and the client has heard it go (its exit event)
     const t0 = Date.now();
     await c.close();
     expect(Date.now() - t0).toBeLessThan(500);
@@ -148,6 +153,7 @@ describe.runIf(win)('stopping a server with endTree (Windows)', () => {
   it('ends the ordinary, detached and grandchild processes; leaves one started through an exited launcher', async () => {
     const { c, pids } = await startTree(true);
     await c.close();
+    await ended(pids.plain!, pids.detached!, pids.grandchild!);
     expect({ plain: alive(pids.plain!), detached: alive(pids.detached!), grandchild: alive(pids.grandchild!), launched: alive(pids.launched!) }).toEqual({
       plain: false,
       detached: false,
@@ -159,7 +165,7 @@ describe.runIf(win)('stopping a server with endTree (Windows)', () => {
   it('without endTree only the server and its ordinary children end (the behaviour before)', async () => {
     const { c, pids } = await startTree(false);
     await c.close();
-    await new Promise((r) => setTimeout(r, 300));
+    await ended(pids.plain!);
     expect({ plain: alive(pids.plain!), detached: alive(pids.detached!), grandchild: alive(pids.grandchild!), launched: alive(pids.launched!) }).toEqual({
       plain: false,
       detached: true,
@@ -182,7 +188,7 @@ describe.runIf(win)('stopping a server with endTree (Windows)', () => {
     expect(await endTree([{ ...real, created: real.created - 10n }], Date.now())).toBe(0);
     expect(alive(p.pid!)).toBe(true);
     expect(await endTree([real], Date.now())).toBe(1);
-    await new Promise((r) => setTimeout(r, 300));
+    await ended(p.pid!);
     expect(alive(p.pid!)).toBe(false);
   });
 });

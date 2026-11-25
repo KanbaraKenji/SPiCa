@@ -12,5 +12,6 @@ import { ZH_TW_CHAT } from './zh-TW/chat';
 import { ZH_TW_MEMORY } from './zh-TW/memory';
 import { ZH_TW_FORMS } from './zh-TW/forms';
 import { ZH_TW_MCP } from './zh-TW/mcp';
+import { ZH_TW_SCHEDULE } from './zh-TW/schedule';
 
-export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW, ZH_TW_MAIN, ZH_TW_MODELS, ZH_TW_SETTINGS, ZH_TW_SHELL, ZH_TW_CHAT, ZH_TW_MEMORY, ZH_TW_FORMS, ZH_TW_MCP]);
+export const ZH_TW: Catalog = merge([ZH_TW_APPEARANCE, ZH_TW_WINDOW, ZH_TW_MAIN, ZH_TW_MODELS, ZH_TW_SETTINGS, ZH_TW_SHELL, ZH_TW_CHAT, ZH_TW_MEMORY, ZH_TW_FORMS, ZH_TW_MCP, ZH_TW_SCHEDULE]);

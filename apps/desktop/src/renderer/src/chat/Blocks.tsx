@@ -1,5 +1,6 @@
 // Inline blocks of an answer: text, collapsible thinking and tool rows, and
 // the three cards (file, question, suggestion) plus the confirmation card.
+import { ScheduleFacts } from '../schedule/ScheduleViews';
 import { createContext, memo, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import { askAnswerLines, type ChangePreview, type InstallPreview, type FileCardMeta, type HistoryCardMeta, type SourceCardMeta, type SourceRow } from '@spica/protocol';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
@@ -1153,6 +1154,8 @@ export function ConfirmTarget({ name, input, bare, change, outsideFolder }: { na
   // a script in the page: the script itself, as a command is shown; an upload: the files, in full
   if (name === 'browser_javascript' && typeof v.code === 'string') return <CommandBox command={v.code} bare={bare} code={{ label: 'JavaScript', language: 'javascript' }} />;
   if (name === 'browser_file_upload' && Array.isArray(v.paths)) return <CommandBox command={v.paths.map(String).join('\n')} bare={bare} code={{ label: '' }} />;
+  // A scheduled task the agent sets up or changes: its fields, as the form has them.
+  if (name === 'schedule_task') return <ScheduleFacts input={input} />;
   // A write or an edit: what it would change, as its row shows it after (the core worked it out when it asked: the
   // lines numbered, green in, red out; a new file all green). Without that (an older core) the arguments' own lines.
   if (name === 'write_file' || name === 'edit_file') {

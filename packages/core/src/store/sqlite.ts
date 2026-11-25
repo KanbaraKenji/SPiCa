@@ -3,7 +3,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync, type StatementSync } from 'node:sqlite';
-import type { MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
+import type { ScheduleInfo, ScheduleRun, ScheduleRunStatus, MailItem, MemoryEntry, MemoryItem, MemoryTidyRun, Message, ProjectInfo, ProjectLogEntry, RequestRecord, SupersededMark, TraceRecord, WorkObject } from '../types.ts';
 import type { PendingRecord, RelayRecord, RequestFilter, SenderDecision, SessionRecord, Store, ToolCallRecord } from './types.ts';
 
 const SCHEMA_VERSION = 1;
@@ -76,6 +76,14 @@ CREATE TABLE IF NOT EXISTS memory_entries (
 CREATE TABLE IF NOT EXISTS memory_tidies (
   id INTEGER PRIMARY KEY AUTOINCREMENT, started_at TEXT NOT NULL, data TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS schedules (
+  id TEXT PRIMARY KEY, created_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS schedule_runs (
+  id TEXT PRIMARY KEY, schedule_id TEXT NOT NULL, status TEXT NOT NULL, session_id TEXT, started_at TEXT NOT NULL, data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS schedule_runs_schedule ON schedule_runs(schedule_id, started_at);
+CREATE INDEX IF NOT EXISTS schedule_runs_session ON schedule_runs(session_id);
 CREATE TABLE IF NOT EXISTS mail_senders (
   address TEXT PRIMARY KEY, project_id TEXT, updated_at TEXT NOT NULL, decision TEXT NOT NULL DEFAULT 'project'
 );
@@ -374,6 +382,37 @@ export class SqliteStore implements Store {
       ...(r.data !== null ? { data: parse<Record<string, unknown>>(r.data) } : {}),
       createdAt: String(r.created_at),
     }));
+  }
+
+  // scheduled tasks ---------------------------------------------------------------
+  upsertSchedule(s: ScheduleInfo): void {
+    const data = { ...s };
+    delete data.lastRun;
+    this.#q('INSERT INTO schedules (id, created_at, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data').run(s.id, s.createdAt, json(data));
+  }
+  getSchedule(id: string): ScheduleInfo | undefined {
+    const row = this.#q('SELECT data FROM schedules WHERE id = ?').get(id) as Row | undefined;
+    return row && parse<ScheduleInfo>(row.data);
+  }
+  listSchedules(): ScheduleInfo[] {
+    return (this.#q('SELECT data FROM schedules ORDER BY created_at, rowid').all() as Row[]).map((r) => parse<ScheduleInfo>(r.data));
+  }
+  deleteSchedule(id: string): void {
+    this.#q('DELETE FROM schedule_runs WHERE schedule_id = ?').run(id);
+    this.#q('DELETE FROM schedules WHERE id = ?').run(id);
+  }
+  upsertScheduleRun(r: ScheduleRun): void {
+    this.#q(
+      `INSERT INTO schedule_runs (id, schedule_id, status, session_id, started_at, data) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET status = excluded.status, session_id = excluded.session_id, data = excluded.data`,
+    ).run(r.id, r.scheduleId, r.status, r.sessionId ?? null, r.startedAt, json(r));
+  }
+  listScheduleRuns(filter: { scheduleId?: string; status?: ScheduleRunStatus; sessionId?: string; limit?: number } = {}): ScheduleRun[] {
+    const rows = this.#q(
+      `SELECT data FROM schedule_runs WHERE (? IS NULL OR schedule_id = ?) AND (? IS NULL OR status = ?) AND (? IS NULL OR session_id = ?)
+       ORDER BY started_at DESC, rowid DESC LIMIT ?`,
+    ).all(filter.scheduleId ?? null, filter.scheduleId ?? null, filter.status ?? null, filter.status ?? null, filter.sessionId ?? null, filter.sessionId ?? null, filter.limit ?? -1) as Row[];
+    return rows.map((r) => parse<ScheduleRun>(r.data));
   }
 
   // mail ------------------------------------------------------------------------
