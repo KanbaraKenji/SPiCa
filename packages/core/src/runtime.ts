@@ -192,6 +192,8 @@ export interface RuntimeInternals {
   readonly imageFitter: ImageFitter | undefined;
   provider(id: string): Provider;
   limiter(providerId: string): RateLimiter;
+  /** What the user typed in a project's conversations (the review of a sub-agent's confirmation reads it). */
+  projectUserWords(project: ProjectInfo): string[];
   parentChain(sessionId: string): string[];
   services(session: Session): Record<string, unknown>;
   /** A confirmation card outside the run's own pauses (a step of a running call asks on it). */
@@ -1195,6 +1197,42 @@ export class Runtime implements RuntimeInternals {
     const updated: ProjectInfo = { ...p, name: n, updatedAt: isoNow() };
     this.store.upsertProject(updated);
     if (p.managerSessionId) this.session(p.managerSessionId)?.rename(n);
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
+    return updated;
+  }
+
+  /**
+   * What the user typed in a project's conversations (its own and every one in it), oldest first: the last 30, each
+   * cut to 1500 characters. Only what the user wrote themselves (not a suggestion the model wrote and the user picked).
+   */
+  projectUserWords(project: ProjectInfo): string[] {
+    const ids = this.store.listSessions().filter((s) => s.id === project.managerSessionId || s.config.projectId === project.id).map((s) => s.id);
+    const words: { at: string; text: string }[] = [];
+    for (const id of ids) {
+      for (const m of this.store.listMessages(id)) {
+        if (m.role !== 'user' || (m.kind !== 'user' && m.kind !== 'steer') || (m.meta?.author ?? 'user') !== 'user' || m.meta?.suggested) continue;
+        const text = m.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n').trim();
+        if (text) words.push({ at: m.createdAt, text: text.length > 1500 ? `${text.slice(0, 1500)}…` : text });
+      }
+    }
+    return words.sort((a, b) => a.at.localeCompare(b.at)).slice(-30).map((w) => w.text);
+  }
+
+  /**
+   * 子任务的操作先由模型审查 for a project: on or off, and the model the review runs with (null: the sub-agent's own).
+   * The window sets it; no agent tool or MCP call does (it decides who answers the agents' confirmations).
+   */
+  setProjectReview(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): ProjectInfo {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const rest: ProjectInfo = { ...p };
+    delete rest.reviewSteps;
+    delete rest.reviewModel;
+    const on = change.on ?? !!p.reviewSteps;
+    const model = change.model === undefined ? p.reviewModel : change.model;
+    if (model) this.provider(model.providerId); // an unknown connection throws
+    const updated: ProjectInfo = { ...rest, ...(on ? { reviewSteps: true } : {}), ...(model ? { reviewModel: { providerId: model.providerId, model: String(model.model) } } : {}), updatedAt: isoNow() };
+    this.store.upsertProject(updated);
     this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
     return updated;
   }

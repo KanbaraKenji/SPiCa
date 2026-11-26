@@ -641,6 +641,7 @@ const AGENT_METHODS = new Set<keyof AgentApi>([
   'listScheduleRuns',
   'checkSchedules',
   'renameProject',
+  'setProjectReview',
   'deleteProject',
   'setSessionModel',
   'setApprovalMode',

@@ -41,6 +41,8 @@ const project: ProjectInfo = {
   createdAt: '2026-01-01T00:00:00.000+08:00',
   updatedAt: '2026-01-01T00:00:02.000+08:00',
   unread: 3,
+  reviewSteps: true,
+  reviewModel: { providerId: 'p1', model: 'm1' },
 };
 const message: Message = {
   id: 'msg_1',

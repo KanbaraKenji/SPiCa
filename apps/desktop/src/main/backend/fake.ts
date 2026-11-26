@@ -649,6 +649,22 @@ export class FakeBackend implements AgentBackend {
     return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager: manager ?? null, agents, subProjects });
   }
 
+  async setProjectReview(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): Promise<ProjectInfo> {
+    const p = this.#projects.get(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    if (change.on !== undefined) {
+      if (change.on) p.reviewSteps = true;
+      else delete p.reviewSteps;
+    }
+    if (change.model !== undefined) {
+      if (change.model) p.reviewModel = { ...change.model };
+      else delete p.reviewModel;
+    }
+    p.updatedAt = isoAt(this.#now());
+    this.#emit(p.managerSessionId, { type: 'project.updated', project: structuredClone(p) });
+    return structuredClone(p);
+  }
+
   async renameProject(projectId: string, name: string): Promise<ProjectInfo> {
     const p = this.#projects.get(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);

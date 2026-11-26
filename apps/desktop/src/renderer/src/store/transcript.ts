@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, CommandJob, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, CommandJob, ConfirmAnswer, ConfirmHandover, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -52,6 +52,10 @@ export type Block =
       outside?: UntrustedKind;
       /** Irreversible, but ran without asking: the conversation's approval is automatic. */
       autoApproved?: boolean;
+      /** Its confirmation was allowed by the review, for the user (it is reviewed first): and the reason. */
+      reviewAllowed?: ConfirmAnswer;
+      /** Its confirmation is in review, in the background (no card yet). */
+      asking?: ConfirmHandover;
       /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
       category?: ToolCategory;
       /** The model's one line on what this step does (run_command's description). */
@@ -66,7 +70,11 @@ export type Block =
   | { type: 'ask'; callId: string; question: string; options: string[]; recommended?: string; multiSelect?: boolean; answer?: string; cancelled?: boolean }
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: boolean; install?: InstallPreview }
+  /**
+   * `delegated`: reviewed first; while in review there is no card (the call's row says so), handed back or with no
+   * result the card is the user's. `by`: the review allowed it (there was never a card).
+   */
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: boolean; install?: InstallPreview; delegated?: ConfirmHandover; by?: ConfirmAnswer }
   /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
   | ComputerBlock
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
@@ -528,6 +536,25 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
   }
 }
 
+/**
+ * A confirmation card that is not drawn: in review (its call's row says so), or allowed by the review (there never was
+ * a card). A card the user was shown (handed back, no result) is drawn, answered or not. One rule for the answer and
+ * for what counts as its end (the status line, the live row).
+ */
+export function cardHiddenInReview(b: Block): boolean {
+  return b.type === 'confirm' && b.delegated?.state === 'asking' && (!!b.by || (b.approved === undefined && !b.cancelled));
+}
+
+/** A call whose confirmation is in review says so on its row; handed back, its card says the rest. */
+function markAsking(items: Item[], callId: string, delegated: ConfirmHandover | undefined, input?: unknown): void {
+  const tool = findBlock(items, 'tool', callId);
+  if (!tool) return;
+  // live, the call's row has no input yet (tool.call carries none): the step under review is what opening it shows
+  if (input !== undefined && tool.input === undefined) tool.input = input;
+  if (delegated?.state === 'asking') tool.asking = delegated;
+  else delete tool.asking;
+}
+
 /** What the core writes as the result of a question or confirmation dropped because the run was stopped. */
 const STOPPED_WAITING = /^Cancelled\b/;
 
@@ -679,6 +706,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (note) tool.outside = note.kind;
           if (note?.signals?.length) tool.flagged = note.kind;
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
+          const answered = m.meta?.reviewAllowed?.[b.toolUseId];
+          if (answered) tool.reviewAllowed = answered;
           continue;
         }
         settleCard(items, b.toolUseId, b.content, b.isError);
@@ -804,8 +833,13 @@ function applyPending(t: Transcript, p: PendingItem): void {
       const was = findBlock(t.items, 'computer', p.callId);
       if (was) replaceBlock(t.items, was, card);
       else lastResponse(t.items, `pending-${p.callId}`).blocks.push(card);
-    } else if (!findBlock(t.items, 'confirm', p.callId)) {
-      lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.keepTool ? { keepTool: true } : {}), ...(p.install ? { install: p.install } : {}) });
+    } else {
+      markAsking(t.items, p.callId, p.delegated, p.input);
+      const card = findBlock(t.items, 'confirm', p.callId);
+      if (card) {
+        if (p.delegated) card.delegated = p.delegated;
+      } else
+        lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.keepTool ? { keepTool: true } : {}), ...(p.install ? { install: p.install } : {}), ...(p.delegated ? { delegated: p.delegated } : {}) });
     }
   }
 }
@@ -949,8 +983,13 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (!findBlock(items, 'computer', e.callId)) lastResponse(items, respId).blocks.push(computerCard(e.callId, e.input));
         return t;
       }
-      if (!findBlock(items, 'confirm', e.callId)) {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.keepTool ? { keepTool: true } : {}), ...(e.install ? { install: e.install } : {}) });
+      markAsking(items, e.callId, e.delegated, e.input);
+      const asked = findBlock(items, 'confirm', e.callId);
+      // asked again: the review handed it back or gave no result, and the card is shown now
+      if (asked) {
+        if (e.delegated) asked.delegated = e.delegated;
+      } else {
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.keepTool ? { keepTool: true } : {}), ...(e.install ? { install: e.install } : {}), ...(e.delegated ? { delegated: e.delegated } : {}) });
       }
       return t;
     }
@@ -969,6 +1008,13 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
     case 'confirm.resolved': {
       const c = findBlock(items, 'confirm', e.callId) ?? findBlock(items, 'computer', e.callId);
       if (c) c.approved = e.approved;
+      if (c?.type === 'confirm' && e.by) {
+        c.by = e.by;
+        // the step's row says who allowed it, as it does once the conversation is opened again
+        const tool = findBlock(items, 'tool', e.callId);
+        if (tool) tool.reviewAllowed = e.by;
+      }
+      markAsking(items, e.callId, undefined);
       return t;
     }
     case 'install.failed': {

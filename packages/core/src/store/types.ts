@@ -82,6 +82,8 @@ export interface ToolCallCards {
   guard?: import('../types.ts').GuardNote;
   /** Ran without asking (approval mode auto). */
   autoApproved?: true;
+  /** Ran because the review allowed it for the user (子任务的操作先由模型审查): with its reason. */
+  reviewAllowed?: import('../types.ts').ConfirmAnswer;
   /** What remember / forget changed in the user's memory. */
   memory?: import('../types.ts').MemoryCardMeta;
 }

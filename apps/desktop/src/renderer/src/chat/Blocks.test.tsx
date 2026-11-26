@@ -823,3 +823,52 @@ describe('files under an answer: cards when few, a list when many', () => {
     expect(screen.queryByRole('button', { name: /全部/ })).toBeNull();
   });
 });
+
+describe('a sub-agent confirmation reviewed first (子任务的操作先由模型审查)', () => {
+  const review = { model: 'deepseek-flash' };
+  const base = { type: 'confirm' as const, callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action' };
+  const step = { type: 'tool' as const, callId: 'c1', name: 'run_command', input: { command: 'python merge.py' } };
+  const asking = { ...review, state: 'asking' as const, since: new Date(Date.now() - 75_000).toISOString() };
+
+  it('handed back: the card as always, its last line why; no result: why it gave none', () => {
+    render(<ConfirmCard block={{ ...base, delegated: { ...review, state: 'returned', reason: '写到项目文件夹以外' } }} onDecide={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '拒绝' })).toBeTruthy();
+    expect(screen.getByText('未自动放行：写到项目文件夹以外')).toBeTruthy();
+    cleanup();
+    render(<ConfirmCard block={{ ...base, delegated: { ...review, state: 'no_result', failure: 'timeout' } }} onDecide={vi.fn()} />);
+    expect(screen.getByText('未能自动放行：超时')).toBeTruthy();
+    cleanup();
+    render(<ConfirmCard block={{ ...base, delegated: { ...review, state: 'no_result', failure: 'spend_limit' } }} onDecide={vi.fn()} />);
+    expect(screen.getByText('未能自动放行：已到花费上限')).toBeTruthy();
+  });
+
+  it('waiting: the row says only 等待批准, the mark in front and how long it has waited after it; no Running, no command, no ring', () => {
+    const { container } = render(<ToolGroup blocks={[{ ...step, state: 'pending', asking }]} />);
+    const row = screen.getByRole('button', { name: /等待批准/ });
+    expect(row.textContent).not.toContain('Running');
+    expect(row.textContent).not.toContain('merge.py');
+    expect(container.querySelector('.fold-icon .fold-mark')).toBeTruthy();
+    expect(container.querySelector('.status-clock')?.textContent).toMatch(/^1m 1\ds$/);
+    expect(container.querySelector('.fold-meta [title="等待批准"]')).toBeNull();
+    fireEvent.click(row);
+    expect(document.body.textContent).toContain('python merge.py');
+  });
+
+  it('in a fold of steps: the fold says it with the mark and the clock, and the step in its list as a step going on', () => {
+    const done = { type: 'tool' as const, callId: 'c0', name: 'list_dir', input: { path: '报告' }, state: 'done' as const };
+    const { container } = render(<ToolGroup blocks={[done, { ...step, state: 'pending', asking }]} />);
+    const fold = screen.getByRole('button', { name: /等待批准/ });
+    expect(fold.textContent).not.toContain('Running');
+    expect(container.querySelector('.fold-icon .fold-mark')).toBeTruthy();
+    expect(container.querySelector('.status-clock')).toBeTruthy();
+    fireEvent.click(fold);
+    expect(screen.getAllByText('等待批准')).toHaveLength(2);
+  });
+
+  it('once allowed it ran: Ran …, 自动放行 where Auto would be; the detail says why', () => {
+    render(<ToolGroup blocks={[{ ...step, state: 'done', durationMs: 2100, reviewAllowed: { ...review, reason: '只写入 汇总.xlsx' } }]} />);
+    expect(document.body.textContent).toContain('自动放行 · 2s');
+    fireEvent.click(screen.getByRole('button', { name: /merge/ }));
+    expect(screen.getByText('已自动放行：只写入 汇总.xlsx')).toBeTruthy();
+  });
+});

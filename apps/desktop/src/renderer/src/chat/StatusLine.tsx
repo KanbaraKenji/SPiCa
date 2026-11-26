@@ -2,10 +2,11 @@
 // what it is doing + elapsed time for this run. After a run it shows
 // "已完成 · 用时" briefly, then goes away.
 import { useEffect, useState } from 'react';
-import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
+import { cardHiddenInReview, MEMORY_TOOLS, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 import { t } from '../../../shared/i18n';
+import { reviewWaiting } from './review-words';
 
 export const DONE_LINGER_MS = 1400;
 
@@ -22,6 +23,11 @@ function runningTool(t: Transcript): string | undefined {
   return t.run?.detail;
 }
 
+function inReview(tr: Transcript): boolean {
+  for (const it of tr.items) if (it.kind === 'response') for (const b of it.blocks) if (b.type === 'tool' && b.asking && b.state === 'pending') return true;
+  return false;
+}
+
 export function phaseOf(tr: Transcript): { mark: MarkState; text: string } | null {
   const run = tr.run;
   if (!run) return null;
@@ -29,6 +35,8 @@ export function phaseOf(tr: Transcript): { mark: MarkState; text: string } | nul
     case 'queued':
       return { mark: 'await', text: run.queuePosition ? t('排队中（前面 {n} 个）', { n: Math.max(0, run.queuePosition - 1) }) : t('排队中') };
     case 'tool': {
+      // a call's confirmation in review, in the background: waiting on it, not running anything
+      if (inReview(tr)) return { mark: 'await', text: reviewWaiting() };
       const name = runningTool(tr);
       return { mark: 'tool', text: name ? t('正在{tool}', { tool: toolLabel(name) }) : t('正在调用工具') };
     }
@@ -52,7 +60,8 @@ export function shownInAnswer(t: Transcript): boolean {
   if (!t.run) return false;
   const last = t.items[t.items.length - 1];
   if (last?.kind !== 'response') return false;
-  const blocks = last.blocks;
+  // a confirmation in review has no card yet: its call's row is the end of the answer
+  const blocks = last.blocks.filter((b) => !cardHiddenInReview(b));
   const end = blocks[blocks.length - 1];
   if (end?.type === 'thinking') return t.run.status === 'thinking';
   // remember / forget show nothing while they run (their line comes with the result): the status line says it.
@@ -61,7 +70,8 @@ export function shownInAnswer(t: Transcript): boolean {
   // The tools at the end of the answer, as one group.
   let i = blocks.length - 1;
   while (i > 0 && grouped(blocks[i - 1])) i--;
-  return blocks.slice(i).some((b) => b.type === 'tool' && b.state === 'running');
+  // a call waiting for the review says so on its own row
+  return blocks.slice(i).some((b) => b.type === 'tool' && (b.state === 'running' || (b.state === 'pending' && !!b.asking)));
 }
 
 export function StatusLine({ transcript }: { transcript: Transcript }) {

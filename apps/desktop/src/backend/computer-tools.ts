@@ -148,6 +148,7 @@ export function computerTools(host: HostCall, opts: { enabled: () => boolean; ta
   const tools: Tool[] = [
     {
       ...base,
+      confirmByUser: true,
       spec: {
         name: 'computer_request_access',
         description:

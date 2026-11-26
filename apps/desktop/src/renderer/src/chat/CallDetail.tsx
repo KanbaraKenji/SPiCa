@@ -11,6 +11,7 @@ import { resultBody, type Block } from '../store/transcript';
 import { clipboard } from '../ui/clipboard';
 import { CopyButton } from '../ui/CopyButton';
 import { t } from '../../../shared/i18n';
+import { reviewAllowed } from './review-words';
 
 type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -323,6 +324,8 @@ export function CallDetail({ block, card, args = true }: { block: ToolBlock; car
   return (
     <div className="tool-detail">
       {args ? input : null}
+      {/* the review allowed it for the user (asked first, no card): and why */}
+      {block.reviewAllowed ? <p className="tool-by">{reviewAllowed(block.reviewAllowed.reason)}</p> : null}
       {status ? <p className="tool-status">{status}</p> : null}
       {out ? <CallOutput text={out} /> : null}
       {args && empty && !status && !out ? <p className="tool-empty">—</p> : null}

@@ -54,6 +54,7 @@ const agent: AgentApi = {
   listScheduleRuns: call('listScheduleRuns'),
   checkSchedules: call('checkSchedules'),
   renameProject: call('renameProject'),
+  setProjectReview: call('setProjectReview'),
   deleteProject: call('deleteProject'),
   setSessionModel: call('setSessionModel'),
   setApprovalMode: call('setApprovalMode'),

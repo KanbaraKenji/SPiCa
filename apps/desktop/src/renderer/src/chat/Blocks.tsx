@@ -7,6 +7,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
+import { reviewBy, reviewNoResult, reviewReturned, reviewWaiting } from './review-words';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
@@ -546,6 +547,8 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
  * started yet keeps the tool icon and the turning ring after its name.
  */
 export function toolIcon(b: ToolBlock): ReactNode {
+  // waiting for the review: in a list of steps, marked as a step going on (the row or fold above has the mark and clock)
+  if (b.state === 'pending' && b.asking) return <SpicaStatusIcon name="running" size={14} title={reviewWaiting()} />;
   switch (b.state) {
     case 'running':
       return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
@@ -618,14 +621,31 @@ export const ToolCardsContext = createContext<Record<string, FileCardMeta> | und
 
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
 function toolMeta(block: ToolBlock, done = false): ReactNode {
+  // in review (no card): the row's words say so; the turning ring after them, or the clock on a live row
+  if (block.state === 'pending' && block.asking) return null;
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return t('已停用，未执行');
   if (block.state === 'repeated') return t('重复，未执行');
   if (block.state === 'timeout') return t('已超时');
   if (block.state === 'running') return null;
-  if (block.durationMs !== undefined && !done) return block.autoApproved ? `Auto · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
-  return block.autoApproved ? 'Auto' : null;
+  // allowed by the review for the user: said where Auto would be
+  const by = block.reviewAllowed ? reviewBy() : block.autoApproved ? 'Auto' : null;
+  if (block.durationMs !== undefined && !done) return by ? `${by} · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
+  return by;
+}
+
+/** A call in review: only that, no command (it is in the detail); else what it is doing (Running Get-ChildItem). */
+function busyWords(block: ToolBlock): ReactNode {
+  if (block.state === 'pending' && block.asking) return <span className="tool-verb">{reviewWaiting()}</span>;
+  return runningWords(block);
+}
+
+/** Since when a call has waited for the review (its own start, else the run's), for the clock at the row's end. */
+function reviewSince(b: ToolBlock | undefined, since: number | undefined): number | undefined {
+  if (!b || b.state !== 'pending' || !b.asking) return undefined;
+  const at = b.asking.since ? Date.parse(b.asking.since) : NaN;
+  return Number.isFinite(at) ? at : since;
 }
 
 /** A call's words: the verb quieter, the object as it is; the whole path or address on hover when it was cut. */
@@ -685,7 +705,7 @@ function ToolItem({ block }: { block: ToolBlock }) {
     <div className={open ? 'tool-item is-open' : 'tool-item'}>
       <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="fold-icon">{toolIcon(block)}</span>
-        {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{runningWords(block)}</span> : <ToolText block={block} />}
+        {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{busyWords(block)}</span> : <ToolText block={block} />}
         {meta ? <span className="fold-meta">{meta}</span> : null}
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
@@ -729,14 +749,17 @@ function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefine
   const [open, setOpen] = useState(false);
   const done = useContext(RoundDoneContext);
   const now = since !== undefined && block.state === 'running';
+  // waiting for the review: drawn as the step going on (the mark in front), the clock how long it has waited
+  const waited = reviewSince(block, since);
+  const reviewing = block.state === 'pending' && !!block.asking;
   return (
     <Disclosure
       open={open}
       onToggle={() => setOpen((o) => !o)}
-      icon={now ? LIVE_MARK : toolIcon(block)}
-      label={now || block.state === 'running' || block.state === 'pending' ? runningWords(block) : <ToolText block={block} />}
+      icon={now || reviewing ? LIVE_MARK : toolIcon(block)}
+      label={now || block.state === 'running' || block.state === 'pending' ? busyWords(block) : <ToolText block={block} />}
       meta={toolMeta(block, done)}
-      tail={now ? <RunClock since={since} /> : undefined}
+      tail={now ? <RunClock since={since} /> : waited !== undefined ? <RunClock since={waited} /> : undefined}
     >
       <ToolDetail block={block} />
     </Disclosure>
@@ -766,10 +789,14 @@ export function ToolGroup({ blocks, steps = blocks, since }: { blocks: ToolBlock
   const now = since !== undefined && running.length > 0;
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
-  const label = now ? runningText(running) : busy ? runningWords(running[0] ?? blocks.find((b) => b.state === 'pending')!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
-  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
+  const first = running[0] ?? blocks.find((b) => b.state === 'pending');
+  // a step waiting for the review: the fold is the step going on (the mark in front, how long it has waited)
+  const waited = now ? undefined : reviewSince(first, since);
+  const reviewLive = !now && !!first?.asking && first.state === 'pending';
+  const label = now ? runningText(running) : busy ? busyWords(first!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
+  const meta = busy ? (now || reviewLive ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
+    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now || reviewLive ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : waited !== undefined ? <RunClock since={waited} /> : undefined}>
       <div className="tool-list">
         {steps.map((b, i) => (b.type === 'thinking' ? <ThinkingItem key={`thinking-${i}`} text={b.text} /> : <ToolItem key={b.callId} block={b} />))}
       </div>
@@ -1341,6 +1368,13 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       ) : null}
       {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
+      {/* reviewed first: handed back to the user with its reason, or the review gave no result */}
+      {block.delegated?.state === 'returned' ? <p className="card-why">{reviewReturned(block.delegated.reason ?? '')}</p> : null}
+      {block.delegated?.state === 'no_result' ? (
+        <p className="card-why" title={block.delegated.detail}>
+          {reviewNoResult(block.delegated.failure)}
+        </p>
+      ) : null}
     </section>
   );
 }

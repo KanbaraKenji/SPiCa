@@ -889,3 +889,61 @@ describe('currentPlan (update_plan)', () => {
     expect(currentPlan(stored)?.steps.map((s) => s.status)).toEqual(['completed', 'completed', 'pending', 'pending', 'pending']);
   });
 });
+
+describe('a sub-agent confirmation reviewed first', () => {
+  const upper = { model: 'deepseek-flash' };
+  const call: Message = { id: 'm1', sessionId: 's', seq: 1, role: 'assistant', kind: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'run_command', input: { command: 'python merge.py' } }], createdAt: '' };
+  const pending = (state: 'asking' | 'returned' | 'no_result', reason?: string) =>
+    [{ kind: 'confirm' as const, callId: 'c1', toolName: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action', delegated: { ...upper, state, ...(reason ? { reason } : {}) }, createdAt: '' }];
+  const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
+  const tool = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).find((b) => b.type === 'tool' && b.callId === 'c1') as Extract<Block, { type: 'tool' }>;
+  const card = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).find((b) => b.type === 'confirm') as Extract<Block, { type: 'confirm' }>;
+
+  it('asking: the call row says so, the card waits unshown; handed back, the row is plain and the card has the reason', () => {
+    const t = fromHistory([call], pending('asking'));
+    expect(tool(t).asking?.state).toBe('asking');
+    expect(card(t).delegated?.state).toBe('asking');
+    const back = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: {}, reason: 'irreversible action', delegated: { ...upper, state: 'returned', reason: '写到项目文件夹以外' } }));
+    expect(tool(back).asking).toBeUndefined();
+    expect(card(back).delegated).toEqual({ ...upper, state: 'returned', reason: '写到项目文件夹以外' });
+    expect(back.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).filter((b) => b.type === 'confirm')).toHaveLength(1);
+  });
+
+  it('opened again after it was handed back or got no answer: the card as it was shown live', () => {
+    expect(card(fromHistory([call], pending('returned', '理由'))).delegated?.reason).toBe('理由');
+    expect(tool(fromHistory([call], pending('no_result'))).asking).toBeUndefined();
+  });
+
+  it('allowed by the review: the row keeps who and why, live and from the history', () => {
+    const answer = { ...upper, reason: '只写入 汇总.xlsx' };
+    const live = applyEvent(fromHistory([call], pending('asking')), ev({ type: 'confirm.resolved', callId: 'c1', approved: true, by: answer }));
+    expect(tool(live).reviewAllowed).toEqual(answer);
+    expect(tool(live).asking).toBeUndefined();
+    expect(card(live).by).toEqual(answer);
+    const result: Message = { id: 'm2', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'ok' }], createdAt: '', meta: { author: 'runtime', reviewAllowed: { c1: answer } } };
+    expect(tool(fromHistory([call, result])).reviewAllowed).toEqual(answer);
+  });
+
+  it('live, in the order the core sends it: the call, in review, allowed, running (its command shown), done', () => {
+    let t = applyEvent(fromHistory([]), ev({ type: 'tool.call', callId: 'c1', name: 'run_command' }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action', delegated: { ...upper, state: 'asking', since: '' } }));
+    expect(tool(t)).toMatchObject({ state: 'pending', asking: { state: 'asking' } });
+    // opening the waiting row shows the command (tool.call carried none)
+    expect(tool(t).input).toEqual({ command: 'python merge.py' });
+    expect(card(t).input).toEqual({ command: 'python merge.py' });
+    t = applyEvent(t, ev({ type: 'confirm.resolved', callId: 'c1', approved: true, by: { ...upper, reason: 'r' } }));
+    t = applyEvent(t, ev({ type: 'tool.start', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' } }));
+    expect(tool(t)).toMatchObject({ state: 'running', input: { command: 'python merge.py' }, reviewAllowed: { reason: 'r' } });
+    expect(tool(t).asking).toBeUndefined();
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'c1', name: 'run_command', isError: false, preview: 'ok', durationMs: 5 }));
+    expect(tool(t).state).toBe('done');
+  });
+
+  it('live, handed back: the call, in review, then its card with the reason', () => {
+    let t = applyEvent(fromHistory([]), ev({ type: 'tool.call', callId: 'c1', name: 'run_command' }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'x' }, reason: 'irreversible action', delegated: { ...upper, state: 'asking' } }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'x' }, reason: 'irreversible action', delegated: { ...upper, state: 'returned', reason: 'no' } }));
+    expect(tool(t).asking).toBeUndefined();
+    expect(card(t).delegated).toMatchObject({ state: 'returned', reason: 'no' });
+  });
+});

@@ -4326,6 +4326,11 @@ button.ctx-row:hover {
   line-height: var(--chat-small-line);
 }
 
+/* 「X」等待确认 · 处理 in the project's conversation: why the review handed it to the user, after the words. */
+.waiting-why {
+  margin-left: 8px;
+}
+
 /* Opening animation layer (component from @spica/brand) */
 .root {
   position: relative;
@@ -6813,6 +6818,12 @@ section.plugins-part > .plugins-part-title {
 
 .confirm-spacer {
   flex: 1;
+}
+
+/* In a call's detail: the review allowed it for the user, and why. */
+.tool-by {
+  margin: 2px 0 0;
+  color: var(--spica-muted);
 }
 
 /* The reason's second line (only when it has one), under the head and lined up with the title: past the warning
@@ -10045,6 +10056,16 @@ button.schedule-run-line {
   display: flex;
   align-items: center;
   font-weight: 400;
+}
+
+/* 详情 of a project's own conversation › whether its sub-agents ask it first: a row of its own, the switch at the
+   right end, so its label does not widen the names' column. */
+.detail-facts > .detail-switch {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 /* 定时任务 cards above the mail in 收件箱: the list's gap below them too. */

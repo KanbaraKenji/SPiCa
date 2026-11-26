@@ -391,6 +391,8 @@ export interface MessageMeta {
   toolsUnavailable?: string[];
   /** The message carries outside content (e.g. forwarded mail), fenced as data. */
   untrusted?: GuardNote[];
+  /** A sub-agent's task written during a run a scheduled task started (in the conversation above, or further up). */
+  fromScheduledRun?: true;
   /** tool_results: outside content per tool call id. */
   guard?: Record<string, GuardNote>;
   /** User message: attached files (the cards); their text is in the content blocks listed. */
@@ -399,6 +401,10 @@ export interface MessageMeta {
   suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
+  /** tool_results: confirmations the review allowed for the user (it is asked first), per tool call id. */
+  reviewAllowed?: Record<string, ConfirmAnswer>;
+  /** Runtime note in the project's conversation: a sub-agent's step the review handed back, or gave no result for. */
+  reviewNote?: ReviewNoteMeta;
   /** Runtime note: the user chose the working folder; what was made before moved there. */
   cwdChange?: CwdChangeMeta;
   /** Runtime note: the user switched the session's model (a decision). */
@@ -578,6 +584,8 @@ export interface GuardNote {
   source: string;
   /** Instruction-like patterns found: override, role, address_agent, exfiltrate, secret_file, run_command, mail_action. */
   signals: string[];
+  /** A file read (kind 'file') inside the folder of the project the conversation is in; absent: outside it, or not known. */
+  inProject?: true;
 }
 
 /**
@@ -637,6 +645,45 @@ export interface PluginToolResult {
  * `irreversible` on a confirmation: what it allows cannot be undone (a plugin hook said so, or the plugin declared
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
+/**
+ * The review a sub-agent's confirmation goes through before the user, when its project's switch is on: one model call
+ * of its own (not the upper agent), which sees only what the user said in the project, the task the sub-agent was given,
+ * and the step itself (the command or the path, as the app reads it). `model`: the one it ran with (the project's
+ * default model unless one is set for it).
+ */
+export interface ConfirmReview {
+  model?: string;
+}
+
+/** A confirmation the review allowed for the user (once), and the reason it gave. It never declines. */
+export interface ConfirmAnswer extends ConfirmReview {
+  reason: string;
+}
+
+/**
+ * A confirmation in review. `asking`: in the background, no card (the call's row says so). `returned`: the review did
+ * not allow it and handed it to the user, with its reason. `no_result`: the review gave nothing (`failure`: its call
+ * failed, it hit the spend limit, or no answer in time); the card is the user's then, as without the switch.
+ */
+export interface ConfirmHandover extends ConfirmReview {
+  state: 'asking' | 'returned' | 'no_result';
+  /** asking: when the review started (the window's clock of how long it has waited). */
+  since?: string;
+  reason?: string;
+  failure?: 'error' | 'spend_limit' | 'timeout';
+  /** no_result: the error, or the answer that was neither (cut short); on the card's last line as its hover text. */
+  detail?: string;
+}
+
+/** What the project's conversation is told when a sub-agent's step comes to the user after the review (no run starts). */
+export interface ReviewNoteMeta {
+  fromSessionId: string;
+  fromTitle: string;
+  state: 'returned' | 'no_result';
+  reason?: string;
+  failure?: ConfirmHandover['failure'];
+}
+
 export type PendingItem =
   | {
       kind: 'confirm';
@@ -657,6 +704,8 @@ export type PendingItem =
        */
       keepTool?: string;
       install?: InstallPreview;
+      /** In review first (see ConfirmHandover): no card while it is asked. */
+      delegated?: ConfirmHandover;
       createdAt: string;
     }
   /**
@@ -751,8 +800,11 @@ export type CoreEventBody =
       preview: string;
       durationMs: number;
     }
-  /** `irreversible`: as on a pending confirmation (the card shows 无法撤销). */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: string; install?: InstallPreview }
+  /**
+   * `irreversible`: as on a pending confirmation (the card shows 无法撤销). `delegated`: in review first; sent again for
+   * the same call when the review hands it back or gives no result (its card is shown then).
+   */
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: string; install?: InstallPreview; delegated?: ConfirmHandover }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -763,7 +815,8 @@ export type CoreEventBody =
   | { type: 'settings.changed'; change: SettingsChangeMeta }
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
-  | { type: 'confirm.resolved'; callId: string; approved: boolean }
+  /** `by`: the review allowed it for the user (absent: the user answered). */
+  | { type: 'confirm.resolved'; callId: string; approved: boolean; by?: ConfirmAnswer }
   | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }
   /**
@@ -1443,6 +1496,8 @@ export interface AgentApi {
   getProject?(projectId: string): Promise<ProjectDetail | undefined>;
   /** Rename a project; its manager session takes the same title. */
   renameProject?(projectId: string, name: string): Promise<ProjectInfo>;
+  /** Turn 子任务的操作先由模型审查 on or off for a project, or set the model it runs with (null: the sub-agent's own). */
+  setProjectReview?(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): Promise<ProjectInfo>;
   /**
    * Remove a project from Spica: the project, its manager and every session under it, its activity log and work
    * objects. The project folder and its files are not touched. Running sessions are stopped first. Mail filed under it
@@ -1726,6 +1781,13 @@ export interface ProjectInfo {
   updatedAt: string;
   /** Progress reports of the project manager nobody has looked at yet (the sidebar marks the project). */
   unread?: number;
+  /**
+   * 子任务的操作先由模型审查: a sub-agent's confirmation goes through the review first (one model call of its own) and
+   * only comes to the user when it hands it back or gives no result. Off by default; set only from the window.
+   */
+  reviewSteps?: boolean;
+  /** The model the review runs with; absent: the sub-agent's own model. */
+  reviewModel?: { providerId: string; model: string };
 }
 
 export interface WorkObject {
@@ -1797,4 +1859,99 @@ export interface CreateProjectRequest {
   parentId?: string;
   /** false: a project that only holds sub-projects, with no conversation (manager) of its own. Default true. */
   manager?: boolean;
+}
+
+// What a command will do, read by the app from the command itself (not from the model's description of it): the
+// common kinds of change a confirmation is about. Shared by the window (the card's plain lines, the marked words) and
+// the core (whether a command may go through the review). Only what is recognised is found.
+
+export type CommandPartKind = 'delete' | 'move' | 'copy' | 'write' | 'net' | 'install' | 'process' | 'registry';
+
+export interface CommandPart {
+  kind: CommandPartKind;
+  /** Where it starts in the command. */
+  at: number;
+  /** Its first path-like or address-like argument, without flags and quotes ('' when there is none). */
+  target: string;
+  /** A delete that takes everything under its target (-Recurse, -rf, /s). */
+  recurse: boolean;
+  /** A > redirect (overwrites) rather than >> (adds). */
+  overwrite?: boolean;
+  /** Cannot be taken back: deleting, overwriting, stopping a program, the registry. */
+  danger: boolean;
+  /** Where its dangerous words are ([start, end)), when it is dangerous. */
+  marks: [number, number][];
+}
+
+/** A verb counts only where a command starts: the line's start, after | ; & ( { or a quote, or after cmd /c. */
+const AT_START = String.raw`(?<=(?:^|[|;&({\n"]|\bcmd(?:\.exe)?\s+\/[ck])\s*)`;
+/** What follows a verb up to the end of its command. */
+const ARGS = String.raw`(?=$|[\s|;&)}"])([^|;&\n]*)`;
+
+const verb = (names: string) => new RegExp(`${AT_START}(${names})${ARGS}`, 'gi');
+
+/** The flags that make a delete take everything under the target. */
+const RECURSE = /(?:^|\s)(-Recurse|-rf|-fr|-r|\/s)(?=\s|$)/i;
+/** The flags marked in a dangerous command: recursing, forcing, not asking. */
+const DANGER_FLAGS = /(?:^|\s)(-Recurse|-Force|-rf|-fr|-r|-f|\/s|\/q|\/f)(?=\s|$)/gi;
+
+const VERBS: { kind: CommandPartKind; re: RegExp; danger: boolean }[] = [
+  { kind: 'delete', re: verb('Remove-Item|rm|del|erase|rmdir|rd|ri'), danger: true },
+  { kind: 'move', re: verb('Move-Item|mv|move|Rename-Item|ren'), danger: false },
+  { kind: 'copy', re: verb('Copy-Item|cp|copy|xcopy|robocopy'), danger: false },
+  { kind: 'write', re: verb('Set-Content|Out-File|Clear-Content'), danger: true },
+  { kind: 'write', re: verb('Add-Content'), danger: false },
+  { kind: 'net', re: verb('Invoke-WebRequest|Invoke-RestMethod|iwr|irm|curl|wget|Start-BitsTransfer'), danger: false },
+  { kind: 'install', re: verb(String.raw`npm\s+(?:i|install)|pip\s+install|winget\s+install|choco\s+install|Install-Module|Install-Package`), danger: false },
+  { kind: 'process', re: verb('Stop-Process|taskkill|kill'), danger: true },
+  { kind: 'registry', re: verb(String.raw`reg\s+(?:add|delete)|Set-ItemProperty|New-ItemProperty|Remove-ItemProperty`), danger: true },
+];
+
+/** > and >> into a file (not 2>&1, not into $null). */
+const REDIRECT = /(^|[^>])(>>?)\s*('[^']*'|"[^"]*"|[^\s|;&]+)/g;
+
+function targetOf(args: string): string {
+  const words = args.match(/'[^']*'|"[^"]*"|\S+/g) ?? [];
+  for (const w of words) {
+    if (/^-|^\//.test(w) && !/^\/[\w.-]+\//.test(w)) continue;
+    const bare = w.replace(/^['"]|['"]$/g, '');
+    if (bare) return bare;
+  }
+  return '';
+}
+
+/** What the command will do, in order, as far as it can be told; nothing recognised gives []. */
+export function scanCommand(command: string): CommandPart[] {
+  const found: CommandPart[] = [];
+  for (const v of VERBS) {
+    for (const m of command.matchAll(v.re)) {
+      const at = m.index ?? 0;
+      const name = m[1] ?? '';
+      const args = m[2] ?? '';
+      const marks: [number, number][] = [];
+      if (v.danger) {
+        marks.push([at, at + name.length]);
+        const argsAt = at + m[0].length - args.length;
+        for (const f of args.matchAll(DANGER_FLAGS)) {
+          const start = argsAt + (f.index ?? 0) + f[0].length - f[1]!.length;
+          marks.push([start, start + f[1]!.length]);
+        }
+      }
+      found.push({ kind: v.kind, at, target: targetOf(args), recurse: RECURSE.test(args), danger: v.danger, marks });
+    }
+  }
+  for (const m of command.matchAll(REDIRECT)) {
+    const target = m[3]!.replace(/^['"]|['"]$/g, '');
+    if (!target || /^&\d$/.test(target) || /^\$null$/i.test(target)) continue;
+    const at = (m.index ?? 0) + m[1]!.length;
+    const overwrite = m[2] === '>';
+    found.push({ kind: 'write', at, target, recurse: false, overwrite, danger: overwrite, marks: overwrite ? [[at, at + 1]] : [] });
+  }
+  return found.sort((a, b) => a.at - b.at);
+}
+
+/** The command as a whole: cannot be taken back, installs something, or reaches the network. */
+export function commandRisk(command: string): { danger: boolean; installs: boolean; downloads: boolean } {
+  const parts = scanCommand(command);
+  return { danger: parts.some((p) => p.danger), installs: parts.some((p) => p.kind === 'install'), downloads: parts.some((p) => p.kind === 'net') };
 }

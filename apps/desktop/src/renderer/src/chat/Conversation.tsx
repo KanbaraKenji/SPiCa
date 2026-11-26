@@ -1,9 +1,9 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
+import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo, ConfirmHandover } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { cardHiddenInReview, dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
@@ -15,6 +15,7 @@ import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
+import { reviewNoResult, reviewReturned } from './review-words';
 import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT, installFailureText, NETWORK_FAILURES } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -208,7 +209,8 @@ function Response({
   const shown = picked ?? all.length - 1;
   const newest = shown === all.length - 1;
   const view = all[shown]!;
-  const blocks = view.blocks;
+  // a card not drawn (in review, or allowed by it) is not the end of the answer: the step before it is
+  const blocks = view.blocks.filter((b) => !cardHiddenInReview(b));
   const finished = finishedPlanIn(blocks);
   const segs = segments(blocks, live, finished !== planAbove ? finished : undefined);
   const files = filesOf(blocks, cards, moved, lists);
@@ -254,6 +256,9 @@ function Response({
             // Waiting, it stands above the message box (Conversation: openAsks); here once answered or stopped.
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
+            // in review: no card while it is reviewed (the row says so), none at all once the review allowed it;
+            // a card shown (handed back) stays, answered
+            if (cardHiddenInReview(b)) return null;
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'computer':
             return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
@@ -420,6 +425,8 @@ export interface WaitingChild {
   id: string;
   title: string;
   status: 'awaiting_confirm' | 'awaiting_answer';
+  /** Its confirmation came to the user after the review (handed back, or no result): why, on a line under it. */
+  review?: ConfirmHandover;
 }
 
 const NO_MEMORY: MemoryLines = { items: null };
@@ -604,6 +611,12 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               <div key={w.id} className="resume-row waiting-row" role="status">
                 <span>
                   {w.status === 'awaiting_confirm' ? t('「{title}」等待确认', { title: w.title }) : t('「{title}」等待回答', { title: w.title })}
+                  {/* the review handed it to the user, or gave nothing: why, as on the card */}
+                  {w.review?.state === 'returned' || w.review?.state === 'no_result' ? (
+                    <span className="waiting-why" title={w.review.detail}>
+                      {w.review.state === 'returned' ? reviewReturned(w.review.reason ?? '') : reviewNoResult(w.review.failure)}
+                    </span>
+                  ) : null}
                 </span>
                 <button type="button" className="btn" onClick={() => actions.openSession(w.id)}>
                   {t('处理')}

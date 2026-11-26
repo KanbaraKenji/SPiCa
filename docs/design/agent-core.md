@@ -428,6 +428,17 @@
 - **接口**：`AgentApi.listSchedules / saveSchedule / deleteSchedule / setScheduleEnabled / runSchedule / listScheduleRuns / checkSchedules`；事件 `schedule.changed / schedule.deleted / schedule.run`（在事件主机上，sessionId 为空）。
 - 测试：`schedule.test.ts`（到点、补跑、等确认时跳过、连续失败关掉、回原对话、一次性、退出时中断、工具要确认）、`store/store-contract.test.ts`（两种存储一致）。
 
+## 16b. 子任务的操作先由模型审查
+
+项目的开关（`ProjectInfo.reviewSteps`，默认关，只有窗口能改：`AgentApi.setProjectReview`，没有 Agent 工具，MCP 服务也不给）打开后，项目里子任务（有 parentId、不是项目自己那个对话）要确认的一步，先交给一次单独的模型调用审查，过了就不打扰用户（`confirm-review.ts`、`delegate-confirm.ts`、`Session.#reviewProject / #review`）。
+
+- **哪些送审查**（`humanOnly` 为空才送，是一份放行名单，没列的来源一律直接出卡）：命令（按 protocol 的 `commandRisk` 读，不是删除、覆盖、结束程序、改注册表、安装、联网的）、写到对话文件夹以外、读别的项目的文件夹、用户自己加的 MCP 服务的工具（钩子给了 `keep`、没标不可逆）。**一律直接出卡**：一批操作里的每一步、定时任务开头的运行（往上传：父对话在这种运行里写的任务带 `fromScheduledRun`）、读过网页、邮件、MCP / 插件数据或项目文件夹以外的文件之后（`Session.outsideRead()`：自用户上次打字以来读过的所有种类；文件看 `GuardNote.inProject`，没标的算外面的）、外部链接和凭据文件、无法撤销的、安装下载、只能点「允许」的宽文件夹、声明 `confirmByUser` 的工具（定时任务、操作电脑的批准）。守卫本身不变：要确认的照样要确认，只是谁来答。
+- **审查看什么**（应用拼，`reviewPrompt`）：用户在这个项目各对话里亲手打的话（最近 30 条，不含模型写好、用户点选的建议）、派这个子任务时的任务说明、这一步本身（命令原文、路径，其他工具给参数；不给子任务自己写的 description）。子任务的回报、工具读回来的内容一概不给。
+- **怎么答**：第一行 ALLOW 或 HAND BACK，第二行一句理由（用户看得到）；`readVerdict` 也认「ALLOW: 理由」和中文的允许 / 放行 / 交回 / 交给用户 / 退回，但词必须独占一行或后面跟标点，句子里的「允许的话…」「ALLOW would…」不算，算没结果、出卡。没有拒绝。给审查的说明里有一句：用自己的办法完成任务的算任务要做的，超出用户和任务的交给用户；另有一条界线：往项目文件夹以外写或复制、把东西发到外面（上传、发消息、推送）、删除或覆盖已有的东西，只有用户自己的话里有依据才放行，只是任务说明（上级 Agent 写的）里有的，交回。审查也拿到项目文件夹和工作文件夹。
+- **调用**（`runReview`）：模型用项目的 `reviewModel`，没设就用子任务自己的模型；走这个连接的限流，按花费上限先占后记（记在子任务的对话名下，所以算进项目），最多输出 2000（给会先思考的模型留余地），拿到限流位后 60 秒没答算超时；留痕 initiator `runtime:confirm-review`。
+- **结果**：放行（`confirm.resolved` 带 `by`）就像用户点了一次「允许」那样原地跑，不带始终允许，记录卡上 `reviewAllowed`（进 tool_results 的 meta）；交回（`returned`，带理由）或没结果（`no_result`，`failure` 为 error / spend_limit / timeout，`detail` 是错误或看不懂的回答）照常出卡，项目自己那个对话收一条给模型看的 note（`meta.reviewNote`，不叫醒它）。审查中这一步在 `pending()` 里（`delegated.state: 'asking'`，只在内存里），窗口打开时看得到「等待批准」，谁也答不了；停止就当停止。
+- 测试：`confirm-review.test.ts`（拼的内容、答案读法、结果）、`confirm-review-flow.test.ts`（放行、交回、没结果、审查中、不送审查的几种、子任务的子任务、定时任务、项目里外的文件）、`delegate-confirm.test.ts`（判定）。
+
 ## 17. 后端进程与运行中改设置
 
 - **进程边界**：内核跑在 Electron 的 `utilityProcess` 里，主进程只做监护和转发，界面在渲染进程。数据库只有内核进程打开。监护（1 / 2 / 5 秒退避重启、1 分钟最多 5 次、正常退出发 `shutdown`）在桌面外壳，见 `docs/design/desktop-shell.md`。
