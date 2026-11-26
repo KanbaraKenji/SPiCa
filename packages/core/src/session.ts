@@ -2147,7 +2147,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     let outcome: { allowed: ConfirmAnswer } | { handover: ConfirmHandover };
     const cut = (s: string) => (s.length > 300 ? `${s.slice(0, 300)}…` : s);
     try {
-      const prompt = reviewPrompt({ userWords: this.#rt.projectUserWords(project), task: this.#taskText(), step: reviewStep(item.toolName, item.input) });
+      const prompt = reviewPrompt({ userWords: this.#rt.projectUserWords(project), task: this.#taskText(), projectFolder: project.folder, workingFolder: cfg.cwd, step: reviewStep(item.toolName, item.input) });
       const answer = await runReview(this.#rt, { providerId: ref.providerId, model: ref.model, sessionId: this.id, parentChain: this.parentChain, prompt, signal });
       const verdict = readVerdict(answer);
       outcome = !verdict

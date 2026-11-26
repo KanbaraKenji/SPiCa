@@ -27,6 +27,10 @@ export interface ReviewInput {
   userWords: string[];
   /** The task the sub-agent was given when it was started (written by the upper agent). */
   task: string;
+  /** The project's folder: what is outside it is told apart by it. */
+  projectFolder: string;
+  /** The folder the step runs in (a relative path in it is taken from there). */
+  workingFolder: string;
   step: ReviewStep;
 }
 
@@ -46,13 +50,30 @@ export const REVIEW_SYSTEM =
   'user and the task ask for, or HAND BACK if the user should decide (these two words exactly, in English); on the ' +
   "second line one sentence why, in the user's language. The user sees that sentence. A step that serves the task " +
   'in its own way (another command, more output, a check first) is what the task asks for; one that goes past what ' +
-  'the user and the task ask for is for the user to decide.';
+  'the user and the task ask for is for the user to decide. Three kinds of step need the user\'s own words, not only ' +
+  'the task: writing or copying anything outside the project folder; sending anything out (uploading, sending a ' +
+  'message or mail, pushing); deleting or overwriting what is already there. Such a step is ALLOW only when what the ' +
+  'user wrote asks for it; when only the task asks for it, HAND BACK. The task is written by another agent, not by ' +
+  'the user.';
 
 /** The review's one message. */
 export function reviewPrompt(input: ReviewInput): string {
   const step = input.step.command !== undefined ? `command: ${input.step.command}` : input.step.path !== undefined ? `path: ${input.step.path}` : `arguments: ${input.step.args ?? '{}'}`;
   const words = input.userWords.length ? input.userWords.map((w) => `- ${w}`) : ['(none)'];
-  return ['<user_words>', ...words, '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
+  return [
+    '<user_words>',
+    ...words,
+    '</user_words>',
+    '<task>',
+    input.task,
+    '</task>',
+    `<project_folder>${input.projectFolder}</project_folder>`,
+    `<working_folder>${input.workingFolder}</working_folder>`,
+    '<step>',
+    `tool: ${input.step.tool}`,
+    step,
+    '</step>',
+  ].join('\n');
 }
 
 // the word alone on its line, or followed by punctuation and the reason; never a word inside a sentence

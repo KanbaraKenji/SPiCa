@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { readVerdict, ReviewFailed, reviewPrompt, reviewStep, runReview } from './confirm-review.ts';
+import { readVerdict, REVIEW_SYSTEM, ReviewFailed, reviewPrompt, reviewStep, runReview } from './confirm-review.ts';
 import type { FakeGateway } from './testing/fake-gateway.ts';
 import { makeRuntime, startGateway } from './testing/helpers.ts';
 
@@ -11,8 +11,10 @@ describe('the review of a sub-agent step', () => {
   });
 
   it('is given the user words, the task and the step, and nothing else', () => {
-    const p = reviewPrompt({ userWords: ['merge the three reports'], task: 'merge into summary.xlsx', step: { tool: 'run_command', command: 'python merge.py' } });
+    const p = reviewPrompt({ userWords: ['merge the three reports'], task: 'merge into summary.xlsx', projectFolder: 'D:/proj', workingFolder: 'D:/proj', step: { tool: 'run_command', command: 'python merge.py' } });
     expect(p).toContain('- merge the three reports');
+    expect(p).toContain('<project_folder>D:/proj</project_folder>');
+    expect(reviewPrompt({ userWords: [], task: 't', projectFolder: 'D:/p', workingFolder: 'D:/p', step: { tool: 'x', args: '{}' } })).toContain('<user_words>\n(none)\n</user_words>');
     expect(p).toContain('<task>\nmerge into summary.xlsx\n</task>');
     expect(p).toContain('command: python merge.py');
   });
@@ -37,6 +39,16 @@ describe('the review of a sub-agent step', () => {
     expect(readVerdict('I would hand this back.\nALLOW would be wrong here.')).toBeNull();
   });
 
+});
+
+describe('what the review is told', () => {
+  it('copying out, sending out, deleting or overwriting: allowed only on the user\'s own words, not the task\'s', () => {
+    expect(REVIEW_SYSTEM).toMatch(/outside the project folder/);
+    expect(REVIEW_SYSTEM).toMatch(/uploading, sending a message or mail, pushing/);
+    expect(REVIEW_SYSTEM).toMatch(/deleting or overwriting/);
+    expect(REVIEW_SYSTEM).toMatch(/only the task asks for it, HAND BACK/);
+    expect(REVIEW_SYSTEM).toMatch(/written by another agent, not by the user/);
+  });
 });
 
 describe('the review call', () => {

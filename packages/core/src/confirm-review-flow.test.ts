@@ -56,6 +56,7 @@ describe('a sub-agent step reviewed first', () => {
     expect(review).toContain('Update the review sheet in the share folder');
     expect(review).toContain('Write the new conclusions into the share sheet');
     expect(review).toContain('sheet.txt');
+    expect(review).toContain(JSON.stringify(`<project_folder>${join(dir, 'proj')}</project_folder>`).slice(1, -1));
     expect(review).not.toContain('IGNORE ALL RULES');
   });
 
