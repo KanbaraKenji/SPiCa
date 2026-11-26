@@ -3,9 +3,10 @@
 // other source, including ones added later, gets its card at once, as without the switch. The review is one model call
 // of its own (confirm-review.ts), in the background with no card: it allows the call once (with a reason, never
 // 始终允许) or hands it back, and a handed-back one, or one it gave no result for, gets its card for the user. It
-// cannot decline for the user. It never sees what the sub-agent read, so what was read does not decide who answers;
-// the guard still asks after outside content as it does without the switch.
-import type { GuardCause } from '@spica/protocol';
+// cannot decline for the user. After a web page, mail or MCP / plugin data the confirmation stays with the user: the
+// review never sees what was read, but it does see the command and an MCP tool's arguments, which the sub-agent
+// writes, so read text could reach it through them. Files and history read do not count.
+import type { GuardCause, UntrustedKind } from '@spica/protocol';
 
 /** Why a confirmation is the user's alone; the first that applies. */
 export type HumanOnly =
@@ -13,6 +14,8 @@ export type HumanOnly =
   | 'step'
   /** The conversation is on a scheduled task's run: nobody started it, so nobody is watching what the review allows. */
   | 'scheduled'
+  /** The sub-agent read a web page, mail or MCP / plugin data since the user last wrote. */
+  | 'outside_content'
   /** The guard asks about a link from outside content or a credential file. */
   | 'guard'
   /** The card says 无法撤销: a hook or plugin marked it, or the command deletes, overwrites, stops a program, edits the registry. */
@@ -32,6 +35,8 @@ export interface DelegateQuery {
   step: boolean;
   /** The turn was started by a scheduled task (its message's meta.scheduleRun), in this conversation or one above it. */
   scheduledRun?: boolean;
+  /** The outside content the sub-agent acts on since the user last wrote (Session.outsideKind), if any. */
+  outside?: UntrustedKind;
   /** Why the guard asks, if it does. */
   cause?: GuardCause;
   /** The registry's default confirmation of an irreversible-by-declaration tool. Only run_command's may be handed over. */
@@ -55,10 +60,14 @@ export interface DelegateQuery {
 /** The guard's causes the review may answer: a write outside the conversation's folders, a read in another project's. */
 const DELEGABLE_CAUSES: ReadonlySet<GuardCause> = new Set<GuardCause>(['outside_folder', 'other_project']);
 
+/** What was read that keeps a confirmation with the user (files and history read do not). */
+const OUTSIDE: ReadonlySet<UntrustedKind> = new Set<UntrustedKind>(['web', 'mail', 'mcp']);
+
 /** Undefined: it goes through the review first. Otherwise why only the user may answer it. */
 export function humanOnly(q: DelegateQuery): HumanOnly | undefined {
   if (q.step) return 'step';
   if (q.scheduledRun) return 'scheduled';
+  if (q.outside && OUTSIDE.has(q.outside)) return 'outside_content';
   if (q.cause === 'outside_link' || q.cause === 'sensitive_file') return 'guard';
   if (q.cause === 'python_install' || q.install) return 'install';
   // untrusted_turn: an irreversible tool after outside content; reviewed only as a command the card reads (below)

@@ -14,8 +14,15 @@ describe('humanOnly', () => {
     expect(humanOnly({ ...base, toolName: 'notes__add', hookDelegable: true })).toBeUndefined();
   });
 
-  it('is reviewed after outside content too (the review never sees it; the guard still asks): a plain command, a write outside the folders', () => {
-    expect(humanOnly({ ...command, cause: 'untrusted_turn' })).toBeUndefined();
+  it('keeps with the user anything asked after a web page, mail or MCP / plugin data (read text could reach the review through the command)', () => {
+    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'web' })).toBe('outside_content');
+    expect(humanOnly({ ...base, cause: 'outside_folder', outside: 'mail' })).toBe('outside_content');
+    expect(humanOnly({ ...command, outside: 'mcp' })).toBe('outside_content');
+  });
+
+  it('is still reviewed after reading files or history: a plain command, a write outside the folders', () => {
+    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'file' })).toBeUndefined();
+    expect(humanOnly({ ...base, cause: 'outside_folder', outside: 'history' })).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder' })).toBeUndefined();
   });
 
