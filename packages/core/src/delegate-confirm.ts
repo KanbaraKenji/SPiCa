@@ -36,13 +36,10 @@ export interface DelegateQuery {
   step: boolean;
   /** The turn was started by a scheduled task (its message's meta.scheduleRun), in this conversation or one above it. */
   scheduledRun?: boolean;
-  /** The outside content the sub-agent acts on since the user last wrote (Session.outsideKind), if any. */
-  outside?: UntrustedKind;
-  /**
-   * For `outside: 'file'`: every file read was inside the project's folders. The core does not record this yet (it
-   * keeps the kind only), so a file read counts as outside until it does.
-   */
-  fileInProject?: boolean;
+  /** Every kind of outside content the sub-agent acts on since the user last wrote (Session.outsideRead). */
+  outside?: UntrustedKind[];
+  /** Every file read (kind 'file') was inside the project's folder (a read not known to be counts as outside). */
+  filesInProject?: boolean;
   /** Why the guard asks, if it does. */
   cause?: GuardCause;
   /** The registry's default confirmation of an irreversible-by-declaration tool. Only run_command's may be handed over. */
@@ -73,7 +70,7 @@ const OUTSIDE: ReadonlySet<UntrustedKind> = new Set<UntrustedKind>(['web', 'mail
 export function humanOnly(q: DelegateQuery): HumanOnly | undefined {
   if (q.step) return 'step';
   if (q.scheduledRun) return 'scheduled';
-  if (q.outside && (OUTSIDE.has(q.outside) || (q.outside === 'file' && q.fileInProject !== true))) return 'outside_content';
+  if (q.outside?.some((k) => OUTSIDE.has(k) || (k === 'file' && q.filesInProject !== true))) return 'outside_content';
   if (q.cause === 'outside_link' || q.cause === 'sensitive_file') return 'guard';
   if (q.cause === 'python_install' || q.install) return 'install';
   // untrusted_turn: an irreversible tool after outside content; reviewed only as a command the card reads (below)

@@ -2,7 +2,7 @@
 import { buildSegments, flattenSegments } from './context.ts';
 import { isoNow } from './events.ts';
 import type { CoreEventBody, RunEndReason } from './events.ts';
-import type { HookContext, RequestDraft, ToolCallDraft } from './hooks.ts';
+import type { HookContext, RequestDraft, ToolCallDraft, ToolDecision } from './hooks.ts';
 import type { ModelRequest, ModelResponse, CallInfo } from './providers/types.ts';
 import { ProviderError } from './providers/types.ts';
 import type { PendingRecord, SessionConfig, SessionRecord, ToolCallCards, ToolCallRecord } from './store/types.ts';
@@ -45,7 +45,9 @@ import { DATA_RULE, fence, fencedParts, hostsIn, SENSITIVE_FILE } from './guard.
 import { samePath } from './move-folder.ts';
 import { netHint } from './net.ts';
 import { runtimesLine } from './runtimes.ts';
-import { askRecommended, REGENERATE_HINTS } from '@spica/protocol';
+import { askRecommended, commandRisk, REGENERATE_HINTS, type ConfirmAnswer, type ConfirmHandover, type ProjectInfo } from '@spica/protocol';
+import { humanOnly } from './delegate-confirm.ts';
+import { readVerdict, ReviewFailed, reviewPrompt, reviewStep, runReview } from './confirm-review.ts';
 import { comparableResult, repeatLimits, repeatReminder, repeatsBefore, repeatStopResult } from './repeat-guard.ts';
 
 export interface RunResult {
@@ -354,8 +356,14 @@ export class Session {
   }
 
   pending(): PendingItem[] {
-    return [...this.#rt.store.listPending(this.id).map((p) => p.item), ...this.#stepAsks.values()];
+    return [...this.#rt.store.listPending(this.id).map((p) => p.item), ...this.#stepAsks.values(), ...this.#inReview.values()];
   }
+
+  /**
+   * Confirmations in review right now (子任务的操作先由模型审查): no card, nobody can answer them; kept in memory only,
+   * so a window that opens the conversation meanwhile shows them waiting. A stop or a restart ends the review with the run.
+   */
+  readonly #inReview = new Map<string, PendingItem>();
 
   /** Confirmations a running call's steps wait on (browser_batch): asked on a card right then, not stored. */
   readonly #stepAsks = new Map<string, PendingItem>();
@@ -1340,6 +1348,23 @@ export class Session {
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
+        // 子任务的操作先由模型审查: the review answers first; allowed, the call runs as on the user's 允许 (once)
+        const review = this.#reviewProject(tool, item, decision);
+        if (review) {
+          const outcome = await this.#review(item, review, signal);
+          if (outcome === 'stopped') {
+            finish('Aborted: the user interrupted this tool call.', true, 'error');
+            return;
+          }
+          if ('allowed' in outcome) {
+            this.#rt.store.upsertToolCall({ ...rec, input });
+            const res = await this.#execute(tool, { ...draft, input }, signal, hctx);
+            const note = outsideFolder ? `[A review allowed this for the user, once: ${cause === 'other_project' ? 'reading' : 'writing'} in ${outsideFolder}.]\n` : '';
+            finish(note + res.content, res.isError, res.isError ? 'error' : 'ok', { ...res.cards, reviewAllowed: outcome.allowed });
+            return;
+          }
+          item.delegated = outcome.handover;
+        }
         this.#rt.store.upsertToolCall({ ...rec, input, status: 'pending' });
         pending.push({ sessionId: this.id, callId: call.id, messageId: assistant.id, item });
         return;
@@ -1375,6 +1400,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.folderTooWide ? { folderTooWide: true } : {}),
             ...(p.item.keepTool ? { keepTool: p.item.keepTool } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
+            ...(p.item.delegated ? { delegated: p.item.delegated } : {}),
           });
         }
       }
@@ -1482,6 +1508,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     const memoryCards: NonNullable<MessageMeta['memoryCards']> = {};
     const guard: Record<string, GuardNote> = {};
     const autoApproved: string[] = [];
+    const reviewAllowed: Record<string, ConfirmAnswer> = {};
     // The round's pictures, in call order, within what one request carries (calls may run side by side and each stay
     // within its own share): past it a picture is not sent, and its call's result says so, so the model asks again.
     const sentImages = new Map<string, ImageBlock[]>();
@@ -1506,6 +1533,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       const r = records.get(b.id);
       const held = heldImages.get(b.id);
       if (r?.cards?.autoApproved) autoApproved.push(b.id);
+      if (r?.cards?.reviewAllowed) reviewAllowed[b.id] = r.cards.reviewAllowed;
       if (r?.cards?.guard) guard[b.id] = r.cards.guard;
       if (r?.cards?.fileCard) fileCards[b.id] = r.cards.fileCard;
       if (r?.cards?.fileCards) fileCardLists[b.id] = r.cards.fileCards;
@@ -1549,6 +1577,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       ...(Object.keys(memoryCards).length > 0 ? { memoryCards } : {}),
       ...(Object.keys(guard).length > 0 ? { guard } : {}),
       ...(autoApproved.length > 0 ? { autoApproved } : {}),
+      ...(Object.keys(reviewAllowed).length > 0 ? { reviewAllowed } : {}),
     };
     this.#append({ role: 'user', kind: 'tool_results', content, meta });
   }
@@ -2056,6 +2085,104 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       return !!m.meta?.scheduleRun || m.meta?.fromScheduledRun === true;
     }
     return false;
+  }
+
+  /**
+   * The project whose review answers this confirmation first, or undefined: the user's card at once. Only a sub-agent's
+   * (not the project's own conversation), only with the project's switch on, and only what delegate-confirm.ts lets
+   * through. Every fact it asks about is read here from the call, the hooks' decision and the conversation.
+   */
+  #reviewProject(tool: Tool, item: PendingItem, decision: ToolDecision): ProjectInfo | undefined {
+    if (item.kind !== 'confirm') return undefined;
+    const projectId = this.#record.config.projectId;
+    if (!this.#record.parentId || !projectId) return undefined;
+    const project = this.#rt.store.getProject(projectId);
+    if (!project?.reviewSteps || project.managerSessionId === this.id) return undefined;
+    const read = this.outsideRead();
+    const command = item.toolName === 'run_command' ? (item.input as { command?: unknown } | undefined)?.command : undefined;
+    const confirm = decision.action === 'confirm' ? decision : undefined;
+    const why = humanOnly({
+      step: false,
+      scheduledRun: this.inScheduledRun(),
+      outside: read.kinds,
+      filesInProject: read.filesInProject,
+      ...(item.cause ? { cause: item.cause } : {}),
+      byDefault: confirm?.byDefault === true,
+      toolName: item.toolName,
+      // a user-added MCP service's tool asking first (its hook gave a key for 始终允许), not marked irreversible
+      hookDelegable: !!confirm?.keep && !confirm.irreversible,
+      irreversible: !!item.irreversible,
+      folderTooWide: !!item.folderTooWide,
+      install: !!item.install,
+      toolHumanOnly: tool.confirmByUser === true,
+      ...(typeof command === 'string' ? { command: commandRisk(command) } : {}),
+    });
+    return why ? undefined : project;
+  }
+
+  /**
+   * The review of one confirmation (confirm-review.ts): while it runs the call waits with no card (in pending(), so a
+   * window opened meanwhile shows it); allowed, the call is the review's to run; handed back or with no result, the
+   * card is the user's and the project's own conversation gets a line saying so (it does not start a run there).
+   */
+  async #review(item: PendingItem, project: ProjectInfo, signal: AbortSignal): Promise<'stopped' | { allowed: ConfirmAnswer } | { handover: ConfirmHandover }> {
+    if (item.kind !== 'confirm') throw new Error('not a confirmation');
+    const cfg = this.#record.config;
+    const ref = project.reviewModel ?? { providerId: cfg.providerId, model: cfg.model };
+    const asking: ConfirmHandover = { state: 'asking', model: ref.model };
+    this.#inReview.set(item.callId, { ...item, delegated: asking });
+    this.#emit({
+      type: 'confirm.request',
+      callId: item.callId,
+      name: item.toolName,
+      input: item.input,
+      reason: item.reason,
+      ...(item.cause ? { cause: item.cause } : {}),
+      ...(item.irreversible ? { irreversible: true } : {}),
+      ...(item.change ? { change: item.change } : {}),
+      ...(item.outsideFolder ? { outsideFolder: item.outsideFolder } : {}),
+      ...(item.folderTooWide ? { folderTooWide: true } : {}),
+      delegated: asking,
+    });
+    let outcome: { allowed: ConfirmAnswer } | { handover: ConfirmHandover };
+    try {
+      const prompt = reviewPrompt({ userWords: this.#rt.projectUserWords(project), task: this.#taskText(), step: reviewStep(item.toolName, item.input) });
+      const verdict = readVerdict(await runReview(this.#rt, { providerId: ref.providerId, model: ref.model, sessionId: this.id, parentChain: this.parentChain, prompt, signal }));
+      outcome = !verdict
+        ? { handover: { state: 'no_result', model: ref.model, failure: 'error' } }
+        : verdict.allow
+          ? { allowed: { model: ref.model, reason: verdict.reason } }
+          : { handover: { state: 'returned', model: ref.model, reason: verdict.reason } };
+    } catch (err) {
+      if (signal.aborted) return 'stopped';
+      outcome = { handover: { state: 'no_result', model: ref.model, failure: err instanceof ReviewFailed ? err.failure : 'error' } };
+    } finally {
+      this.#inReview.delete(item.callId);
+    }
+    // what the review cost is this conversation's (and so the project's)
+    this.#emit({ type: 'session.updated', info: this.info() });
+    if ('allowed' in outcome) {
+      this.#emit({ type: 'confirm.resolved', callId: item.callId, approved: true, by: outcome.allowed });
+      return outcome;
+    }
+    const manager = project.managerSessionId ? this.#rt.session(project.managerSessionId) : undefined;
+    if (manager && manager.id !== this.id) {
+      const title = this.#record.title ?? this.id;
+      const h = outcome.handover;
+      const why = h.state === 'returned' ? `handed it to the user: ${h.reason ?? ''}` : `gave no result (${h.failure ?? 'error'})`;
+      manager.addNote('note', `[Sub-agent "${title}" waits for the user to confirm a step (${item.toolName}): the review ${why}.]`, {
+        author: 'runtime',
+        reviewNote: { fromSessionId: this.id, fromTitle: title, state: h.state, ...(h.reason ? { reason: h.reason } : {}), ...(h.failure ? { failure: h.failure } : {}) },
+      });
+    }
+    return outcome;
+  }
+
+  /** The task this sub-agent was given (the first message its parent wrote), for the review. */
+  #taskText(): string {
+    const m = this.#messages.find((x) => x.role === 'user' && x.kind === 'user' && x.meta?.author === 'parent');
+    const text = m ? m.content.map((b) => (b.type === 'text' ? b.text : '')).join('\n') : '';
+    return text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
   }
 
   /** A file a read tool read (its path, else the working folder) is inside the folder of this conversation's project. */

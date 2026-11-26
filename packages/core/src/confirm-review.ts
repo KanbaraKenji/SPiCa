@@ -6,6 +6,10 @@
 // command can speak to the review), the task by the upper agent. It answers 放行 (allow once) or 交回给用户 (hand
 // back), with one sentence why.
 import type { ConfirmAnswer, ConfirmHandover } from '@spica/protocol';
+import type { RuntimeInternals } from './runtime.ts';
+import { isoNow } from './events.ts';
+import { ProviderError } from './providers/types.ts';
+import { isAbortError } from './util.ts';
 
 /** The step under review, as the app reads it from the call. */
 export interface ReviewStep {
@@ -48,18 +52,91 @@ export function reviewPrompt(input: ReviewInput): string {
   return ['<user_words>', ...input.userWords.map((w) => `- ${w}`), '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
 }
 
-/** Its answer, or null when it said neither (that counts as no result: the card is the user's). */
+/**
+ * Its answer, or null when it said neither (that counts as no result: the card is the user's). The word may stand on
+ * its own line or start the line with the reason after it (ALLOW: …, **HAND BACK** - …). Allowing needs a reason.
+ */
 export function readVerdict(text: string): { allow: boolean; reason: string } | null {
   const lines = text
     .trim()
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  const first = (lines[0] ?? '').toUpperCase().replace(/[^A-Z ]/g, '').trim();
-  const reason = lines.slice(1).join(' ').trim();
-  if (first === 'ALLOW') return reason ? { allow: true, reason } : null;
-  if (first === 'HAND BACK') return { allow: false, reason };
-  return null;
+  const m = /^[\s*_#>`"'“]*(ALLOW|HAND[\s_-]*BACK)\b[\s*_`"'”.:：,，;；-]*(.*)$/i.exec(lines[0] ?? '');
+  if (!m) return null;
+  const reason = [m[2] ?? '', ...lines.slice(1)].join(' ').replace(/\s+/g, ' ').trim();
+  if (/^allow$/i.test(m[1]!)) return reason ? { allow: true, reason } : null;
+  return { allow: false, reason };
+}
+
+/** Why the review gave nothing, as ConfirmHandover['failure']. */
+export class ReviewFailed extends Error {
+  readonly failure: NonNullable<ConfirmHandover['failure']>;
+  constructor(failure: NonNullable<ConfirmHandover['failure']>, message: string) {
+    super(message);
+    this.failure = failure;
+  }
+}
+
+/** How long the review may take once a slot with its connection is free. */
+export const REVIEW_TIMEOUT_MS = 60_000;
+
+/**
+ * The review's one model call, as a conversation's call is made: held against the spending limits and recorded under
+ * the sub-agent's conversation (so it is the project's spending), through the connection's rate limiter, traced.
+ * Throws ReviewFailed (spend_limit, timeout, error); a stop of the run throws the abort as it is.
+ */
+export async function runReview(
+  rt: Pick<RuntimeInternals, 'provider' | 'limiter' | 'ledger' | 'tracer'>,
+  opts: { providerId: string; model: string; sessionId: string; parentChain: string[]; prompt: string; signal: AbortSignal; timeoutMs?: number },
+): Promise<string> {
+  let provider;
+  try {
+    provider = rt.provider(opts.providerId);
+  } catch (err) {
+    throw new ReviewFailed('error', err instanceof Error ? err.message : String(err));
+  }
+  const maxTokens = 400;
+  const scope = { providerId: provider.id, providerKind: provider.kind, model: opts.model, sessionId: opts.sessionId, runId: `review-${Date.now()}` };
+  const lease = await rt.limiter(provider.id).acquire({ signal: opts.signal });
+  try {
+    const hold = rt.ledger.reserve(scope, Math.ceil((REVIEW_SYSTEM.length + opts.prompt.length) / 1.5), maxTokens);
+    if (!hold.ok) throw new ReviewFailed('spend_limit', hold.message);
+    const timer = AbortSignal.timeout(opts.timeoutMs ?? REVIEW_TIMEOUT_MS);
+    const signal = AbortSignal.any([opts.signal, timer]);
+    const trace = rt.tracer.start({ kind: 'model', sessionId: opts.sessionId, parentChain: opts.parentChain, initiator: 'runtime:confirm-review', target: provider.traceTarget, providerId: provider.id, model: opts.model });
+    const info = trace.watch({ attempts: 0 });
+    let text = '';
+    try {
+      let response: { usage: import('./types.ts').Usage; model: string } | undefined;
+      for await (const ev of provider.stream(
+        {
+          model: opts.model,
+          system: REVIEW_SYSTEM,
+          messages: [{ id: 'confirm-review', sessionId: opts.sessionId, seq: 1, role: 'user', kind: 'user', content: [{ type: 'text', text: opts.prompt }], createdAt: isoNow() }],
+          tools: [],
+          maxTokens,
+        },
+        { signal, info },
+      )) {
+        if (ev.type === 'text') text += ev.delta;
+        else if (ev.type === 'response') response = ev.response;
+      }
+      if (!response) throw new Error('the model gave no answer');
+      const cost = rt.ledger.record(scope, response.usage);
+      trace.finish({ status: 'ok', attempts: info.attempts, inputTokens: response.usage.inputTokens, outputTokens: response.usage.outputTokens, ...(cost.unpriced ? { unpriced: true as const } : { costUsd: cost.costUsd }), model: response.model });
+      return text;
+    } catch (err) {
+      hold.release();
+      const stopped = opts.signal.aborted;
+      trace.finish({ status: stopped || isAbortError(err) ? 'aborted' : 'error', attempts: info.attempts, error: err instanceof Error ? err.message : String(err), ...(err instanceof ProviderError && err.code ? { errorCode: err.code } : {}) });
+      if (stopped) throw err;
+      if (timer.aborted) throw new ReviewFailed('timeout', 'no answer in time');
+      throw new ReviewFailed('error', err instanceof Error ? err.message : String(err));
+    }
+  } finally {
+    lease.release();
+  }
 }
 
 /** The model the review runs with: the one set for it, else the project's default model. */

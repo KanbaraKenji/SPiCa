@@ -18,8 +18,12 @@ describe('the review of a sub-agent step', () => {
   it('allows or hands back; anything else is no result', () => {
     expect(readVerdict('ALLOW\nOnly writes summary.xlsx in the project.')).toEqual({ allow: true, reason: 'Only writes summary.xlsx in the project.' });
     expect(readVerdict('Hand back.\nWrites outside the project.')).toEqual({ allow: false, reason: 'Writes outside the project.' });
+    expect(readVerdict('ALLOW: only writes summary.xlsx')).toEqual({ allow: true, reason: 'only writes summary.xlsx' });
+    expect(readVerdict('**ALLOW** - 只写入汇总表')).toEqual({ allow: true, reason: '只写入汇总表' });
+    expect(readVerdict('HANDBACK：写到项目外')).toEqual({ allow: false, reason: '写到项目外' });
     expect(readVerdict('ALLOW')).toBeNull();
     expect(readVerdict('maybe')).toBeNull();
+    expect(readVerdict('ALLOWED to run')).toBeNull();
   });
 
   it("runs with the model set for it, else the project's default", () => {
