@@ -16,6 +16,7 @@ export {
   type PluginIcon,
   type PluginPermissions,
   type MailDeclaration,
+  type AgentDeclaration,
   type MessageOptions,
 } from './manifest.ts';
 export {
@@ -46,7 +47,7 @@ export {
   type PluginTexts,
   type PluginI18n,
 } from './i18n.ts';
-export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec, type PluginToolCallResult } from './host.ts';
+export { runtimeHost, type PluginHost, type McpLaunch, type McpExit, type McpHandle, type RuntimeLike, type MailSourceSpec, type PluginToolCallResult, type AgentSpec } from './host.ts';
 export {
   PluginManager,
   PluginError,

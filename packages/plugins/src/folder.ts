@@ -323,6 +323,10 @@ export async function readPluginFolder(root: string, opts: MessageOptions = {}):
         if (!known[key].includes(id)) issue(`manifest.json · i18n.${lang}.${key}.${id}`, `插件里没有${key === 'views' ? '视图' : key === 'commands' ? '命令' : '技能'}「${id}」。`, 'warning');
       }
     }
+    const agents = (out.manifest?.agents ?? []).map((a) => a.id);
+    for (const id of Object.keys(t.agents ?? {})) {
+      if (!agents.includes(id)) issue(`manifest.json · i18n.${lang}.agents.${id}`, `agents 里没有「${id}」。`, 'warning');
+    }
     const keys = (out.manifest?.userConfig ?? []).map((f) => f.key);
     for (const key of Object.keys(t.config ?? {})) {
       if (!keys.includes(key)) issue(`manifest.json · i18n.${lang}.user_config.${key}`, `user_config 里没有「${key}」。`, 'warning');

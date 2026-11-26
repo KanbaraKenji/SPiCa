@@ -73,11 +73,12 @@ describe('a call’s line', () => {
   });
 
   it('allowed folders: listed, one taken back by name, all taken back; alone, in a group, while it runs', () => {
-    expect(toolLineText(call('allowed_folders', { action: 'list' }))).toBe('Listed allowed folders');
+    expect(toolLineText(call('allowed_folders', { action: 'list' }))).toBe('Listed allowed folders and tools');
     expect(toolLineText(call('allowed_folders', { action: 'revoke', folder: 'D:\\共享资料\\纪要' }))).toBe('Took back 纪要');
-    expect(toolLineText(call('allowed_folders', { action: 'revoke', all: true }))).toBe('Took back allowed folders');
+    expect(toolLineText(call('allowed_folders', { action: 'revoke', all: true }))).toBe('Took back allowed folders and tools');
+    expect(toolLineText(call('allowed_folders', { action: 'revoke', tool: 'lab__room_temperature' }))).toBe('Took back lab · room_temperature');
     expect(runningWords(call('allowed_folders', { action: 'revoke', folder: 'D:\\共享资料\\纪要' }))).toBe('Taking back 纪要');
-    expect(groupWords([{ call: call('allowed_folders', { action: 'list' }) }, { call: call('allowed_folders', { action: 'revoke', all: true }) }])).toBe('Listed allowed folders, took back allowed folders');
+    expect(groupWords([{ call: call('allowed_folders', { action: 'list' }) }, { call: call('allowed_folders', { action: 'revoke', all: true }) }])).toBe('Listed allowed folders and tools, took back allowed folders and tools');
   });
 
   it('while it runs', () => {

@@ -12,6 +12,7 @@
 //       "views": { "notebook": "Notebook" },
 //       "commands": { "summarize": { "description": "Summarize a note", "argument_hint": "<note>" } },
 //       "skills": { "tidy-notes": "Tidies the notes folder" },
+//       "agents": { "reviewer": { "name": "Reviewer", "description": "Reviews a note" } },
 //       "user_config": { "notes_folder": { "title": "Notes folder", "placeholder": "…", "description": "…" } }
 //     }
 //   }
@@ -34,6 +35,8 @@ export interface PluginTexts {
   commands?: Record<string, { description?: string; argumentHint?: string }>;
   /** Skill id → its description. */
   skills?: Record<string, string>;
+  /** Agent id (manifest.json · agents) → its name and description. */
+  agents?: Record<string, { name?: string; description?: string }>;
   /** user_config key → the words of its row in the settings form. */
   config?: Record<string, { title?: string; description?: string; placeholder?: string }>;
 }
@@ -100,6 +103,18 @@ export function parseI18n(raw: unknown, warn: (path: string, message: string) =>
         }
       }
     }
+    const ags = v.agents;
+    if (ags !== undefined) {
+      if (!isObj(ags) || Object.values(ags).some((c) => !isObj(c))) warn(`i18n.${lang}.agents`, '「agents」须为 { "id": { "name": "…", "description": "…" } }，已忽略。');
+      else {
+        t.agents = {};
+        for (const [id, c] of Object.entries(ags as Record<string, Json>)) {
+          const n = text(c.name);
+          const d = text(c.description);
+          t.agents[id] = { ...(n ? { name: n } : {}), ...(d ? { description: d } : {}) };
+        }
+      }
+    }
     const uc = v.user_config;
     if (uc !== undefined) {
       if (!isObj(uc) || Object.values(uc).some((c) => !isObj(c))) warn(`i18n.${lang}.user_config`, '「user_config」须为 { "键": { "title": "…", "description": "…", "placeholder": "…" } }，已忽略。');
@@ -114,7 +129,7 @@ export function parseI18n(raw: unknown, warn: (path: string, message: string) =>
       }
     }
     for (const k of Object.keys(v)) {
-      if (!['display_name', 'description', 'model_reason', 'mock_description', 'views', 'commands', 'skills', 'user_config'].includes(k)) warn(`i18n.${lang}.${k}`, `未知字段「${k}」，已忽略。`);
+      if (!['display_name', 'description', 'model_reason', 'mock_description', 'views', 'commands', 'skills', 'agents', 'user_config'].includes(k)) warn(`i18n.${lang}.${k}`, `未知字段「${k}」，已忽略。`);
     }
     out[lang as PluginLocale] = t;
   }
@@ -158,6 +173,8 @@ export interface Localizable {
   skills: { id: string; description: string }[];
   commands: { id: string; description: string; argumentHint?: string }[];
   views: { id: string; title: string }[];
+  /** The agents it provides (manifest.json · agents). */
+  agents?: { id: string; name: string; description: string }[];
   model?: { reason: string };
   /** The settings form (user_config), when the plugin has one. */
   config?: { fields: { key: string; title: string; description?: string; placeholder?: string }[] };
@@ -178,6 +195,15 @@ export function localizeDescription<T extends Localizable>(d: T, locale: PluginL
       return { ...c, description: pluginText(i, locale, (t) => t.commands?.[c.id]?.description, c.description), ...(hint ? { argumentHint: hint } : {}) };
     }),
     views: d.views.map((v) => ({ ...v, title: pluginText(i, locale, (t) => t.views?.[v.id], v.title) })),
+    ...(d.agents
+      ? {
+          agents: d.agents.map((a) => ({
+            ...a,
+            name: pluginText(i, locale, (t) => t.agents?.[a.id]?.name, a.name),
+            description: pluginText(i, locale, (t) => t.agents?.[a.id]?.description, a.description),
+          })),
+        }
+      : {}),
     ...(d.model ? { model: { ...d.model, reason: pluginText(i, locale, (t) => t.modelReason, d.model.reason) } } : {}),
     ...(d.config
       ? {

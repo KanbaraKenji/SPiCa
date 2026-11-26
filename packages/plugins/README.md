@@ -5,7 +5,7 @@ Spica's plugin system.
 - **Plugin folder format**: `manifest.json` (MCPB-style) plus `skills/`, `commands/`, `mcp/`
   (standard parts) and `hooks/`, `services/`, `views/` (extensions).
 - **Lifecycle**: `PluginManager` installs, enables, disables, uninstalls and rolls back
-  plugins. Enabling registers skills → MCP tools → hooks → services under the source
+  plugins. Enabling registers skills → MCP tools → agents → hooks → services under the source
   `plugin:<name>`; disabling withdraws all of it, so nothing is left behind.
 - **External processes** are MCP servers started through the agent core's MCP client:
   Node servers run on the host's own Node (Electron with `ELECTRON_RUN_AS_NODE=1`), other

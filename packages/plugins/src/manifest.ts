@@ -63,11 +63,31 @@ export interface PluginManifest {
    * skin and one for a dark skin. Written as one path (both skins) or { "light": …, "dark": … }.
    */
   icon?: PluginIcon;
+  /** Agents the plugin provides: managers start sub-agents as one of them (spawn_agent's agent). */
+  agents?: AgentDeclaration[];
   /** user_config: the settings form the app draws and stores for the plugin, in the order written. */
   userConfig?: UserConfigField[];
   /** The words people read in other languages (manifest.json · i18n, optional; ./i18n.ts). */
   i18n?: PluginI18n;
 }
+
+/** One agent a plugin provides (manifest.json · agents): a sub-agent's instructions, tools and whether it is kept. */
+export interface AgentDeclaration {
+  /** Short id: lowercase letters, digits and '-'; the model starts it as `<plugin>__<id>`. */
+  id: string;
+  name: string;
+  /** One sentence on what it is for; the agents that can start it read it every turn. */
+  description: string;
+  /** Its instructions (system prompt). */
+  system: string;
+  /** The tools it may use, as the model sees them (a plugin's own: `<plugin>__<tool>`); absent: its manager's. */
+  tools?: string[];
+  /** Kept for later jobs: it waits for the next one when a job is done, until it is stopped. */
+  resident: boolean;
+}
+
+export const AGENT_ID_PATTERN = /^[a-z][a-z0-9-]{1,31}$/;
+export const AGENT_SYSTEM_MAX = 20000;
 
 export interface PluginIcon {
   light: string;
@@ -346,6 +366,8 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     }
   }
 
+  const agents = parseAgents(raw.agents, err, warn);
+
   const i18n = parseI18n(raw.i18n, warn);
 
   if (issues.some((i) => i.severity === 'error')) return { issues };
@@ -363,10 +385,72 @@ export function validateManifest(raw: unknown, where = MANIFEST_FILE, opts: Mess
     ...(mail ? { mail } : {}),
     ...(homepage ? { homepage } : {}),
     ...(icon ? { icon } : {}),
+    ...(agents.length ? { agents } : {}),
     ...(userConfig.length ? { userConfig } : {}),
     ...(i18n ? { i18n } : {}),
   };
   return { manifest, issues };
+}
+
+const AGENT_KEYS = ['id', 'name', 'description', 'system', 'tools', 'resident'];
+
+/** manifest.json · agents: a list of { id, name, description, system, tools?, resident? }. */
+function parseAgents(raw: unknown, err: (path: string, message: string) => void, warn: (path: string, message: string) => void): AgentDeclaration[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    err('agents', '「agents」须为列表，例如 [{ "id": "reviewer", "name": "…", "description": "…", "system": "…" }]。');
+    return [];
+  }
+  const out: AgentDeclaration[] = [];
+  const seen = new Set<string>();
+  raw.forEach((a, i) => {
+    const at = `agents[${i}]`;
+    if (!isObj(a)) return err(at, `「${at}」须为对象 { "id": …, "name": …, "description": …, "system": … }。`);
+    let ok = true;
+    const need = (key: string): string => {
+      const v = a[key];
+      if (typeof v !== 'string' || !v.trim()) {
+        err(`${at}.${key}`, `缺少「${key}」（文字）。`);
+        ok = false;
+        return '';
+      }
+      return v.trim();
+    };
+    const id = need('id');
+    if (id && !AGENT_ID_PATTERN.test(id)) {
+      err(`${at}.id`, `「${id}」无效：只能用小写字母、数字和 -，以字母开头，2 到 32 个字符。`);
+      ok = false;
+    } else if (id && seen.has(id)) {
+      err(`${at}.id`, `「${id}」重复了。`);
+      ok = false;
+    }
+    const name = need('name');
+    const description = need('description');
+    if (description.length > 200) {
+      err(`${at}.description`, 'description 写一句话就够，不能超过 200 字。');
+      ok = false;
+    }
+    const system = need('system');
+    if (system.length > AGENT_SYSTEM_MAX) {
+      err(`${at}.system`, `system 不能超过 ${AGENT_SYSTEM_MAX} 字。`);
+      ok = false;
+    }
+    let tools: string[] | undefined;
+    if (a.tools !== undefined) {
+      if (!Array.isArray(a.tools) || a.tools.some((x) => typeof x !== 'string' || !x)) {
+        err(`${at}.tools`, '「tools」须为工具名列表，例如 ["read_file", "notes__search_notes"]。');
+        ok = false;
+      } else tools = a.tools as string[];
+    }
+    if (a.resident !== undefined && typeof a.resident !== 'boolean') {
+      err(`${at}.resident`, '「resident」须为 true 或 false。');
+      ok = false;
+    }
+    for (const k of Object.keys(a)) if (!AGENT_KEYS.includes(k)) warn(`${at}.${k}`, `未知字段「${k}」，已忽略。`);
+    if (id) seen.add(id);
+    if (ok) out.push({ id, name, description, system, ...(tools ? { tools } : {}), resident: a.resident === true });
+  });
+  return out;
 }
 
 function satisfiesParse(range: string): boolean {

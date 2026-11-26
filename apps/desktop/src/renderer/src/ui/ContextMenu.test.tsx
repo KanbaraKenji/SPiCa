@@ -83,6 +83,17 @@ describe('one item lit at a time', () => {
   });
 });
 
+describe('a menu of one item', () => {
+  it('is marked is-single (the item fills it, styles.css); a menu of more items is not', () => {
+    const item = (label: string) => ({ label, onSelect: () => {} });
+    render(<ContextMenu x={0} y={0} items={[item('复制')]} onClose={() => {}} />);
+    expect(screen.getByRole('menu').classList.contains('is-single')).toBe(true);
+    cleanup();
+    render(<ContextMenu x={0} y={0} items={[item('重命名'), item('删除')]} onClose={() => {}} />);
+    expect(screen.getByRole('menu').classList.contains('is-single')).toBe(false);
+  });
+});
+
 describe('group headings', () => {
   it('two groups whose headings read the same are still two groups when their keys differ; no key: told by the heading', () => {
     const item = (label: string, group: string, groupKey?: string) => ({ label, group, ...(groupKey ? { groupKey } : {}), onSelect: () => {} });

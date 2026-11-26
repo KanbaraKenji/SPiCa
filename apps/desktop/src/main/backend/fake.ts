@@ -1711,6 +1711,28 @@ export class FakeBackend implements AgentBackend {
         const after = ok ? '好的，开始整理。' : '好的，不操作这些程序。';
         await this.#stream(sessionId, 'text', after, signal);
         blocks.push({ type: 'text', text: after });
+      } else if (/MCP 工具/.test(text)) {
+        // A tool of an MCP service asking before it runs (core: the hook's confirmation with keep): 始终允许 / 允许一次
+        const callId = this.#id('call');
+        const name = 'lab__room_temperature';
+        const input = { room: 'B2' } as Record<string, unknown>;
+        const reason = '「lab」：room_temperature';
+        const keepTool = 'mcp:lab:room_temperature';
+        this.#emit(sessionId, { type: 'tool.call', callId, name });
+        this.#commitAssistant(sessionId, [...blocks.splice(0), { type: 'tool_use', id: callId, name, input }]);
+        this.#addPending(sessionId, { kind: 'confirm', callId, toolName: name, input, reason, keepTool, createdAt: isoAt(this.#now()) });
+        this.#emit(sessionId, { type: 'confirm.request', callId, name, input, reason, keepTool });
+        this.#setStatus(sessionId, 'awaiting_confirm', name);
+        waiting = { id: callId, name, input, stored: true };
+        const ok = (await this.#waitFor(run, callId)) === 'yes';
+        waiting = undefined;
+        const result = ok ? 'B2: 23.5 °C' : 'The user declined this action. Do not retry it unless the user asks.';
+        this.#emit(sessionId, { type: 'tool.end', callId, name, isError: !ok, preview: result, durationMs: 20 });
+        this.#commitAssistant(sessionId, [{ type: 'tool_result', toolUseId: callId, content: result, isError: !ok }]);
+        this.#setStatus(sessionId, 'thinking');
+        const after = ok ? 'B2 现在 23.5 °C。' : '好的，不查了。';
+        await this.#stream(sessionId, 'text', after, signal);
+        blocks.push({ type: 'text', text: after });
       } else if (/两张卡/.test(text)) {
         // Two cards waiting at once (screenshots of an ordinary card and one outside the folders in one answer): an
         // email, and a write outside the folders (「命令」: as a command); answered in that order.

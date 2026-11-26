@@ -45,6 +45,7 @@
 | `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么" }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认）。没有每日花费上限（2026-11-13 去掉）：要限制调用次数由插件自己管，宿主不另加次数限制；旧清单里的 `max_usd_per_day` 照常能装，值读到后忽略。用户在插件页可以允许 / 禁止使用模型（默认允许，存在 state.json 记录的 `modelAllowed`）。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId }`；用户禁止了或没声明就不传，server 拿不到 `capabilities.sampling`。用户改允许 / 禁止会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
 | `user_config` | 否 | 让用户填的设置，宿主画表单、存值、交给 server：见下面「设置表单」 |
+| `agents` | 否 | 插件带的子任务（2026-11-22）：`[{ id, name, description, system, tools?, resident? }]`，项目经理用 `spawn_agent` 的 `agent: "<插件>__<id>"` 派活；`i18n.<语言>.agents.<id>` 写 name、description。见第 3 节扩展点总表 |
 | `i18n` | 否 | 给人看的字的别的语言版本（2026-11-16）：`{ "zh-CN" 或 "zh-TW" 或 "en": { display_name, description, model_reason, mock_description, views: { id: 标题 }, commands: { id: { description, argument_hint } }, skills: { id: 描述 }, user_config: { 键: { title, description, placeholder } } } }`，都可省。没写的显示原字段，繁体先退到简体那份（`i18n.ts` `pluginText`）。写错只给警告、不挡安装；`views` / `commands` / `skills` 里写了插件没有的 id、`user_config` 里写了表单没有的键也是警告。`describe()`、`views()`、`commands()`、插件源的条目（加了 `displayName`）原样带上 `i18n`，外壳用 `localizeDescription` / `localizeView` / `localizeCommand` / `localizeOffer` 按当前语言挑，所以切语言不用重新读插件。只换给人看的字：模型看到的工具描述、技能正文、命令模板不变 |
 | `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
@@ -101,6 +102,7 @@
 | `permissions.model` | 否 | 借用户配好的模型（MCP 取样）：`{ "reason": "一句为什么" }`。`reason` 必填（安装、启用时给用户看，第一次用不再确认）。没有每日花费上限（2026-11-13 去掉）：要限制调用次数由插件自己管，宿主不另加次数限制；旧清单里的 `max_usd_per_day` 照常能装，值读到后忽略。用户在插件页可以允许 / 禁止使用模型（默认允许，存在 state.json 记录的 `modelAllowed`）。起 server 时 manager 在 `connectMcp` 的配置里加 `sampling: { pluginId }`；用户禁止了或没声明就不传，server 拿不到 `capabilities.sampling`。用户改允许 / 禁止会重启这个插件的 server |
 | `mock` | 否 | `{ "supported": true, "description": "…" }` |
 | `user_config` | 否 | 让用户填的设置，宿主画表单、存值、交给 server：见下面「设置表单」 |
+| `agents` | 否 | 插件带的子任务（2026-11-22）：`[{ id, name, description, system, tools?, resident? }]`，项目经理用 `spawn_agent` 的 `agent: "<插件>__<id>"` 派活；`i18n.<语言>.agents.<id>` 写 name、description。见第 3 节扩展点总表 |
 | `mail` | 否 | 这个插件是邮件来源：`{ "list_tool": "list_messages", "read_tool": "read_message" }`（server 里的原名）；可选 `server`（有多个 MCP server 时必填）、`list_args`、`fields`（列表结果字段名和内核默认不同时）。启用时插件包调 `runtime.mail.addSource({ id: 插件名, listTool: '<server名>__list_messages', … })`，停用时撤掉；部署配置里不用再写带前缀的工具名 |
 
 校验从不抛异常，返回问题列表：每条带「哪个文件 · 哪个字段」和一句中文人话（例：`manifest.json · version：版本号「1.0」不合格，应该像 1.2.3 这样三段数字。`）。有 error 就不装、不启用；warning 只展示。
@@ -209,6 +211,7 @@ export const priority = 100; // 可选，小的先跑
 | 常驻进程 | 同 MCP，但插件包再挂一个 `beforeRequest` 把它的工具从工具表里拿掉、`beforeTool` 拒绝调用 | `plugin:<name>` |
 | 不可逆声明 | 插件包挂一个 `beforeTool`（优先级 10），对声明过的工具返回 `confirm` 并带 `irreversible: true`，理由是「「插件显示名」：工具名」（卡片右上角已有「无法撤销」，标题不再重复）。本插件任何 server 的工具，mcp/ 和 services/ 都算；模型调隐藏的服务工具先返回 `deny`。插件自己的钩子再对同一个工具要求确认时，理由用它的，标记保留 | `plugin:<name>` |
 | 视图 | 不进内核。`views()` 列出已启用插件的页面，外壳渲染；页面调工具走 `viewCall()` → 内核 `callPluginTool`（钩子生效、留痕） | — |
+| 子任务（`agents`） | 启用时（server 起来之后）每个声明调 `runtime.registerTemplate({ id: '<插件>__<id>', role: 'worker', name, description, system, tools, resident, plugin }, source)`，`unregisterSource` 撤掉；和内置、部署模板同 id 会被拒。内核的 `core:agents` 注入每一轮把可用的列给看得到 `spawn_agent` 的经理和助手（子任务不给）；`spawn_agent` 的 `agent` 按模板起子任务，模板说常驻就是常驻。用户点停用或卸载时插件包先调 `runtime.endPluginAgents(插件名)`：它名下还在跑的、常驻的子任务停下，记上 `stoppedBy: 'plugin'`（行上写「插件已停用」）；更新、回退、改设置、切模拟模式、关应用走的是内部停用，不停它们 | `plugin:<name>` |
 
 server 名：插件只有一个 `mcp/` server 时就叫插件名（工具 `notes__write_note`），有多个时叫 `<插件>-<id>`；常驻进程一律 `<插件>-<id>`。
 

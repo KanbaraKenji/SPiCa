@@ -1,6 +1,6 @@
 // Plugin lifecycle: install, enable, disable, uninstall, rollback, mock mode.
 //
-// Enable registers, in order: skills → MCP tools → commands → hooks → services.
+// Enable registers, in order: skills → MCP tools → agents → commands → hooks → services.
 // Disable undoes the same steps in reverse, then withdraws anything still
 // registered under the plugin's source as a backstop. A failed enable is
 // rolled back the same way, so a plugin is either fully on or fully off.
@@ -94,6 +94,8 @@ export interface PluginDescription {
   permissions: PluginManifest['permissions'];
   mockSupported: boolean;
   skills: { id: string; name: string; description: string }[];
+  /** The agents it provides (manifest.json · agents); `id` as in the manifest (the model starts `<name>__<id>`). */
+  agents: { id: string; name: string; description: string; resident: boolean }[];
   commands: { id: string; description: string; argumentHint?: string }[];
   /** Tools the model can call right now (empty while disabled). */
   tools: string[];
@@ -687,6 +689,8 @@ export class PluginManager {
     return this.#serial(async () => {
       this.#require(name);
       const wasActive = this.#active.has(name);
+      // removed: its sub-agents still going stop (an update or a restart keeps them)
+      this.#host.endAgents?.(name);
       if (wasActive) await this.#disable(name);
       // Move the folder aside first: on Windows that fails as a whole while any of
       // its files is in use, whereas a recursive delete would remove some files
@@ -727,6 +731,8 @@ export class PluginManager {
   disable(name: string): Promise<PluginDescription> {
     return this.#serial(async () => {
       const rec = this.#require(name);
+      // turned off: its sub-agents still going stop (an update or a restart keeps them)
+      this.#host.endAgents?.(name);
       if (this.#active.has(name)) await this.#disable(name);
       rec.enabled = false;
       await this.#saveState();
@@ -894,6 +900,8 @@ export class PluginManager {
         a.servers.push(run);
         await this.#startServer(a, run);
       }
+      // after the servers: the tools an agent names are there to check
+      await this.#registerAgents(a);
       // Commands live in this manager (the shell lists and expands them); nothing to register in the core.
       this.#registerMail(a);
       await this.#registerHooks(a);
@@ -935,6 +943,36 @@ export class PluginManager {
     }
     a.undo = [];
     await this.#host.unregisterSource(a.source);
+  }
+
+  // ---------- agents ----------
+
+  async #registerAgents(a: Active): Promise<void> {
+    const agents = a.manifest.agents ?? [];
+    if (!agents.length) return;
+    if (!this.#host.registerAgent) {
+      await this.#log(a.manifest.name, 'agents: not used (this version of the core has no plugin agents)');
+      return;
+    }
+    const known = new Set(this.#host.toolNames());
+    for (const ag of agents) {
+      const missing = (ag.tools ?? []).filter((t) => !known.has(t));
+      if (missing.length) await this.#log(a.manifest.name, `agent ${ag.id}: no such tools: ${missing.join(', ')}`);
+      a.undo.push(
+        this.#host.registerAgent(
+          {
+            id: `${a.manifest.name}__${ag.id}`,
+            name: ag.name,
+            description: ag.description,
+            system: ag.system,
+            ...(ag.tools ? { tools: ag.tools } : {}),
+            resident: ag.resident,
+            plugin: a.manifest.displayName,
+          },
+          a.source,
+        ),
+      );
+    }
   }
 
   // ---------- skills ----------
@@ -1212,6 +1250,7 @@ export class PluginManager {
       permissions: m?.permissions ?? { network: [], workspace: 'none', irreversible: [], hooks: [] },
       mockSupported: m?.mock.supported ?? false,
       skills: (folder?.skills ?? []).map((s) => ({ id: s.id, name: s.name, description: s.description })),
+      agents: (folder?.manifest?.agents ?? []).map((g) => ({ id: g.id, name: g.name, description: g.description, resident: g.resident })),
       commands: (folder?.commands ?? []).map((c) => ({ id: c.id, description: c.description, ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}) })),
       tools: a ? this.#tools(a) : [],
       hooks: a ? a.hookKinds : (folder?.hooks ?? []).map((h) => ({ module: h.id, kinds: [] })),

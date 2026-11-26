@@ -172,6 +172,7 @@ export class Session {
       ...(r.config.templateId ? { templateId: r.config.templateId } : {}),
       ...(r.config.projectId ? { projectId: r.config.projectId } : {}),
       ...(r.config.resident ? { resident: true } : {}),
+      ...(r.config.stoppedBy ? { stoppedBy: r.config.stoppedBy } : {}),
       approvalMode: r.config.approvalMode ?? 'manual',
       contextTokens: this.#contextTokens,
       contextWindow: this.#contextWindow(),
@@ -392,8 +393,9 @@ export class Session {
       const read = written ? undefined : this.#otherProjectFolder(tool, args);
       const cause = this.#guardCause(tool, args, guard) ?? (written ? 'outside_folder' : read ? 'other_project' : undefined);
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
+      const keptBefore = !cause && decision.action === 'confirm' && !!decision.keep && this.keptTools().some((k) => k.key === decision.keep);
       let confirmedBy: 'user' | undefined;
-      if ((decision.action === 'confirm' && !autoApproved) || cause) {
+      if ((decision.action === 'confirm' && !autoApproved && !keptBefore) || cause) {
         const change = tool.previewChange ? await tool.previewChange(args, cfg.cwd).catch(() => undefined) : undefined;
         const reason = cause ? GUARD_REASON[cause] : ((decision.action === 'confirm' ? decision.reason : undefined) ?? 'needs confirmation');
         const irreversible = decision.action === 'confirm' && decision.irreversible === true;
@@ -521,7 +523,12 @@ export class Session {
   }
 
   /** Stop the run. Pending questions and confirmations are cancelled. */
-  abort(reason = 'aborted by user'): void {
+  abort(reason = 'aborted by user', opts: { by?: 'plugin' } = {}): void {
+    // stopped because its plugin was turned off: the row says so (kept after a restart)
+    if (opts.by === 'plugin') {
+      this.#record = { ...this.#record, config: { ...this.#record.config, stoppedBy: 'plugin' } };
+      this.#rt.store.upsertSession(this.#record);
+    }
     // a sub-agent kept for later jobs is ended by stopping it: no longer kept (also after a restart), stopped
     if (this.#record.config.resident) {
       const { resident: _r, ...config } = this.#record.config;
@@ -558,7 +565,8 @@ export class Session {
   }
 
   /** Approve or decline an action that needed confirmation. */
-  async confirm(callId: string, approved: boolean, options: { allowFolder?: boolean; always?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+  async confirm(callId: string, approved: boolean, options: { always?: boolean; allowFolder?: boolean } = {}): Promise<Promise<RunResult> | undefined> {
+    const always = options.always === true || options.allowFolder === true;
     const p = this.#findPending(callId, 'confirm');
     this.#emit({ type: 'confirm.resolved', callId, approved });
     const outside = p.item.kind === 'confirm' ? p.item.outsideFolder : undefined;
@@ -575,11 +583,12 @@ export class Session {
       return this.#maybeResume();
     }
     if (p.item.kind !== 'confirm') throw new Error('not a confirmation');
-    const always = options.always === true || options.allowFolder === true;
     if (outside && always) {
       if (reading) this.allowReadFolder(outside);
       else this.allowWriteFolder(outside);
     }
+    const keptTool = !outside && always && p.item.keepTool ? p.item.keepTool : undefined;
+    if (keptTool) this.keepTool(keptTool, p.item.toolName);
     // Mark as no longer pending before running so a crash does not re-ask.
     this.#rt.store.deletePending(this.id, callId);
     const tool = this.#rt.tools.get(p.item.toolName);
@@ -587,13 +596,18 @@ export class Session {
     this.#runAbort = ac;
     const draft: ToolCallDraft = { callId, name: p.item.toolName, input: p.item.input, irreversible: !!tool?.irreversible };
     const res = tool
-      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0), options.always ? { always: true } : {})
+      ? await this.#execute(tool, draft, ac.signal, this.#hookCtx('confirm', 0), always ? { always: true } : {})
       : { content: `Unknown tool: ${p.item.toolName}`, isError: true };
     this.#runAbort = undefined;
     // outside the folders: the model is told the user was asked (else, after a folder was taken back, it reads a
     // write that went through as "asking did not work"), and whether the folder was kept
     const kept = outside && always && (reading || !tooWideToAllow(outside));
-    const note = outside ? `[The user allowed this on a confirmation card: ${reading ? 'reading' : 'writing'} in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n` : '';
+    const note = outside ? `[The user allowed this on a confirmation card: ${reading ? 'reading' : 'writing'} in ${outside} ${kept ? 'from now on in this conversation' : 'this once'}.]\n`
+      : keptTool
+        ? `[The user allowed this on a confirmation card: ${p.item.toolName} runs without asking from now on in this conversation.]\n`
+        : p.item.keepTool
+          ? `[The user allowed this on a confirmation card: ${p.item.toolName} this once.]\n`
+          : '';
     this.#resolveCall(p, note + res.content, res.isError, res.isError ? 'error' : 'ok', true, 'cards' in res ? res.cards : undefined);
     return this.#maybeResume();
   }
@@ -837,6 +851,13 @@ export class Session {
   // ---------------------------------------------------------------------------
 
   #startRun(): Promise<RunResult> {
+    // working again (the user wrote in it): no longer the one its plugin stopped
+    if (this.#record.config.stoppedBy) {
+      const { stoppedBy: _s, ...config } = this.#record.config;
+      void _s;
+      this.#record = { ...this.#record, config };
+      this.#rt.store.upsertSession(this.#record);
+    }
     const p = this.#loop().finally(() => {
       this.#run = undefined;
       this.#runAbort = undefined;
@@ -1296,9 +1317,12 @@ export class Session {
       const cause = install
         ? 'python_install'
         : (this.#guardCause(tool, (input ?? {}) as Record<string, unknown>, guard) ?? (written ? 'outside_folder' : read ? 'other_project' : undefined));
-      // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's
+      // approval mode auto passes only the default confirmation of irreversible tools, never the guard's or a hook's;
+      // a tool the user allowed on a card (始终允许) passes its hook's confirmation, never the guard's
       const autoApproved = !cause && decision.action === 'confirm' && decision.byDefault === true && cfg.approvalMode === 'auto';
-      if ((decision.action === 'confirm' && !autoApproved) || cause) {
+      const keptBefore = !cause && decision.action === 'confirm' && !!decision.keep && this.keptTools().some((k) => k.key === decision.keep);
+      const keepTool = !cause && !outsideFolder && decision.action === 'confirm' ? decision.keep : undefined;
+      if ((decision.action === 'confirm' && !autoApproved && !keptBefore) || cause) {
         // what a write would change, for the card (the file is read, nothing written); a failure only leaves it out
         const change = tool.previewChange ? await tool.previewChange((input ?? {}) as Record<string, unknown>, this.#record.config.cwd).catch(() => undefined) : undefined;
         const item: PendingItem = {
@@ -1312,6 +1336,7 @@ export class Session {
           ...(change ? { change } : {}),
           ...(outsideFolder ? { outsideFolder } : {}),
           ...(outsideFolder && tooWideToAllow(outsideFolder) ? { folderTooWide: true } : {}),
+          ...(keepTool ? { keepTool } : {}),
           ...(install ? { install } : {}),
           createdAt: isoNow(),
         };
@@ -1348,6 +1373,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
             ...(p.item.change ? { change: p.item.change } : {}),
             ...(p.item.outsideFolder ? { outsideFolder: p.item.outsideFolder } : {}),
             ...(p.item.folderTooWide ? { folderTooWide: true } : {}),
+            ...(p.item.keepTool ? { keepTool: p.item.keepTool } : {}),
             ...(p.item.install ? { install: p.item.install } : {}),
           });
         }
@@ -1759,6 +1785,43 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     if (cfg.writeFolders?.includes(folder) || tooWideToAllow(folder)) return;
     this.#record = { ...this.#record, config: { ...cfg, writeFolders: [...(cfg.writeFolders ?? []), folder] } };
     this.#rt.store.upsertSession(this.#record);
+  }
+
+  /** The tools the user allowed on a card (始终允许): kept with the conversation at the top of the chain. */
+  keptTools(): { key: string; tool: string }[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    return parent ? parent.keptTools() : [...(this.#record.config.keptTools ?? [])];
+  }
+
+  /** 始终允许 on a tool's card: that tool runs without asking from now on in this conversation (its sub-agents too). */
+  keepTool(key: string, tool: string): void {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) {
+      parent.keepTool(key, tool);
+      return;
+    }
+    const cfg = this.#record.config;
+    if (cfg.keptTools?.some((k) => k.key === key)) return;
+    this.#record = { ...this.#record, config: { ...cfg, keptTools: [...(cfg.keptTools ?? []), { key, tool }] } };
+    this.#rt.store.upsertSession(this.#record);
+  }
+
+  /**
+   * Takes back tools allowed on a card (allowed_folders), when the user asks in their own words: one tool by its name
+   * (`lab__room_temperature`, or as the card says it, `lab · room_temperature`), every tool of a service by the
+   * service's name (`lab`), or `all`. The next call asks again. Returns the tools taken back.
+   */
+  revokeKeptTools(which: { tool: string } | 'all'): string[] {
+    const parent = this.#record.parentId ? this.#rt.session(this.#record.parentId) : undefined;
+    if (parent) return parent.revokeKeptTools(which);
+    const cfg = this.#record.config;
+    const kept = cfg.keptTools ?? [];
+    const want = which === 'all' ? undefined : which.tool.trim().replace(/\s*·\s*/g, '__');
+    const gone = kept.filter((k) => want === undefined || k.tool === want || k.tool.startsWith(`${want}__`));
+    if (!gone.length) return [];
+    this.#record = { ...this.#record, config: { ...cfg, keptTools: kept.filter((k) => !gone.includes(k)) } };
+    this.#rt.store.upsertSession(this.#record);
+    return gone.map((k) => k.tool);
   }
 
   /**

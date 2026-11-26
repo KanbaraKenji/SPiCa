@@ -74,7 +74,7 @@ export type Block =
    * `delegated`: asked of the upper agent first; while it is asking there is no card (the call's row says so), handed
    * back or unanswered the card is the user's. `by`: the upper agent allowed it (there was never a card).
    */
-  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmHandover; by?: ConfirmAnswer }
+  | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: boolean; install?: InstallPreview; delegated?: ConfirmHandover; by?: ConfirmAnswer }
   /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
   | ComputerBlock
   | { type: 'suggest'; callId: string; title: string; actions: SuggestAction[] }
@@ -828,7 +828,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
       if (card) {
         if (p.delegated) card.delegated = p.delegated;
       } else
-        lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.install ? { install: p.install } : {}), ...(p.delegated ? { delegated: p.delegated } : {}) });
+        lastResponse(t.items, `pending-${p.callId}`).blocks.push({ type: 'confirm', callId: p.callId, name: p.toolName, input: p.input, reason: p.reason, ...(p.cause ? { cause: p.cause } : {}), ...(p.irreversible ? { irreversible: true } : {}), ...(p.change ? { change: p.change } : {}), ...(p.outsideFolder ? { outsideFolder: p.outsideFolder } : {}), ...(p.folderTooWide ? { folderTooWide: true } : {}), ...(p.keepTool ? { keepTool: true } : {}), ...(p.install ? { install: p.install } : {}), ...(p.delegated ? { delegated: p.delegated } : {}) });
     }
   }
 }
@@ -978,7 +978,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       if (asked) {
         if (e.delegated) asked.delegated = e.delegated;
       } else {
-        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.install ? { install: e.install } : {}), ...(e.delegated ? { delegated: e.delegated } : {}) });
+        lastResponse(items, respId).blocks.push({ type: 'confirm', callId: e.callId, name: e.name, input: e.input, reason: e.reason, ...(e.cause ? { cause: e.cause } : {}), ...(e.irreversible ? { irreversible: true } : {}), ...(e.change ? { change: e.change } : {}), ...(e.outsideFolder ? { outsideFolder: e.outsideFolder } : {}), ...(e.folderTooWide ? { folderTooWide: true } : {}), ...(e.keepTool ? { keepTool: true } : {}), ...(e.install ? { install: e.install } : {}), ...(e.delegated ? { delegated: e.delegated } : {}) });
       }
       return t;
     }

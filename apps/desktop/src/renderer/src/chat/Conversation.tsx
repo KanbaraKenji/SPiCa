@@ -26,8 +26,7 @@ export interface ConversationActions {
   send(text: string, attachments?: string[], suggested?: boolean): void;
   stop(): void;
   answer(callId: string, answer: string): void;
-  /** `always`: 始终允许 rather than 允许一次 (操作电脑's card). */
-  /** `always`: 始终允许 (what the card keeps: its folder, or 操作电脑's programs). */
+  /** `always`: 始终允许 (what the card keeps: its folder, its service's tool, or 操作电脑's programs). */
   confirm(callId: string, approved: boolean, always?: boolean): void;
   openFile(path: string): void;
   /** A folder path clicked in an answer: opened in Explorer. */

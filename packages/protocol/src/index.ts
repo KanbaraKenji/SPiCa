@@ -496,6 +496,8 @@ export interface SessionInfo {
    * jobs, it is not ended when one is done and waits for the next.
    */
   resident?: boolean;
+  /** Stopped because the plugin whose agent it was started from was turned off or removed (status 'aborted'). */
+  stoppedBy?: 'plugin';
   // The three below are always set by the core (optional only so older fakes still type-check).
   /** manual = every confirmation goes to the user; auto = tools that are irreversible by declaration run and are recorded. */
   approvalMode?: ApprovalMode;
@@ -676,6 +678,11 @@ export type PendingItem =
       outsideFolder?: string;
       /** `outsideFolder` is a drive's root or the home folder: it is never kept as allowed, so the card offers allowing it this once only. */
       folderTooWide?: boolean;
+      /**
+       * A user MCP service's tool asking first (每次询问): the card offers 始终允许, which lets this tool of this
+       * service run without asking for the rest of this conversation (its sub-agents too); the key it is kept under.
+       */
+      keepTool?: string;
       install?: InstallPreview;
       /** Asked of the upper agent first (see ConfirmHandover): no card while it is asking. */
       delegated?: ConfirmHandover;
@@ -777,7 +784,7 @@ export type CoreEventBody =
    * `irreversible`: as on a pending confirmation (the card shows 无法撤销). `delegated`: asked of the upper agent first;
    * sent again for the same call when it is handed back or gets no answer (its card is shown then).
    */
-  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; install?: InstallPreview; delegated?: ConfirmHandover }
+  | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: string; install?: InstallPreview; delegated?: ConfirmHandover }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
   | { type: 'guard.flagged'; note: GuardNote; callId?: string }
   /** A python_env download the user allowed failed: why, for a line on its card (sent before the tool's tool.end). */
@@ -1447,12 +1454,13 @@ export interface AgentApi {
    */
   regenerate?(sessionId: string, messageId?: string): Promise<RegenerateResult>;
   /**
-   * `allowFolder` (with approved, on a confirmation with `outsideFolder`): the conversation may write in that folder
-   * from now on without asking (kept with the conversation; its sub-agents too).
-   * `always` (with approved): the person chose 始终允许 rather than 允许一次; the tool is told (computer_request_access
-   * keeps the programs for every conversation). Tools that have no such choice run as for a plain approval.
+   * `always` (with approved; 始终允许 rather than 允许一次): what the card offers to keep, kept with the conversation
+   * (its sub-agents too): on a confirmation with `outsideFolder`, writing in that folder; with `keepTool`, that tool
+   * running without asking. The tool is told as well (computer_request_access keeps the programs for every
+   * conversation). Tools that have no such choice run as for a plain approval. `allowFolder` is the older name of
+   * `always`, for the folder only.
    */
-  confirm(sessionId: string, callId: string, approved: boolean, options?: { allowFolder?: boolean; always?: boolean }): Promise<void>;
+  confirm(sessionId: string, callId: string, approved: boolean, options?: { always?: boolean; allowFolder?: boolean }): Promise<void>;
   abort(sessionId: string): Promise<void>;
   /** The commands a conversation ran in the background (run_command with run_in_background), oldest first. */
   listCommandJobs?(sessionId: string): Promise<CommandJob[]>;
