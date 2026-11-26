@@ -348,6 +348,17 @@ Agent 用截图和键鼠操作这台电脑上的程序（`main/computer/`、`bac
   - **选文件夹 / 文件**：桥的 `pickFolder` / `pickFile` 经 `PluginFrame` 的 `pick` 交给主进程（`main/plugin-views.ts` 的 `createPluginPicker`）：对话框挂在主窗口上，标题前加插件名，同一时间只开一个，`defaultPath` 只认本机盘符路径；回完整路径或 `null`。预览页调用时直接报错。开发时 `SPICA_PICK_FOLDER` / `SPICA_PICK_FILES` 同样对它生效（不弹框，测试脚本用）。桥的 `openFolder` 经 `PluginFrame` 的 `openFolder`：窗口先用 `localDrivePath` 拒掉网络路径和相对路径，再交给应用自己的 `bridge.openFolder`（只开文件夹，`SPICA_RECORD_SHELL` 同样只记不开）；预览页调用时直接报错。
 - **任务栏图标**：运行时把品牌 PNG 重新上色成单色花（深色任务栏白、浅色黑，无底），存成 `<userData>\icons	askbar-<内容哈希>.ico`（换一种颜色就是另一个文件；以后每片瓣单独配色也走这条路）。装好的版本里，任务栏按钮用的是和窗口同一个 AppUserModelID 的快捷方式的图标，不是窗口自己的图标，而且只在按钮出现时读一次（2026-11-10 在装好的测试副本上实测，见 `main/taskbar-icon.ts` 开头）。所以启动时和系统深浅变化时：把开始菜单和固定到任务栏里启动这个 exe 的快捷方式改指到这个 .ico，等约 3.5 秒（资源管理器要一会儿才注意到），再让窗口换一个临时 AppUserModelID 再换回来，按钮当场换成新图标，不会多出一个按钮、不闪。桌面快捷方式不改（桌面是壁纸，不是任务栏）；安装程序、exe、卸载条目里写死的图标用品牌的「白花黑边」。便携版没有快捷方式，按钮用窗口自己的图标。开发版用独立的 AppUserModelID（`dev.spica.desktop.dev`）；带 `SPICA_USER_DATA` 运行时不改快捷方式（`SPICA_SHORTCUT_ICONS=1` 才改，测试副本用）。安装版的 AppUserModelID 从打包时的 `extraMetadata.appUserModelId` 读（和 appId 一致），另起标识打的包（测试副本、以后的公司版）也能对上自己的快捷方式。**什么时候查深浅**（`main/taskbar-theme.ts`）：启动后 0.8 秒读一次；Electron 的 `nativeTheme` updated 事件后等 0.8 秒读一次；窗口获得焦点、从托盘重新显示、从最小化还原时读一次；窗口看得见时每 20 秒读一次，藏到托盘或最小化时这个定时停掉。读的是注册表 `SystemUsesLightTheme`（任务栏那一项），值变了才重画。每次读起一个 reg.exe，量的约 45 毫秒，读完就退，不常驻。为什么不只靠 updated 事件：按 Chromium 源码推断（读的是 main 分支，没在 Electron 45 上实测），皮肤选了固定深色或浅色时（themeSource 被定死），Windows 切换深浅不会发这个事件；只改「Windows 模式」（任务栏）、不改「应用模式」时也不发。
 
+## 8c. 子任务的操作先由模型审查（2026-11-26）
+
+内核见 `agent-core.md` §16b。窗口这边：
+
+- **开关**：项目自己那个对话的「详情」里一行「子任务的操作先由模型审查」，默认关，改的是项目上的 `reviewSteps`（`AgentStore.setProjectReview`）。
+- **等批准时那一行**（他挑的乙）：只写「等待批准」，前面是 Spica 标记，后面是已经等了多久（`ConfirmHandover.since`），不写 Running、不写命令（点开才有）。几步折叠在一起时折叠行同样写，点开后那一步前面是进行中的圈。详情「工具调用」也写「等待批准」。这时没有卡，状态行不再重复。
+- **放行后**：和平常一样「Running …」再「Ran …」，行尾在 Auto 的位置写「自动放行」，点开第一行「已自动放行：理由」。
+- **交回 / 没结果**：卡照常，卡底一行「未自动放行：理由」或「未能自动放行：出错 / 已到花费上限 / 超时」（悬停是错误原文或看不懂的回答）。项目对话里「「X」等待确认 · 处理」那一行后面跟着同一句理由（从那个子任务的待确认里取）；给经理模型的 note 不再画一遍。
+- 叫法只说这一步怎么了，不说谁批的（他挑的）；开关名里写「模型审查」。词在 `chat/review-words.ts` 一处。
+- 「等你确认」时 main 上那一行（Running + 命令 + 圈，下面跟卡）没改（他没要改）。
+
 ## 9. 打包、更新与公告
 
 - **随应用带的 uv**（2026-11-16）：`scripts/uv.mjs` 在 predev、prepreview、build、dist 前把固定版本的 uv（现在 0.13.8，`uv-x86_64-pc-windows-msvc.zip`，SHA-256 写死在脚本里）取到 `apps/desktop/uv/uv.exe`（不进版本控制），electron-builder 当 `extraResources` 放到 `resources/uv`。来源：GitHub 上的官方发布；连不上 github.com 的机器设 `SPICA_UV_ZIP` 指向同一个 zip 的副本。校验值不对或取不到：打一行警告，构建照常，这一份应用就没有 python_env（模型被告知没有 Python，照旧用 Node；不会出下载卡）。版本没变不重取。只做 Windows。deploy.json 写 `"python": { "enabled": false }` 时不取，并删掉上次留下的，安装包里就没有 uv。升级：脚本里版本和 SHA-256 一起改。约 31 MB（未压缩）。CI 只跑测试不构建，不下载；发版流程的 `npm run dist` 会下载。

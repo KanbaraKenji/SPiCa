@@ -128,6 +128,32 @@ describe('a sub-agent step reviewed first', () => {
     expect(c.child.pending()[0]).not.toHaveProperty('delegated');
   });
 
+  it("a sub-agent's own sub-agent goes to the review too, with its own task", async () => {
+    const rt = makeRuntime(gw);
+    const { child } = setup(rt);
+    const grand = rt.createSession({ parentId: child.id, title: 'Deeper' });
+    gw.enqueue(writeCall('g1'), { text: 'HAND BACK\nnot asked' });
+    await grand.send('Write the sheet, deeper', { author: 'parent' }).done;
+    expect(grand.pending()[0]).toMatchObject({ callId: 'g1', delegated: { state: 'returned' } });
+    expect(JSON.stringify(gw.requests.at(-1)!.body.messages)).toContain('Write the sheet, deeper');
+  });
+
+  it('a task written during a run a scheduled task started says so, and its steps are never reviewed', async () => {
+    const rt = makeRuntime(gw);
+    const { child } = setup(rt);
+    // the sub-agent's own run came from a scheduled task: what it starts carries that
+    gw.enqueue({ text: 'ok' });
+    await child.send('scheduled prompt', { author: 'runtime', meta: { scheduleRun: { scheduleId: 's', runId: 'r', title: 't', dueAt: '' } } }).done;
+    expect(child.inScheduledRun()).toBe(true);
+    const grand = rt.createSession({ parentId: child.id, title: 'From the schedule' });
+    gw.enqueue(writeCall('s1'));
+    const before = gw.requests.length;
+    await grand.send('Write it', { author: 'parent' }).done;
+    expect(grand.messages().find((m) => m.meta?.author === 'parent')?.meta?.fromScheduledRun).toBe(true);
+    expect(grand.pending()[0]).not.toHaveProperty('delegated');
+    expect(gw.requests.length - before).toBe(1);
+  });
+
   it('files read inside the project still go to the review; one outside it does not', async () => {
     const rt = makeRuntime(gw);
     const { child } = setup(rt);
