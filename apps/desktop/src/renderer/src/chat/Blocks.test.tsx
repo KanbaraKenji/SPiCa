@@ -860,7 +860,12 @@ describe('a sub-agent confirmation reviewed first', () => {
     expect(screen.getAllByText('等待自动审查')).toHaveLength(2);
   });
 
-  it('the row candidates: as the live step (no ring), or no row at all (the status line says it)', () => {
+  it('the row candidates: as the live step (the mark in front, no ring), or no row at all (the status line says it)', () => {
+    document.documentElement.dataset.reviewRow = 'live';
+    const live = render(<ToolGroup blocks={[{ ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
+    expect(live.container.querySelector('.fold-icon .fold-mark')).toBeTruthy();
+    expect(live.container.querySelector('.fold-meta')).toBeNull();
+    cleanup();
     document.documentElement.dataset.reviewRow = 'status';
     const { container } = render(<ToolGroup blocks={[{ ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
     expect(container.textContent).toBe('');

@@ -3,7 +3,7 @@ import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
-import { dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
+import { cardHiddenInReview, dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
 import { ImageGroup, ImageViewer, useImageGroup, type Picture } from '../ui/ImageViewer';
 import { SpicaMark, SpicaStatusIcon } from '@spica/brand/react';
@@ -209,7 +209,8 @@ function Response({
   const shown = picked ?? all.length - 1;
   const newest = shown === all.length - 1;
   const view = all[shown]!;
-  const blocks = view.blocks;
+  // a card not drawn (in review, or allowed by it) is not the end of the answer: the step before it is
+  const blocks = view.blocks.filter((b) => !cardHiddenInReview(b));
   const finished = finishedPlanIn(blocks);
   const segs = segments(blocks, live, finished !== planAbove ? finished : undefined);
   const files = filesOf(blocks, cards, moved, lists);
@@ -257,7 +258,7 @@ function Response({
           case 'confirm':
             // in review: no card while it is reviewed (the row says so), none at all once the review allowed it;
             // a card shown (handed back) stays, answered
-            if (b.delegated?.state === 'asking' && (b.by || (b.approved === undefined && !b.cancelled))) return null;
+            if (cardHiddenInReview(b)) return null;
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
           case 'computer':
             return <ComputerCard key={`computer-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;

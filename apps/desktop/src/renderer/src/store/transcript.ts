@@ -538,6 +538,15 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
   }
 }
 
+/**
+ * A confirmation card that is not drawn: in review (its call's row says so), or allowed by the review (there never was
+ * a card). A card the user was shown (handed back, no result) is drawn, answered or not. One rule for the answer and
+ * for what counts as its end (the status line, the live row).
+ */
+export function cardHiddenInReview(b: Block): boolean {
+  return b.type === 'confirm' && b.delegated?.state === 'asking' && (!!b.by || (b.approved === undefined && !b.cancelled));
+}
+
 /** A call whose confirmation is in review says so on its row; handed back, its card says the rest. */
 function markAsking(items: Item[], callId: string, delegated: ConfirmHandover | undefined): void {
   const tool = findBlock(items, 'tool', callId);

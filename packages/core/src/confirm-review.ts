@@ -1,8 +1,10 @@
 // The review a sub-agent's confirmation goes through before the user (delegate-confirm.ts says which ones): one model
 // call of its own. What it is given is put together here by the app, from three things only: what the user wrote in the
 // project, the task the sub-agent was given, and the step as the app reads it (the command, the path; never the
-// sub-agent's own description of it). The sub-agent's reports and what its tools read are never in it, so outside
-// content cannot speak to the review. It answers 放行 (allow once) or 交回给用户 (hand back), with one sentence why.
+// sub-agent's own description of it). The sub-agent's reports and what its tools read are never in it. What it is
+// given is still written in part by agents: the command or an MCP tool's arguments by the sub-agent (a comment in a
+// command can speak to the review), the task by the upper agent. It answers 放行 (allow once) or 交回给用户 (hand
+// back), with one sentence why.
 import type { ConfirmAnswer, ConfirmHandover } from '@spica/protocol';
 
 /** The step under review, as the app reads it from the call. */

@@ -2,7 +2,7 @@
 // what it is doing + elapsed time for this run. After a run it shows
 // "已完成 · 用时" briefly, then goes away.
 import { useEffect, useState } from 'react';
-import { MEMORY_TOOLS, type Transcript } from '../store/transcript';
+import { cardHiddenInReview, MEMORY_TOOLS, type Transcript } from '../store/transcript';
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 import { t } from '../../../shared/i18n';
@@ -61,7 +61,7 @@ export function shownInAnswer(t: Transcript): boolean {
   const last = t.items[t.items.length - 1];
   if (last?.kind !== 'response') return false;
   // a confirmation in review has no card yet: its call's row is the end of the answer
-  const blocks = last.blocks.filter((b) => !(b.type === 'confirm' && b.delegated?.state === 'asking' && b.approved === undefined && !b.cancelled));
+  const blocks = last.blocks.filter((b) => !cardHiddenInReview(b));
   const end = blocks[blocks.length - 1];
   if (end?.type === 'thinking') return t.run.status === 'thinking';
   // remember / forget show nothing while they run (their line comes with the result): the status line says it.
