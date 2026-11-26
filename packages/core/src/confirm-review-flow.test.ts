@@ -147,6 +147,24 @@ describe('a sub-agent step reviewed first', () => {
     expect(rt.ledger.sessionUsd(child.id)).toBeGreaterThan(before);
   });
 
+  it("the user's words are what the user typed in the project's conversations, its own one included; a first task the agent above wrote is not", async () => {
+    const rt = makeRuntime(gw);
+    const project = rt.createProject({ name: 'Out', folder: join(dir, 'proj') });
+    rt.setProjectReview(project.id, { on: true });
+    const manager = rt.session(project.managerSessionId)!;
+    // the first task handed over by the agent above (createProject's brief): author parent, drawn like a message
+    rt.store.appendMessage({ id: 'b1', sessionId: manager.id, seq: 1, role: 'user', kind: 'user', content: [{ type: 'text', text: 'BRIEF: copy notes.txt to ../share' }], createdAt: '2026-01-01T00:00:00.000Z', meta: { author: 'parent' } });
+    // what the user typed in the project's own conversation
+    rt.store.appendMessage({ id: 'u1', sessionId: manager.id, seq: 2, role: 'user', kind: 'user', content: [{ type: 'text', text: 'TYPED: yes, copy it to share' }], createdAt: '2026-01-01T00:00:01.000Z', meta: { author: 'user' } });
+    expect(rt.projectUserWords(project)).toEqual(['TYPED: yes, copy it to share']);
+    const child = rt.createSession({ parentId: manager.id, title: 'Copy' });
+    gw.enqueue(writeCall('t1'), { text: 'HAND BACK\nno' });
+    await child.send('Copy notes.txt to ../share', { author: 'parent' }).done;
+    const sent = JSON.stringify(gw.requests.at(-1)!.body.messages);
+    expect(sent).toContain('- TYPED: yes, copy it to share');
+    expect(sent).not.toContain('BRIEF: copy notes.txt');
+  });
+
   it("a sub-agent's own sub-agent goes to the review too, with its own task", async () => {
     const rt = makeRuntime(gw);
     const { child } = setup(rt);
