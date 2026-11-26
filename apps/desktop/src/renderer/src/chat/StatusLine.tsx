@@ -6,7 +6,7 @@ import { cardHiddenInReview, MEMORY_TOOLS, type Transcript } from '../store/tran
 import { SpicaMark } from '@spica/brand/react';
 import { formatClock, formatDuration, toolLabel } from './format';
 import { t } from '../../../shared/i18n';
-import { reviewRow, reviewWaiting } from './review-words';
+import { reviewWaiting } from './review-words';
 
 export const DONE_LINGER_MS = 1400;
 
@@ -70,8 +70,8 @@ export function shownInAnswer(t: Transcript): boolean {
   // The tools at the end of the answer, as one group.
   let i = blocks.length - 1;
   while (i > 0 && grouped(blocks[i - 1])) i--;
-  // a call in review says so on its own row, unless its row is left out (data-review-row="status")
-  return blocks.slice(i).some((b) => b.type === 'tool' && (b.state === 'running' || (b.state === 'pending' && !!b.asking && reviewRow() !== 'status')));
+  // a call waiting for the review says so on its own row
+  return blocks.slice(i).some((b) => b.type === 'tool' && (b.state === 'running' || (b.state === 'pending' && !!b.asking)));
 }
 
 export function StatusLine({ transcript }: { transcript: Transcript }) {

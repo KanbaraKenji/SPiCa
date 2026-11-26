@@ -923,4 +923,25 @@ describe('a sub-agent confirmation reviewed first', () => {
     const result: Message = { id: 'm2', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'ok' }], createdAt: '', meta: { author: 'runtime', reviewAllowed: { c1: answer } } };
     expect(tool(fromHistory([call, result])).reviewAllowed).toEqual(answer);
   });
+
+  it('live, in the order the core sends it: the call, in review, allowed, running (its command shown), done', () => {
+    let t = applyEvent(fromHistory([]), ev({ type: 'tool.call', callId: 'c1', name: 'run_command' }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action', delegated: { ...upper, state: 'asking', since: '' } }));
+    expect(tool(t)).toMatchObject({ state: 'pending', asking: { state: 'asking' } });
+    expect(card(t).input).toEqual({ command: 'python merge.py' });
+    t = applyEvent(t, ev({ type: 'confirm.resolved', callId: 'c1', approved: true, by: { ...upper, reason: 'r' } }));
+    t = applyEvent(t, ev({ type: 'tool.start', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' } }));
+    expect(tool(t)).toMatchObject({ state: 'running', input: { command: 'python merge.py' }, reviewAllowed: { reason: 'r' } });
+    expect(tool(t).asking).toBeUndefined();
+    t = applyEvent(t, ev({ type: 'tool.end', callId: 'c1', name: 'run_command', isError: false, preview: 'ok', durationMs: 5 }));
+    expect(tool(t).state).toBe('done');
+  });
+
+  it('live, handed back: the call, in review, then its card with the reason', () => {
+    let t = applyEvent(fromHistory([]), ev({ type: 'tool.call', callId: 'c1', name: 'run_command' }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'x' }, reason: 'irreversible action', delegated: { ...upper, state: 'asking' } }));
+    t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'x' }, reason: 'irreversible action', delegated: { ...upper, state: 'returned', reason: 'no' } }));
+    expect(tool(t).asking).toBeUndefined();
+    expect(card(t).delegated).toMatchObject({ state: 'returned', reason: 'no' });
+  });
 });

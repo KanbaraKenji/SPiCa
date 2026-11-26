@@ -1225,7 +1225,9 @@ export class Runtime implements RuntimeInternals {
   setProjectReview(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): ProjectInfo {
     const p = this.store.getProject(projectId);
     if (!p) throw new Error(`unknown project: ${projectId}`);
-    const { reviewSteps: _on, reviewModel: _model, ...rest } = p;
+    const rest: ProjectInfo = { ...p };
+    delete rest.reviewSteps;
+    delete rest.reviewModel;
     const on = change.on ?? !!p.reviewSteps;
     const model = change.model === undefined ? p.reviewModel : change.model;
     if (model) this.provider(model.providerId); // an unknown connection throws

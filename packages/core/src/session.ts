@@ -2129,7 +2129,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     if (item.kind !== 'confirm') throw new Error('not a confirmation');
     const cfg = this.#record.config;
     const ref = project.reviewModel ?? { providerId: cfg.providerId, model: cfg.model };
-    const asking: ConfirmHandover = { state: 'asking', model: ref.model };
+    const asking: ConfirmHandover = { state: 'asking', model: ref.model, since: isoNow() };
     this.#inReview.set(item.callId, { ...item, delegated: asking });
     this.#emit({
       type: 'confirm.request',

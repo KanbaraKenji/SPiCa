@@ -7,7 +7,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
-import { reviewBy, reviewNoResult, reviewReturned, reviewRow, reviewWaiting } from './review-words';
+import { reviewBy, reviewNoResult, reviewReturned, reviewWaiting } from './review-words';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
@@ -547,6 +547,8 @@ export function ThinkingBlock({ text, live, since }: { text: string; live: boole
  * started yet keeps the tool icon and the turning ring after its name.
  */
 export function toolIcon(b: ToolBlock): ReactNode {
+  // waiting for the review: in a list of steps, marked as a step going on (the row or fold above has the mark and clock)
+  if (b.state === 'pending' && b.asking) return <SpicaStatusIcon name="running" size={14} title={reviewWaiting()} />;
   switch (b.state) {
     case 'running':
       return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
@@ -620,7 +622,7 @@ export const ToolCardsContext = createContext<Record<string, FileCardMeta> | und
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
 function toolMeta(block: ToolBlock, done = false): ReactNode {
   // in review (no card): the row's words say so; the turning ring after them, or the clock on a live row
-  if (block.state === 'pending' && block.asking) return reviewRow() === 'live' ? null : <SpicaStatusIcon name="running" size={14} title={reviewWaiting()} />;
+  if (block.state === 'pending' && block.asking) return null;
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return t('已停用，未执行');
@@ -639,8 +641,12 @@ function busyWords(block: ToolBlock): ReactNode {
   return runningWords(block);
 }
 
-/** A call in review whose row is left out: the status line under the answer says it (data-review-row="status"). */
-const reviewHidden = (b: ToolBlock): boolean => b.state === 'pending' && !!b.asking && reviewRow() === 'status';
+/** Since when a call has waited for the review (its own start, else the run's), for the clock at the row's end. */
+function reviewSince(b: ToolBlock | undefined, since: number | undefined): number | undefined {
+  if (!b || b.state !== 'pending' || !b.asking) return undefined;
+  const at = b.asking.since ? Date.parse(b.asking.since) : NaN;
+  return Number.isFinite(at) ? at : since;
+}
 
 /** A call's words: the verb quieter, the object as it is; the whole path or address on hover when it was cut. */
 function ToolText({ block }: { block: ToolBlock }) {
@@ -742,18 +748,18 @@ export type GroupStep = ToolBlock | { type: 'thinking'; text: string };
 function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const done = useContext(RoundDoneContext);
-  // in review, drawn as the step the run is on (data-review-row="live")
-  const reviewLive = block.state === 'pending' && !!block.asking && reviewRow() === 'live';
-  const now = since !== undefined && (block.state === 'running' || reviewLive);
-  if (reviewHidden(block)) return null;
+  const now = since !== undefined && block.state === 'running';
+  // waiting for the review: drawn as the step going on (the mark in front), the clock how long it has waited
+  const waited = reviewSince(block, since);
+  const reviewing = block.state === 'pending' && !!block.asking;
   return (
     <Disclosure
       open={open}
       onToggle={() => setOpen((o) => !o)}
-      icon={now || reviewLive ? LIVE_MARK : toolIcon(block)}
+      icon={now || reviewing ? LIVE_MARK : toolIcon(block)}
       label={now || block.state === 'running' || block.state === 'pending' ? busyWords(block) : <ToolText block={block} />}
       meta={toolMeta(block, done)}
-      tail={now ? <RunClock since={since} /> : undefined}
+      tail={now ? <RunClock since={since} /> : waited !== undefined ? <RunClock since={waited} /> : undefined}
     >
       <ToolDetail block={block} />
     </Disclosure>
@@ -773,13 +779,10 @@ export function runningText(running: ToolBlock[]): string {
  * are what the run is doing now: while some run, the line says so (the turning mark first, Running and the
  * step, the run's clock at the end) in place of the status line under the answer.
  */
-export function ToolGroup({ blocks: all, steps: allSteps = all, since }: { blocks: ToolBlock[]; steps?: GroupStep[]; since?: number | undefined }) {
+export function ToolGroup({ blocks, steps = blocks, since }: { blocks: ToolBlock[]; steps?: GroupStep[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const cards = useContext(ToolCardsContext);
   const done = useContext(RoundDoneContext);
-  const blocks = all.filter((b) => !reviewHidden(b));
-  const steps = allSteps.filter((b) => b.type === 'thinking' || !reviewHidden(b));
-  if (!blocks.length) return null;
   if (blocks.length === 1 && blocks[0] && steps.length === 1) return <ToolRow block={blocks[0]} since={since} />;
   const running = blocks.filter((b) => b.state === 'running');
   const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
@@ -787,12 +790,13 @@ export function ToolGroup({ blocks: all, steps: allSteps = all, since }: { block
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
   const first = running[0] ?? blocks.find((b) => b.state === 'pending');
-  // a step in review drawn as the step the run is on (data-review-row="live"): the mark in front, no ring
-  const reviewLive = !now && !!first?.asking && first.state === 'pending' && reviewRow() === 'live';
+  // a step waiting for the review: the fold is the step going on (the mark in front, how long it has waited)
+  const waited = now ? undefined : reviewSince(first, since);
+  const reviewLive = !now && !!first?.asking && first.state === 'pending';
   const label = now ? runningText(running) : busy ? busyWords(first!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
   const meta = busy ? (now || reviewLive ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now || reviewLive ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
+    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now || reviewLive ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : waited !== undefined ? <RunClock since={waited} /> : undefined}>
       <div className="tool-list">
         {steps.map((b, i) => (b.type === 'thinking' ? <ThinkingItem key={`thinking-${i}`} text={b.text} /> : <ToolItem key={b.callId} block={b} />))}
       </div>

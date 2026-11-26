@@ -667,6 +667,8 @@ export interface ConfirmAnswer extends ConfirmReview {
  */
 export interface ConfirmHandover extends ConfirmReview {
   state: 'asking' | 'returned' | 'no_result';
+  /** asking: when the review started (the window's clock of how long it has waited). */
+  since?: string;
   reason?: string;
   failure?: 'error' | 'spend_limit' | 'timeout';
 }
