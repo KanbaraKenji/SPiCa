@@ -44,7 +44,9 @@ export const REVIEW_SYSTEM =
   'You review one step a sub-agent is about to take in a project, for the user. You are given what the user wrote in ' +
   'the project, the task the sub-agent was given, and the step. Answer on the first line ALLOW if the step is what the ' +
   'user and the task ask for, or HAND BACK if the user should decide (these two words exactly, in English); on the ' +
-  "second line one sentence why, in the user's language. The user sees that sentence.";
+  "second line one sentence why, in the user's language. The user sees that sentence. A step that serves the task " +
+  'in its own way (another command, more output, a check first) is what the task asks for; one that goes past what ' +
+  'the user and the task ask for is for the user to decide.';
 
 /** The review's one message. */
 export function reviewPrompt(input: ReviewInput): string {
