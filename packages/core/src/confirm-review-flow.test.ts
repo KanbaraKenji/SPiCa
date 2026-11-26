@@ -128,6 +128,24 @@ describe('a sub-agent step reviewed first', () => {
     expect(c.child.pending()[0]).not.toHaveProperty('delegated');
   });
 
+  it('stopped while in review: a stop, no card, nothing ran; what the review cost is the sub-agent’s', async () => {
+    const rt = makeRuntime(gw);
+    const { child } = setup(rt);
+    gw.enqueue(writeCall('x1'), { text: 'ALLOW\nlate', delayMs: 3000 });
+    const run = child.send('Write it', { author: 'parent' }).done;
+    await vi.waitFor(() => expect(child.pending()[0]).toMatchObject({ delegated: { state: 'asking' } }), { timeout: 5000 });
+    child.abort();
+    expect((await run).reason).toBe('aborted');
+    expect(child.pending()).toEqual([]);
+    await expect(readFile(target(), 'utf8')).rejects.toThrow();
+
+    gw.enqueue(writeCall('x2'), { text: 'ALLOW\nfine' }, { text: 'ok' });
+    const before = rt.ledger.sessionUsd(child.id);
+    await child.send('Write it again', { author: 'parent' }).done;
+    // the review's call and the sub-agent's two rounds, all under the sub-agent
+    expect(rt.ledger.sessionUsd(child.id)).toBeGreaterThan(before);
+  });
+
   it("a sub-agent's own sub-agent goes to the review too, with its own task", async () => {
     const rt = makeRuntime(gw);
     const { child } = setup(rt);

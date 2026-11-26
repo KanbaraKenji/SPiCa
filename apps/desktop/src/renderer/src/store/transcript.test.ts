@@ -928,6 +928,8 @@ describe('a sub-agent confirmation reviewed first', () => {
     let t = applyEvent(fromHistory([]), ev({ type: 'tool.call', callId: 'c1', name: 'run_command' }));
     t = applyEvent(t, ev({ type: 'confirm.request', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action', delegated: { ...upper, state: 'asking', since: '' } }));
     expect(tool(t)).toMatchObject({ state: 'pending', asking: { state: 'asking' } });
+    // opening the waiting row shows the command (tool.call carried none)
+    expect(tool(t).input).toEqual({ command: 'python merge.py' });
     expect(card(t).input).toEqual({ command: 'python merge.py' });
     t = applyEvent(t, ev({ type: 'confirm.resolved', callId: 'c1', approved: true, by: { ...upper, reason: 'r' } }));
     t = applyEvent(t, ev({ type: 'tool.start', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' } }));

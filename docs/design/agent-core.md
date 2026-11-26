@@ -434,7 +434,7 @@
 
 - **哪些送审查**（`humanOnly` 为空才送，是一份放行名单，没列的来源一律直接出卡）：命令（按 protocol 的 `commandRisk` 读，不是删除、覆盖、结束程序、改注册表、安装、联网的）、写到对话文件夹以外、读别的项目的文件夹、用户自己加的 MCP 服务的工具（钩子给了 `keep`、没标不可逆）。**一律直接出卡**：一批操作里的每一步、定时任务开头的运行（往上传：父对话在这种运行里写的任务带 `fromScheduledRun`）、读过网页、邮件、MCP / 插件数据或项目文件夹以外的文件之后（`Session.outsideRead()`：自用户上次打字以来读过的所有种类；文件看 `GuardNote.inProject`，没标的算外面的）、外部链接和凭据文件、无法撤销的、安装下载、只能点「允许」的宽文件夹、声明 `confirmByUser` 的工具（定时任务、操作电脑的批准）。守卫本身不变：要确认的照样要确认，只是谁来答。
 - **审查看什么**（应用拼，`reviewPrompt`）：用户在这个项目各对话里亲手打的话（最近 30 条，不含模型写好、用户点选的建议）、派这个子任务时的任务说明、这一步本身（命令原文、路径，其他工具给参数；不给子任务自己写的 description）。子任务的回报、工具读回来的内容一概不给。
-- **怎么答**：第一行 ALLOW 或 HAND BACK，第二行一句理由（用户看得到）；`readVerdict` 也认「ALLOW: 理由」、放行 / 交回。没有拒绝。
+- **怎么答**：第一行 ALLOW 或 HAND BACK，第二行一句理由（用户看得到）；`readVerdict` 也认「ALLOW: 理由」和中文的允许 / 放行 / 交回 / 交给用户 / 退回，但词必须独占一行或后面跟标点，句子里的「允许的话…」「ALLOW would…」不算，算没结果、出卡。没有拒绝。给审查的说明里有一句：用自己的办法完成任务的算任务要做的，超出用户和任务的交给用户。
 - **调用**（`runReview`）：模型用项目的 `reviewModel`，没设就用子任务自己的模型；走这个连接的限流，按花费上限先占后记（记在子任务的对话名下，所以算进项目），最多输出 2000（给会先思考的模型留余地），拿到限流位后 60 秒没答算超时；留痕 initiator `runtime:confirm-review`。
 - **结果**：放行（`confirm.resolved` 带 `by`）就像用户点了一次「允许」那样原地跑，不带始终允许，记录卡上 `reviewAllowed`（进 tool_results 的 meta）；交回（`returned`，带理由）或没结果（`no_result`，`failure` 为 error / spend_limit / timeout，`detail` 是错误或看不懂的回答）照常出卡，项目自己那个对话收一条给模型看的 note（`meta.reviewNote`，不叫醒它）。审查中这一步在 `pending()` 里（`delegated.state: 'asking'`，只在内存里），窗口打开时看得到「等待批准」，谁也答不了；停止就当停止。
 - 测试：`confirm-review.test.ts`（拼的内容、答案读法、结果）、`confirm-review-flow.test.ts`（放行、交回、没结果、审查中、不送审查的几种、子任务的子任务、定时任务、项目里外的文件）、`delegate-confirm.test.ts`（判定）。

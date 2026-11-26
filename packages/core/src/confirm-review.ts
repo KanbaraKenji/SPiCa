@@ -5,7 +5,7 @@
 // given is still written in part by agents: the command or an MCP tool's arguments by the sub-agent (a comment in a
 // command can speak to the review), the task by the upper agent. It answers 放行 (allow once) or 交回给用户 (hand
 // back), with one sentence why.
-import type { ConfirmAnswer, ConfirmHandover } from '@spica/protocol';
+import type { ConfirmHandover } from '@spica/protocol';
 import type { RuntimeInternals } from './runtime.ts';
 import { isoNow } from './events.ts';
 import { ProviderError } from './providers/types.ts';
@@ -55,11 +55,13 @@ export function reviewPrompt(input: ReviewInput): string {
   return ['<user_words>', ...words, '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
 }
 
-const VERDICT = /^[\s*_#>`"'“【[]*(ALLOW|HAND[\s_-]*BACK|放行|允许|交回(?:给用户)?|交给用户|退回)(?![A-Za-z])[\s*_`"'”】\].:：,，;；-]*(.*)$/i;
+// the word alone on its line, or followed by punctuation and the reason; never a word inside a sentence
+const VERDICT = /^[\s*_#>`"'“【[]*(ALLOW|HAND[\s_-]*BACK|放行|允许|交回(?:给用户)?|交给用户|退回)(?![A-Za-z])[\s*_`"'”】\]]*(?:$|[.:：,，;；。—-]+\s*(.*)$)/i;
 
 /**
  * Its answer, or null when it said neither (that counts as no result: the card is the user's). The word starts a line
- * (the first that has one), alone or with the reason after it (ALLOW: …, **HAND BACK** - …); 放行 / 交回 are taken too.
+ * (the first that has one), alone or followed by punctuation and the reason (ALLOW: …, **HAND BACK** - …); 允许 / 放行 /
+ * 交回 / 交给用户 / 退回 are taken too. A word inside a sentence (允许的话…, ALLOW would be…) is not an answer.
  * Allowing needs a reason.
  */
 export function readVerdict(text: string): { allow: boolean; reason: string } | null {
@@ -145,16 +147,4 @@ export async function runReview(
   } finally {
     lease.release();
   }
-}
-
-/** The model the review runs with: the one set for it, else the project's default model. */
-export function reviewModel(set: string | undefined, projectDefault: string): string {
-  return set?.trim() || projectDefault;
-}
-
-/** What the confirmation records: allowed (no card), or handed back / no result (its card, with why). */
-export function reviewOutcome(verdict: ReturnType<typeof readVerdict>, model: string, failure?: ConfirmHandover['failure']): { allowed: ConfirmAnswer } | { handover: ConfirmHandover } {
-  if (failure || !verdict) return { handover: { state: 'no_result', model, ...(failure ? { failure } : {}) } };
-  if (verdict.allow) return { allowed: { model, reason: verdict.reason } };
-  return { handover: { state: 'returned', model, reason: verdict.reason } };
 }

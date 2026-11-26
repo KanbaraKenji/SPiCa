@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
-import { readVerdict, reviewModel, reviewOutcome, reviewPrompt, reviewStep } from './confirm-review.ts';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readVerdict, ReviewFailed, reviewPrompt, reviewStep, runReview } from './confirm-review.ts';
+import type { FakeGateway } from './testing/fake-gateway.ts';
+import { makeRuntime, startGateway } from './testing/helpers.ts';
 
 describe('the review of a sub-agent step', () => {
   it('sees the command or the path from the call, never the description the sub-agent wrote', () => {
@@ -30,16 +32,56 @@ describe('the review of a sub-agent step', () => {
     // what deepseek-flash answered in a real run: the word in the user's language
     expect(readVerdict('允许\n这一步正是任务第 1 步要求的。')).toEqual({ allow: true, reason: '这一步正是任务第 1 步要求的。' });
     expect(readVerdict('交给用户：要写到项目外')).toEqual({ allow: false, reason: '要写到项目外' });
+    // a word inside a sentence is not an answer: the card is the user's
+    expect(readVerdict('需要用户决定。\n允许的话会覆盖文件。')).toBeNull();
+    expect(readVerdict('I would hand this back.\nALLOW would be wrong here.')).toBeNull();
   });
 
-  it("runs with the model set for it, else the project's default", () => {
-    expect(reviewModel(undefined, 'deepseek-flash')).toBe('deepseek-flash');
-    expect(reviewModel('other', 'deepseek-flash')).toBe('other');
+});
+
+describe('the review call', () => {
+  let gw: FakeGateway;
+  beforeEach(async () => {
+    gw = await startGateway();
+  });
+  afterEach(async () => {
+    await gw.stop();
+  });
+  const opts = (signal = new AbortController().signal) => ({ providerId: 'fake-openai', model: 'fake-model', sessionId: 's1', parentChain: [], prompt: 'p', signal });
+
+  it('answers, and what it cost is recorded under the sub-agent (its project)', async () => {
+    const rt = makeRuntime(gw);
+    gw.enqueue({ text: 'ALLOW\nfine' });
+    expect(await runReview(rt, opts())).toContain('ALLOW');
+    expect(rt.ledger.sessionUsd('s1')).toBeGreaterThan(0);
   });
 
-  it('records allowed, handed back, or no result (failed, spend limit, timeout)', () => {
-    expect(reviewOutcome({ allow: true, reason: 'r' }, 'm')).toEqual({ allowed: { model: 'm', reason: 'r' } });
-    expect(reviewOutcome({ allow: false, reason: 'r' }, 'm')).toEqual({ handover: { state: 'returned', model: 'm', reason: 'r' } });
-    expect(reviewOutcome(null, 'm', 'timeout')).toEqual({ handover: { state: 'no_result', model: 'm', failure: 'timeout' } });
+  it('no answer in time: timeout', async () => {
+    const rt = makeRuntime(gw);
+    gw.enqueue({ text: 'ALLOW\nlate', delayMs: 2000 });
+    await expect(runReview(rt, { ...opts(), timeoutMs: 150 })).rejects.toMatchObject({ failure: 'timeout' });
+  });
+
+  it('past the spending limit: spend_limit, nothing sent', async () => {
+    const rt = makeRuntime(gw);
+    rt.ledger.reserve = () => ({ ok: false, wait: false, scope: 'global', spentUsd: 1, limitUsd: 1, nextUsd: 0.1, message: 'limit reached' }) as never;
+    const before = gw.requests.length;
+    await expect(runReview(rt, opts())).rejects.toBeInstanceOf(ReviewFailed);
+    await expect(runReview(rt, opts())).rejects.toMatchObject({ failure: 'spend_limit' });
+    expect(gw.requests.length).toBe(before);
+  });
+
+  it('a model that is not there: error', async () => {
+    const rt = makeRuntime(gw);
+    await expect(runReview(rt, { ...opts(), providerId: 'nowhere' })).rejects.toMatchObject({ failure: 'error' });
+  });
+
+  it('stopped: the stop itself, not a failure', async () => {
+    const rt = makeRuntime(gw);
+    gw.enqueue({ text: 'ALLOW\nlate', delayMs: 2000 });
+    const ac = new AbortController();
+    const p = runReview(rt, opts(ac.signal));
+    setTimeout(() => ac.abort(), 100);
+    await expect(p).rejects.not.toBeInstanceOf(ReviewFailed);
   });
 });

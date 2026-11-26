@@ -70,6 +70,22 @@ describe('a sub-task that waits for the user', () => {
     fireEvent.click(screen.getByRole('button', { name: '处理' }));
     expect(openSession).toHaveBeenCalledWith('w-a');
   });
+
+  it('its step came to the user after the review: why, on the same row (as on its card); hover the error', () => {
+    render(
+      <Conversation
+        session={session({ id: 'top' })}
+        transcript={{ items: [{ kind: 'user', id: 'u', text: '建一个项目', steer: false }], run: { startedAt: Date.now(), status: 'tool' } }}
+        actions={{ openSession: vi.fn() } as unknown as ConversationActions}
+        waiting={[
+          { id: 'w-a', title: '同步评审表', status: 'awaiting_confirm', review: { state: 'returned', model: 'm', reason: '你没提到这个位置' } },
+          { id: 'w-b', title: '生成趋势图', status: 'awaiting_confirm', review: { state: 'no_result', model: 'm', failure: 'timeout', detail: 'no answer in time' } },
+        ]}
+      />,
+    );
+    expect(screen.getByText('未自动放行：你没提到这个位置')).toBeTruthy();
+    expect(screen.getByText('未能自动放行：超时').getAttribute('title')).toBe('no answer in time');
+  });
 });
 
 describe('opened from a history row or link', () => {

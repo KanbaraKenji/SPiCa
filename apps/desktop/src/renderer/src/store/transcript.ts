@@ -546,9 +546,11 @@ export function cardHiddenInReview(b: Block): boolean {
 }
 
 /** A call whose confirmation is in review says so on its row; handed back, its card says the rest. */
-function markAsking(items: Item[], callId: string, delegated: ConfirmHandover | undefined): void {
+function markAsking(items: Item[], callId: string, delegated: ConfirmHandover | undefined, input?: unknown): void {
   const tool = findBlock(items, 'tool', callId);
   if (!tool) return;
+  // live, the call's row has no input yet (tool.call carries none): the step under review is what opening it shows
+  if (input !== undefined && tool.input === undefined) tool.input = input;
   if (delegated?.state === 'asking') tool.asking = delegated;
   else delete tool.asking;
 }
@@ -832,7 +834,7 @@ function applyPending(t: Transcript, p: PendingItem): void {
       if (was) replaceBlock(t.items, was, card);
       else lastResponse(t.items, `pending-${p.callId}`).blocks.push(card);
     } else {
-      markAsking(t.items, p.callId, p.delegated);
+      markAsking(t.items, p.callId, p.delegated, p.input);
       const card = findBlock(t.items, 'confirm', p.callId);
       if (card) {
         if (p.delegated) card.delegated = p.delegated;
@@ -981,7 +983,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         if (!findBlock(items, 'computer', e.callId)) lastResponse(items, respId).blocks.push(computerCard(e.callId, e.input));
         return t;
       }
-      markAsking(items, e.callId, e.delegated);
+      markAsking(items, e.callId, e.delegated, e.input);
       const asked = findBlock(items, 'confirm', e.callId);
       // asked again: the review handed it back or gave no result, and the card is shown now
       if (asked) {
