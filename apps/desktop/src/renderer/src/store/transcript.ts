@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ReviewNoteMeta, ChangePreview, CommandJob, ConfirmAnswer, ConfirmHandover, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ChangePreview, CommandJob, ConfirmAnswer, ConfirmHandover, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -174,8 +174,6 @@ function noteItem(m: Message): Item | undefined {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
     return { kind: 'note', id: m.id, text: empty ? NO_REPORT_WORDS : child.text, child: empty ? { ...child, text: NO_REPORT_WORDS } : child };
   }
-  const review = m.meta?.reviewNote;
-  if (review && typeof review.fromSessionId === 'string') return { kind: 'note', id: m.id, text: '', review };
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
 }
@@ -240,7 +238,7 @@ export type Item =
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   /** `cwd`: the working-folder note; files named before it are looked for where they went (store/relocate.ts). */
   /** `toolsOff`, `model`: the tools turned off, the model switch (noteText words them in the current language). */
-  | { kind: 'note'; id: string; text: string; child?: ChildNote; review?: ReviewNoteMeta; cwd?: CwdChangeMeta; toolsOff?: string[]; model?: { from?: string; to: string } }
+  | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta; toolsOff?: string[]; model?: { from?: string; to: string } }
   /** A model setting a connected script changed (the card; meta.settingsChange). */
   | { kind: 'settings'; id: string; change: SettingsChangeMeta }
   /**

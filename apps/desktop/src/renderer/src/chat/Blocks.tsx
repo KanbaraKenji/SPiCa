@@ -1370,7 +1370,11 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
       {/* reviewed first: handed back to the user with its reason, or the review gave no result */}
       {block.delegated?.state === 'returned' ? <p className="card-why">{reviewReturned(block.delegated.reason ?? '')}</p> : null}
-      {block.delegated?.state === 'no_result' ? <p className="card-why">{reviewNoResult(block.delegated.failure)}</p> : null}
+      {block.delegated?.state === 'no_result' ? (
+        <p className="card-why" title={block.delegated.detail}>
+          {reviewNoResult(block.delegated.failure)}
+        </p>
+      ) : null}
     </section>
   );
 }

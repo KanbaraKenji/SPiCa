@@ -671,6 +671,8 @@ export interface ConfirmHandover extends ConfirmReview {
   since?: string;
   reason?: string;
   failure?: 'error' | 'spend_limit' | 'timeout';
+  /** no_result: the error, or the answer that was neither (cut short); on the card's last line as its hover text. */
+  detail?: string;
 }
 
 /** What the project's conversation is told when a sub-agent's step comes to the user after the review (no run starts). */

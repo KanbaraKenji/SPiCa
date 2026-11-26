@@ -4326,6 +4326,11 @@ button.ctx-row:hover {
   line-height: var(--chat-small-line);
 }
 
+/* 「X」等待确认 · 处理 in the project's conversation: why the review handed it to the user, after the words. */
+.waiting-why {
+  margin-left: 8px;
+}
+
 /* Opening animation layer (component from @spica/brand) */
 .root {
   position: relative;

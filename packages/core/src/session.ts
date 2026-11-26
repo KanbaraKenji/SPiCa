@@ -2145,17 +2145,19 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       delegated: asking,
     });
     let outcome: { allowed: ConfirmAnswer } | { handover: ConfirmHandover };
+    const cut = (s: string) => (s.length > 300 ? `${s.slice(0, 300)}…` : s);
     try {
       const prompt = reviewPrompt({ userWords: this.#rt.projectUserWords(project), task: this.#taskText(), step: reviewStep(item.toolName, item.input) });
-      const verdict = readVerdict(await runReview(this.#rt, { providerId: ref.providerId, model: ref.model, sessionId: this.id, parentChain: this.parentChain, prompt, signal }));
+      const answer = await runReview(this.#rt, { providerId: ref.providerId, model: ref.model, sessionId: this.id, parentChain: this.parentChain, prompt, signal });
+      const verdict = readVerdict(answer);
       outcome = !verdict
-        ? { handover: { state: 'no_result', model: ref.model, failure: 'error' } }
+        ? { handover: { state: 'no_result', model: ref.model, failure: 'error', detail: cut(answer.trim() || 'empty answer') } }
         : verdict.allow
           ? { allowed: { model: ref.model, reason: verdict.reason } }
           : { handover: { state: 'returned', model: ref.model, reason: verdict.reason } };
     } catch (err) {
       if (signal.aborted) return 'stopped';
-      outcome = { handover: { state: 'no_result', model: ref.model, failure: err instanceof ReviewFailed ? err.failure : 'error' } };
+      outcome = { handover: { state: 'no_result', model: ref.model, failure: err instanceof ReviewFailed ? err.failure : 'error', detail: cut(err instanceof Error ? err.message : String(err)) } };
     } finally {
       this.#inReview.delete(item.callId);
     }

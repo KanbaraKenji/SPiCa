@@ -43,18 +43,22 @@ export function reviewStep(tool: string, input: unknown): ReviewStep {
 export const REVIEW_SYSTEM =
   'You review one step a sub-agent is about to take in a project, for the user. You are given what the user wrote in ' +
   'the project, the task the sub-agent was given, and the step. Answer on the first line ALLOW if the step is what the ' +
-  'user and the task ask for, or HAND BACK if the user should decide; on the second line one sentence why, in the ' +
-  "user's language. The user sees that sentence.";
+  'user and the task ask for, or HAND BACK if the user should decide (these two words exactly, in English); on the ' +
+  "second line one sentence why, in the user's language. The user sees that sentence.";
 
 /** The review's one message. */
 export function reviewPrompt(input: ReviewInput): string {
   const step = input.step.command !== undefined ? `command: ${input.step.command}` : input.step.path !== undefined ? `path: ${input.step.path}` : `arguments: ${input.step.args ?? '{}'}`;
-  return ['<user_words>', ...input.userWords.map((w) => `- ${w}`), '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
+  const words = input.userWords.length ? input.userWords.map((w) => `- ${w}`) : ['(none)'];
+  return ['<user_words>', ...words, '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
 }
 
+const VERDICT = /^[\s*_#>`"'“【[]*(ALLOW|HAND[\s_-]*BACK|放行|交回(?:给用户)?)(?![A-Za-z])[\s*_`"'”】\].:：,，;；-]*(.*)$/i;
+
 /**
- * Its answer, or null when it said neither (that counts as no result: the card is the user's). The word may stand on
- * its own line or start the line with the reason after it (ALLOW: …, **HAND BACK** - …). Allowing needs a reason.
+ * Its answer, or null when it said neither (that counts as no result: the card is the user's). The word starts a line
+ * (the first that has one), alone or with the reason after it (ALLOW: …, **HAND BACK** - …); 放行 / 交回 are taken too.
+ * Allowing needs a reason.
  */
 export function readVerdict(text: string): { allow: boolean; reason: string } | null {
   const lines = text
@@ -62,10 +66,11 @@ export function readVerdict(text: string): { allow: boolean; reason: string } | 
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean);
-  const m = /^[\s*_#>`"'“]*(ALLOW|HAND[\s_-]*BACK)\b[\s*_`"'”.:：,，;；-]*(.*)$/i.exec(lines[0] ?? '');
-  if (!m) return null;
-  const reason = [m[2] ?? '', ...lines.slice(1)].join(' ').replace(/\s+/g, ' ').trim();
-  if (/^allow$/i.test(m[1]!)) return reason ? { allow: true, reason } : null;
+  const at = lines.findIndex((l) => VERDICT.test(l));
+  if (at < 0) return null;
+  const m = VERDICT.exec(lines[at]!)!;
+  const reason = [m[2] ?? '', ...lines.slice(at + 1)].join(' ').replace(/\s+/g, ' ').trim();
+  if (/^(allow|放行)$/i.test(m[1]!)) return reason ? { allow: true, reason } : null;
   return { allow: false, reason };
 }
 
@@ -96,7 +101,8 @@ export async function runReview(
   } catch (err) {
     throw new ReviewFailed('error', err instanceof Error ? err.message : String(err));
   }
-  const maxTokens = 400;
+  // room for a model that thinks before it answers (the answer itself is two lines)
+  const maxTokens = 2000;
   const scope = { providerId: provider.id, providerKind: provider.kind, model: opts.model, sessionId: opts.sessionId, runId: `review-${Date.now()}` };
   const lease = await rt.limiter(provider.id).acquire({ signal: opts.signal });
   try {

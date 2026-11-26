@@ -24,6 +24,9 @@ describe('the review of a sub-agent step', () => {
     expect(readVerdict('ALLOW')).toBeNull();
     expect(readVerdict('maybe')).toBeNull();
     expect(readVerdict('ALLOWED to run')).toBeNull();
+    expect(readVerdict('交回给用户：用户没有提到 share 文件夹')).toEqual({ allow: false, reason: '用户没有提到 share 文件夹' });
+    expect(readVerdict('Looking at it.\nHAND BACK\nNot asked for.')).toEqual({ allow: false, reason: 'Not asked for.' });
+    expect(readVerdict('放行\n只读统计')).toEqual({ allow: true, reason: '只读统计' });
   });
 
   it("runs with the model set for it, else the project's default", () => {

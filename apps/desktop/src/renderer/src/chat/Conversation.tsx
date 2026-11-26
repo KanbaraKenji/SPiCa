@@ -1,7 +1,7 @@
 // The main pane: the transcript of one session, streamed live, and its input box.
 import { RunNotices, type Notice } from './RunNotices';
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo } from '@spica/protocol';
+import type { CwdChangeMeta, MailItem, RegenerateState, SessionInfo, ConfirmHandover } from '@spica/protocol';
 import { changesAfter } from '../store/relocate';
 import { cardHiddenInReview, dockedPlan, errorText, finishedPlanIn, filesOf, historyRef, isRunning, itemAtSeq, MEMORY_TOOLS, noteText, type Attachment, type Block, type Item, type Transcript } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
@@ -425,6 +425,8 @@ export interface WaitingChild {
   id: string;
   title: string;
   status: 'awaiting_confirm' | 'awaiting_answer';
+  /** Its confirmation came to the user after the review (handed back, or no result): why, on a line under it. */
+  review?: ConfirmHandover;
 }
 
 const NO_MEMORY: MemoryLines = { items: null };
@@ -594,16 +596,6 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 );
               if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
               if (item.kind === 'settings') return <SettingsChangeCard key={item.id} change={item.change} onOpenSettings={actions.openModelSettings} />;
-              // a sub-agent's step came to the user after the review: which, and why (the card is in that conversation)
-              if (item.kind === 'note' && item.review)
-                return (
-                  <p key={item.id} className="turn-note review-note" {...mark(item.id)}>
-                    <button type="button" className="link-btn" onClick={() => actions.openSession(item.review!.fromSessionId)}>
-                      {t('「{name}」', { name: item.review.fromTitle })}
-                    </button>
-                    {item.review.state === 'returned' ? reviewReturned(item.review.reason ?? '') : reviewNoResult(item.review.failure)}
-                  </p>
-                );
               if (item.kind === 'note')
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />
@@ -619,6 +611,12 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
               <div key={w.id} className="resume-row waiting-row" role="status">
                 <span>
                   {w.status === 'awaiting_confirm' ? t('「{title}」等待确认', { title: w.title }) : t('「{title}」等待回答', { title: w.title })}
+                  {/* the review handed it to the user, or gave nothing: why, as on the card */}
+                  {w.review?.state === 'returned' || w.review?.state === 'no_result' ? (
+                    <span className="waiting-why" title={w.review.detail}>
+                      {w.review.state === 'returned' ? reviewReturned(w.review.reason ?? '') : reviewNoResult(w.review.failure)}
+                    </span>
+                  ) : null}
                 </span>
                 <button type="button" className="btn" onClick={() => actions.openSession(w.id)}>
                   {t('处理')}

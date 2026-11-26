@@ -48,7 +48,7 @@ import { MaxButton } from './ui/MaxButton';
 import { MailStore, useMail } from './store/mail';
 import { needsYou } from '../../shared/mail';
 import { nextDoneNews, unseenDone } from './shell/row-status';
-import type { MailItem, MemoryEntryInput, SessionInfo } from '@spica/protocol';
+import type { ConfirmHandover, MailItem, MemoryEntryInput, SessionInfo } from '@spica/protocol';
 import { Icon } from './ui/Icon';
 import { sidebarNews } from './shell/sidebar-news';
 import { watchCover } from './ui/dim';
@@ -377,14 +377,37 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
   const childSource = useMemo<ChildSource>(() => ({ parentId: state.activeId, sessions, transcripts: state.transcripts, load: (id) => void agent.load(id) }), [agent, state.activeId, sessions, state.transcripts]);
   // Sub-agents under the open conversation that wait for the user: said under the status line,
   // so a parent that "waits for its sub-tasks" does not look stuck.
+  // a confirmation the review handed to the user (or gave nothing for): why, from that sub-agent's pending card
+  const [handedBack, setHandedBack] = useState<Record<string, ConfirmHandover>>({});
+  const waitingIds = useMemo(() => {
+    const id = state.activeId;
+    return id ? sessions.filter((s) => s.parentChain.includes(id) && s.status === 'awaiting_confirm').map((s) => s.id).join(' ') : '';
+  }, [sessions, state.activeId]);
+  useEffect(() => {
+    if (!waitingIds || !bridge.agent.getPending) return;
+    let alive = true;
+    void Promise.all(
+      waitingIds.split(' ').map(async (cid) => {
+        const list = await bridge.agent.getPending(cid).catch(() => []);
+        const h = list.find((p) => p.kind === 'confirm' && (p.delegated?.state === 'returned' || p.delegated?.state === 'no_result'));
+        return [cid, h?.kind === 'confirm' ? h.delegated : undefined] as const;
+      }),
+    ).then((rows) => {
+      if (!alive) return;
+      setHandedBack(Object.fromEntries(rows.filter((r): r is readonly [string, ConfirmHandover] => !!r[1])));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [waitingIds, bridge.agent]);
   const waiting = useMemo<WaitingChild[]>(() => {
     const id = state.activeId;
     if (!id) return [];
     return sessions
       .filter((s) => s.parentChain.includes(id) && (s.status === 'awaiting_confirm' || s.status === 'awaiting_answer'))
-      .map((s) => ({ id: s.id, title: s.title ?? t('子任务'), status: s.status as WaitingChild['status'] }));
+      .map((s) => ({ id: s.id, title: s.title ?? t('子任务'), status: s.status as WaitingChild['status'], ...(s.status === 'awaiting_confirm' && handedBack[s.id] ? { review: handedBack[s.id] } : {}) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, state.activeId, locale]);
+  }, [sessions, state.activeId, locale, handedBack]);
   // Projects for the inbox: the core's list, plus any project manager it did not list (demo data).
   const inboxProjects = useMemo<InboxProject[]>(() => {
     const out: InboxProject[] = state.projects.filter((p) => p.status === 'active' && p.managerSessionId).map((p) => ({ id: p.id, name: p.name, managerSessionId: p.managerSessionId }));
