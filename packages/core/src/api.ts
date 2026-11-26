@@ -103,6 +103,9 @@ export function createAgentApi(rt: Runtime): AgentApi {
     async renameProject(projectId, name) {
       return rt.renameProject(projectId, name);
     },
+    async setProjectReview(projectId, change) {
+      return rt.setProjectReview(projectId, change);
+    },
     async deleteProject(projectId) {
       await rt.deleteProject(projectId);
     },

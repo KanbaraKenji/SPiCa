@@ -356,6 +356,20 @@ export class AgentStore {
     }
   }
 
+  /** 子任务的操作先由模型审查 on or off for a project (详情 of its own conversation). */
+  async setProjectReview(projectId: string, on: boolean): Promise<void> {
+    if (!this.#api.setProjectReview) return;
+    // the switch moves at once; the core's answer settles it
+    this.state.set((v) => ({ ...v, projects: v.projects.map((x) => (x.id === projectId ? { ...x, ...(on ? { reviewSteps: true } : { reviewSteps: false }) } : x)) }));
+    try {
+      const p = await this.#api.setProjectReview(projectId, { on });
+      this.state.set((v) => ({ ...v, projects: v.projects.map((x) => (x.id === p.id ? p : x)) }));
+    } catch (err) {
+      const msg = friendlyError(err);
+      this.state.set((v) => ({ ...v, notice: msg, projects: v.projects.map((x) => (x.id === projectId ? { ...x, reviewSteps: !on } : x)) }));
+    }
+  }
+
   /** Renames a project (its manager's conversation takes the name). Resolves to a problem in words, or null. */
   async renameProject(projectId: string, name: string): Promise<string | null> {
     if (!this.#api.renameProject) return t('当前版本不支持重命名项目。');

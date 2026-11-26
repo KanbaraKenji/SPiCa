@@ -55,7 +55,6 @@ import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPE
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
-import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, coordSeed, reviewNoteMessage } from './fake-coord';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
@@ -77,8 +76,6 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
-  /** The demo of sub-agents' confirmations reviewed first (fake-coord.ts): its project; reviewed only while this says the project's switch is on. */
-  coordDemo?: ((projectId: string) => boolean) | undefined;
 }
 
 type Listener = (event: CoreEvent) => void;
@@ -304,75 +301,7 @@ export class FakeBackend implements AgentBackend {
         });
       }
     }
-    if (options.coordDemo) {
-      this.#coordDemo = options.coordDemo;
-      const seed = coordSeed(this.#now());
-      for (const s of seed.sessions) this.#sessions.set(s.id, { ...s, canChooseCwd: false });
-      for (const [id, list] of Object.entries(seed.messages)) this.#messages.set(id, list);
-      for (const [id, list] of Object.entries(seed.pending)) this.#pending.set(id, list);
-      const at = this.#now().toISOString();
-      this.#projects.set(COORD_PROJECT.id, { id: COORD_PROJECT.id, name: COORD_PROJECT.name, folder: COORD_PROJECT.folder, managerSessionId: seed.sessions[0]!.id, workflowId: null, stage: null, status: 'active', createdAt: at, updatedAt: at });
-    }
     for (const s of this.#sessions.values()) s.regenerate = this.#regenerateState(s.id);
-  }
-
-  #coordDemo: ((projectId: string) => boolean) | undefined;
-  readonly #coordAsked = new Set<string>();
-
-  /**
-   * The demo's review answers a sub-agent's step a few seconds after that conversation is first opened. Allowed: no
-   * card; the step runs for a few seconds (its row is the live one), then its row says Ran … and who allowed it. Handed
-   * back: its card, with the reason, and a line in the project's conversation (it does not start a run there).
-   */
-  #coordAnswer(sessionId: string): void {
-    const plan = COORD_ANSWERS[sessionId];
-    if (!plan || this.#coordAsked.has(sessionId)) return;
-    this.#coordAsked.add(sessionId);
-    setTimeout(() => {
-      const item = this.#pending.get(sessionId)?.find((x) => x.callId === plan.callId);
-      if (item?.kind !== 'confirm' || item.delegated?.state !== 'asking') return;
-      if (plan.allow) {
-        this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== plan.callId));
-        this.#emit(sessionId, { type: 'confirm.resolved', callId: plan.callId, approved: true, by: plan.answer });
-        this.#emit(sessionId, { type: 'tool.start', callId: plan.callId, name: item.toolName, input: item.input });
-        this.#setStatus(sessionId, 'tool', item.toolName);
-        setTimeout(() => {
-          this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result.slice(0, 160), durationMs: plan.durationMs });
-          this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', reviewAllowed: { [plan.callId]: plan.answer } });
-          this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
-          this.#emit(sessionId, { type: 'run.end', reason: 'completed' });
-          this.#setStatus(sessionId, 'done');
-        }, 4000);
-        return;
-      }
-      item.delegated = plan.handover;
-      this.#setStatus(sessionId, 'awaiting_confirm', item.toolName);
-      this.#emit(sessionId, { type: 'confirm.request', callId: item.callId, name: item.toolName, input: item.input, reason: item.reason, ...(item.cause ? { cause: item.cause } : {}), ...(item.outsideFolder ? { outsideFolder: item.outsideFolder } : {}), delegated: plan.handover });
-      const list = this.#messages.get(COORD_IDS.pm) ?? [];
-      const seq = (list[list.length - 1]?.seq ?? 0) + 1;
-      list.push(reviewNoteMessage(`cd-note-${sessionId}`, seq, this.#now().toISOString(), { fromSessionId: sessionId, fromTitle: this.#sessions.get(sessionId)?.title ?? '', state: 'returned', reason: plan.handover.reason ?? '' }));
-      this.#messages.set(COORD_IDS.pm, list);
-      // the window draws it from the history (a run.end reloads it); the project's conversation goes on waiting
-      this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
-      this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
-    }, 6000);
-  }
-
-  /**
-   * The demo's project switch off: nothing is reviewed, every card is shown as without it. A card shown so stays the
-   * user's when the switch is turned on later; one already in review stays there.
-   */
-  #coordOff(sessionId: string, list: PendingItem[]): PendingItem[] {
-    if (this.#coordAsked.has(sessionId)) return list;
-    const out = list.map((p) => {
-      if (p.kind !== 'confirm' || !p.delegated) return p;
-      const plain = { ...p };
-      delete plain.delegated;
-      return plain;
-    });
-    this.#pending.set(sessionId, out);
-    if (out.length && this.#sessions.get(sessionId)?.status === 'tool') this.#setStatus(sessionId, 'awaiting_confirm', out[0]!.kind === 'confirm' ? out[0]!.toolName : undefined);
-    return out;
   }
 
   // ----- events -------------------------------------------------------------
@@ -559,11 +488,6 @@ export class FakeBackend implements AgentBackend {
   }
 
   async getPending(sessionId: string): Promise<PendingItem[]> {
-    const coordProject = this.#coordDemo ? this.#sessions.get(sessionId)?.projectId : undefined;
-    if (this.#coordDemo && coordProject === COORD_PROJECT.id) {
-      if (!this.#coordDemo(coordProject)) return structuredClone(this.#coordOff(sessionId, this.#pending.get(sessionId) ?? []));
-      this.#coordAnswer(sessionId);
-    }
     return structuredClone(this.#pending.get(sessionId) ?? []);
   }
 
@@ -723,6 +647,22 @@ export class FakeBackend implements AgentBackend {
     const agents = manager ? [...this.#sessions.values()].filter((s) => s.parentId === manager.id) : [];
     const subProjects = [...this.#projects.values()].filter((x) => x.parentId === p.id);
     return structuredClone({ ...p, workflow: null, objects: [], recentLog: subProjectLog(p.id, this.#now()), manager: manager ?? null, agents, subProjects });
+  }
+
+  async setProjectReview(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): Promise<ProjectInfo> {
+    const p = this.#projects.get(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    if (change.on !== undefined) {
+      if (change.on) p.reviewSteps = true;
+      else delete p.reviewSteps;
+    }
+    if (change.model !== undefined) {
+      if (change.model) p.reviewModel = { ...change.model };
+      else delete p.reviewModel;
+    }
+    p.updatedAt = isoAt(this.#now());
+    this.#emit(p.managerSessionId, { type: 'project.updated', project: structuredClone(p) });
+    return structuredClone(p);
   }
 
   async renameProject(projectId: string, name: string): Promise<ProjectInfo> {

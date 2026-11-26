@@ -1143,16 +1143,8 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         activity={project ? (state.activity[project.id] ?? []) : []}
         hideHeading={panelPages.length > 0}
         onStopJob={(jobId) => void agent.stopJob(jobId)}
-        {...(project
-          ? {
-              reviewSwitch: {
-                on: (settings.reviewProjects ?? []).includes(project.id),
-                set: (on: boolean) => {
-                  const rest = (settings.reviewProjects ?? []).filter((x) => x !== project.id);
-                  shell.update({ reviewProjects: on ? [...rest, project.id] : rest });
-                },
-              },
-            }
+        {...(project && bridge.agent.setProjectReview
+          ? { reviewSwitch: { on: !!project.reviewSteps, set: (on: boolean) => void agent.setProjectReview(project.id, on) } }
           : {})}
         {...(subTasks ? { subTasks } : {})}
         {...(schedOfSession

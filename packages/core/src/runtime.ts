@@ -1200,6 +1200,23 @@ export class Runtime implements RuntimeInternals {
   }
 
   /**
+   * 子任务的操作先由模型审查 for a project: on or off, and the model the review runs with (null: the sub-agent's own).
+   * The window sets it; no agent tool or MCP call does (it decides who answers the agents' confirmations).
+   */
+  setProjectReview(projectId: string, change: { on?: boolean; model?: { providerId: string; model: string } | null }): ProjectInfo {
+    const p = this.store.getProject(projectId);
+    if (!p) throw new Error(`unknown project: ${projectId}`);
+    const { reviewSteps: _on, reviewModel: _model, ...rest } = p;
+    const on = change.on ?? !!p.reviewSteps;
+    const model = change.model === undefined ? p.reviewModel : change.model;
+    if (model) this.provider(model.providerId); // an unknown connection throws
+    const updated: ProjectInfo = { ...rest, ...(on ? { reviewSteps: true } : {}), ...(model ? { reviewModel: { providerId: model.providerId, model: String(model.model) } } : {}), updatedAt: isoNow() };
+    this.store.upsertProject(updated);
+    this.events.emit(this.eventHost, { type: 'project.updated', project: updated });
+    return updated;
+  }
+
+  /**
    * Remove a project from Spica: the project, its sub-projects, their managers and every session
    * under them, their activity logs and work objects. The folders and their files are
    * not touched. Running sessions are stopped first. Mail filed under them

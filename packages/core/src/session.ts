@@ -1454,7 +1454,7 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
       const ref = (draft.input as Record<string, unknown> | undefined)?.id;
       const f = fence(body, tool.untrusted, typeof ref === 'string' && ref.length <= 80 ? `${draft.name}:${ref}` : draft.name, this.#rt.appName);
       sent = f.text;
-      cards = { ...cards, guard: f.note };
+      cards = { ...cards, guard: tool.untrusted === 'file' && this.#readInProject(tool, draft.input) ? { ...f.note, inProject: true } : f.note };
       if (f.note.signals.length) this.#emit({ type: 'guard.flagged', note: f.note, callId: draft.callId });
     }
     out = { content: `[fetched at ${fetchedAt}]\n${sent}`, isError: out.isError };
@@ -2007,13 +2007,66 @@ ${repeatReminder(call.name, repeats.count + 1)}` : res.content;
     return this.#guardState().kind;
   }
 
-  /** A task written by a parent that is acting on outside content carries that along. */
+  /**
+   * A task written by a parent that is acting on outside content carries that along: every kind it read, and whether
+   * its files were inside the project. One written during a run a scheduled task started says so too.
+   */
   #inheritedTaint(opts: { author?: string; meta?: Record<string, unknown> }): Partial<MessageMeta> {
     const parentId = this.#record.parentId;
-    if (opts.author !== 'parent' || !parentId || opts.meta?.untrusted) return {};
+    if (opts.author !== 'parent' || !parentId) return {};
     const parent = this.#rt.session(parentId);
-    if (!parent?.actsOnOutsideContent) return {};
-    return { untrusted: [{ kind: parent.outsideKind ?? 'mcp', source: `parent:${parentId}`, signals: [] }] };
+    if (!parent) return {};
+    const scheduled = parent.inScheduledRun() ? { fromScheduledRun: true as const } : {};
+    if (opts.meta?.untrusted || !parent.actsOnOutsideContent) return scheduled;
+    const read = parent.outsideRead();
+    const kinds = read.kinds.length ? read.kinds : [parent.outsideKind ?? 'mcp'];
+    return { ...scheduled, untrusted: kinds.map((kind) => ({ kind, source: `parent:${parentId}`, signals: [], ...(kind === 'file' && read.filesInProject ? { inProject: true as const } : {}) })) };
+  }
+
+  /**
+   * What outside content the session acts on since the user last typed: every kind (not only the latest), and whether
+   * every file read was inside the project's folder (a note that does not say counts as outside).
+   */
+  outsideRead(): { kinds: GuardNote['kind'][]; filesInProject: boolean } {
+    const typed = (m: Message) => m.role === 'user' && (m.kind === 'user' || m.kind === 'steer') && (m.meta?.author ?? 'user') === 'user';
+    const kinds = new Set<GuardNote['kind']>();
+    let filesInProject = true;
+    const add = (n: GuardNote) => {
+      kinds.add(n.kind);
+      if (n.kind === 'file' && n.inProject !== true) filesInProject = false;
+    };
+    for (let i = this.#messages.length - 1; i >= 0; i--) {
+      const m = this.#messages[i]!;
+      for (const n of m.meta?.untrusted ?? []) add(n);
+      if (typed(m)) break;
+      for (const n of Object.values(m.meta?.guard ?? {})) add(n);
+    }
+    return { kinds: [...kinds], filesInProject };
+  }
+
+  /**
+   * The turn going on now was started by a scheduled task: the latest prompt (not a tool result) came from one, or is
+   * a task written during such a run in the conversation above. A message the user typed after it ends that.
+   */
+  inScheduledRun(): boolean {
+    for (let i = this.#messages.length - 1; i >= 0; i--) {
+      const m = this.#messages[i]!;
+      if (m.role !== 'user' || m.kind === 'tool_results') continue;
+      if (m.kind !== 'user' && m.kind !== 'steer') continue;
+      return !!m.meta?.scheduleRun || m.meta?.fromScheduledRun === true;
+    }
+    return false;
+  }
+
+  /** A file a read tool read (its path, else the working folder) is inside the folder of this conversation's project. */
+  #readInProject(tool: Tool, input: unknown): boolean {
+    const projectId = this.#record.config.projectId;
+    const folder = projectId ? this.#rt.store.getProject(projectId)?.folder : undefined;
+    if (!folder) return false;
+    const args = (input ?? {}) as Record<string, unknown>;
+    const path = tool.targetPath?.(args) ?? (typeof args.path === 'string' && args.path ? args.path : '.');
+    const abs = isAbsolute(path) ? path : resolvePath(this.#record.config.cwd, path);
+    return inScope(abs, [folder]);
   }
 
   /** The user has typed at least one message in this session (not the system or another agent). */

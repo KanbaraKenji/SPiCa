@@ -144,7 +144,9 @@ export class MemoryStore implements Store {
 
   upsertProject(p: ProjectInfo): void {
     // the same shape the SQLite store gives back: unread is always a number
-    this.#projects.set(p.id, clone({ ...p, unread: p.unread ?? 0 }));
+    // reviewSteps only when on, as the SQLite store reads it back
+    const { reviewSteps, ...rest } = p;
+    this.#projects.set(p.id, clone({ ...rest, unread: p.unread ?? 0, ...(reviewSteps ? { reviewSteps: true } : {}) }));
   }
   deleteProject(id: string): void {
     this.#projects.delete(id);

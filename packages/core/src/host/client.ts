@@ -59,6 +59,7 @@ const API_METHODS = [
   'listProjects',
   'getProject',
   'renameProject',
+  'setProjectReview',
   'deleteProject',
   'deleteSession',
   'listMemories',

@@ -203,6 +203,7 @@ export class ProcessBackend implements AgentBackend {
   listScheduleRuns: NonNullable<AgentApi['listScheduleRuns']> = (...a) => this.call('listScheduleRuns', ...a);
   checkSchedules: NonNullable<AgentApi['checkSchedules']> = (...a) => this.call('checkSchedules', ...a);
   renameProject: NonNullable<AgentApi['renameProject']> = (...a) => this.call('renameProject', ...a);
+  setProjectReview: NonNullable<AgentApi['setProjectReview']> = (...a) => this.call('setProjectReview', ...a);
   deleteProject: NonNullable<AgentApi['deleteProject']> = (...a) => this.call('deleteProject', ...a);
   setSessionModel: NonNullable<AgentApi['setSessionModel']> = (...a) => this.call('setSessionModel', ...a);
   setApprovalMode: NonNullable<AgentApi['setApprovalMode']> = (...a) => this.call('setApprovalMode', ...a);
