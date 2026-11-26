@@ -16,7 +16,7 @@ import { N_, t, tc } from '../../../shared/i18n';
 import { CommandJobs } from './CommandJobs';
 import { SubTaskDetail, SubTasks } from './SubTasks';
 import { Switch } from '../settings/Switch';
-import { upperSwitchName } from '../chat/upper-agent';
+import { reviewSwitchName, reviewWaiting } from '../chat/review-words';
 
 export type ToolBlock = Extract<Block, { type: 'tool' }>;
 
@@ -58,8 +58,8 @@ export interface DetailPanelProps {
   onStopJob?: (jobId: string) => void;
   /** A section under the facts (the 定时任务 this conversation runs for). */
   extra?: ReactNode;
-  /** The project's own conversation: whether its sub-agents' confirmations are asked of it before the user (off by default). */
-  upperApproves?: { on: boolean; set(on: boolean): void };
+  /** The project's own conversation: whether its sub-agents' confirmations go through the review before the user (off by default). */
+  reviewSwitch?: { on: boolean; set(on: boolean): void };
   /**
    * The sub-tasks the open conversation sent out (its 子任务 section) and how to show one:
    * its record (loaded on a click), 停止, its whole conversation in the main area.
@@ -83,9 +83,11 @@ function clock(iso: string): string {
 const ROLE_LABEL: Record<SessionInfo['role'], string> = { top: N_('对话'), manager: N_('项目经理'), worker: N_('子任务') };
 
 /** A call in the list: the conversation's words for it, the verb and then the object quieter. */
-export function ToolListText({ t, card, running = false }: { t: Parameters<typeof toolWords>[0]; card?: FileCardMeta | undefined; running?: boolean }) {
+export function ToolListText({ t, card, running = false }: { t: Parameters<typeof toolWords>[0] & { asking?: unknown; state?: string }; card?: FileCardMeta | undefined; running?: boolean }) {
   const w = toolWords(t, card);
   // while it runs, the verb as the conversation says it then (Writing, Running…)
+  // in review: only that (as the conversation's row says it)
+  if (running && t.asking && t.state === 'pending') return <span className="detail-item-main">{reviewWaiting()}</span>;
   const line = running ? runningWords(t) : '';
   const verb = running && w.verb && line.endsWith(` ${w.object}`) ? line.slice(0, line.length - w.object.length - 1) : w.verb;
   return (
@@ -96,7 +98,7 @@ export function ToolListText({ t, card, running = false }: { t: Parameters<typeo
   );
 }
 
-export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob, subTasks, extra, upperApproves }: DetailPanelProps) {
+export function DetailPanel({ session, parent, transcript, globalCostUsd, globalUnpriced, onOpenFile, onPreviewFile, onOpenSession, project, activity = [], onClose, hideHeading = false, history, onStopJob, subTasks, extra, reviewSwitch }: DetailPanelProps) {
   const tools = detailTools(transcript);
   const live = Boolean(transcript.run);
   const running = tools.filter((b) => isRunning(b, live));
@@ -105,8 +107,8 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
   // another conversation: its files open again, the first five
   /** A sub-task shown in place of the list (子任务 › one of them). */
   const [taskShown, setTaskShown] = useState<string | null>(null);
-  // the project's own conversation: whether its sub-agents ask it before the user
-  const upperSwitch = upperApproves && project && project.managerSessionId === session?.id ? upperApproves : undefined;
+  // the project's own conversation: whether its sub-agents' confirmations are reviewed first
+  const upperSwitch = reviewSwitch && project && project.managerSessionId === session?.id ? reviewSwitch : undefined;
   const [shownFor, setShownFor] = useState(session?.id);
   if (shownFor !== session?.id) {
     setShownFor(session?.id);
@@ -186,9 +188,9 @@ export function DetailPanel({ session, parent, transcript, globalCostUsd, global
               ) : null}
               {upperSwitch ? (
                 <div className="detail-switch">
-                  <dt>{upperSwitchName()}</dt>
+                  <dt>{reviewSwitchName()}</dt>
                   <dd>
-                    <Switch on={upperSwitch.on} label={upperSwitchName()} onChange={upperSwitch.set} />
+                    <Switch on={upperSwitch.on} label={reviewSwitchName()} onChange={upperSwitch.set} />
                   </dd>
                 </div>
               ) : null}

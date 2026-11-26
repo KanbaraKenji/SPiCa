@@ -55,7 +55,7 @@ import { AGENT_MESSAGES_LIMIT_MARK, REGENERATE_HINTS, REPEAT_REMINDER_MARK, REPE
 import type { AgentBackend } from './types';
 import { buildSeed, fakeCard, SUB_PROJECTS, subProjectLog } from './fake-seed';
 import { FAKE_PROJECTS, FakeMailbox } from './fake-mail';
-import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, COORD_USER_ONLY, coordSeed } from './fake-coord';
+import { COORD_ANSWERS, COORD_IDS, COORD_PROJECT, coordSeed, reviewNoteMessage } from './fake-coord';
 import { isoAt } from './time';
 import { DEMO_MEMORIES, FakeMemory, guessEntry, type MemoryPlan } from './fake-memory';
 
@@ -77,7 +77,7 @@ export interface FakeBackendOptions {
   legacyDefaultCwd?: string;
   /** Writes a picture a plugin tool would have returned and gives its path (the app's main process passes one). */
   demoImage?: () => string;
-  /** The demo of sub-agents asking the upper agent first (fake-coord.ts): its project; asked only while this says the project's switch is on. */
+  /** The demo of sub-agents' confirmations reviewed first (fake-coord.ts): its project; reviewed only while this says the project's switch is on. */
   coordDemo?: ((projectId: string) => boolean) | undefined;
 }
 
@@ -319,7 +319,11 @@ export class FakeBackend implements AgentBackend {
   #coordDemo: ((projectId: string) => boolean) | undefined;
   readonly #coordAsked = new Set<string>();
 
-  /** The demo's upper agent answers what a sub-agent asked of it a few seconds after that conversation is first opened. */
+  /**
+   * The demo's review answers a sub-agent's step a few seconds after that conversation is first opened. Allowed: no
+   * card; the step runs for a few seconds (its row is the live one), then its row says Ran … and who allowed it. Handed
+   * back: its card, with the reason, and a line in the project's conversation (it does not start a run there).
+   */
   #coordAnswer(sessionId: string): void {
     const plan = COORD_ANSWERS[sessionId];
     if (!plan || this.#coordAsked.has(sessionId)) return;
@@ -328,74 +332,35 @@ export class FakeBackend implements AgentBackend {
       const item = this.#pending.get(sessionId)?.find((x) => x.callId === plan.callId);
       if (item?.kind !== 'confirm' || item.delegated?.state !== 'asking') return;
       if (plan.allow) {
-        // allowed: no card ever; the call runs and its row keeps who allowed it and why
         this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== plan.callId));
         this.#emit(sessionId, { type: 'confirm.resolved', callId: plan.callId, approved: true, by: plan.answer });
-        this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result.slice(0, 160), durationMs: plan.durationMs });
-        this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', agentAnswered: { [plan.callId]: plan.answer } });
-        this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
-        this.#setStatus(sessionId, 'done');
-        this.#coordUpper(sessionId, plan);
+        this.#emit(sessionId, { type: 'tool.start', callId: plan.callId, name: item.toolName, input: item.input });
+        this.#setStatus(sessionId, 'tool', item.toolName);
+        setTimeout(() => {
+          this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result.slice(0, 160), durationMs: plan.durationMs });
+          this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', reviewAllowed: { [plan.callId]: plan.answer } });
+          this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
+          this.#emit(sessionId, { type: 'run.end', reason: 'completed' });
+          this.#setStatus(sessionId, 'done');
+        }, 4000);
         return;
       }
-      // handed back: its card for the user, and the upper agent says so in its own conversation
       item.delegated = plan.handover;
       this.#setStatus(sessionId, 'awaiting_confirm', item.toolName);
       this.#emit(sessionId, { type: 'confirm.request', callId: item.callId, name: item.toolName, input: item.input, reason: item.reason, ...(item.cause ? { cause: item.cause } : {}), ...(item.outsideFolder ? { outsideFolder: item.outsideFolder } : {}), delegated: plan.handover });
-      this.#coordUpper(sessionId, plan);
+      const list = this.#messages.get(COORD_IDS.pm) ?? [];
+      const seq = (list[list.length - 1]?.seq ?? 0) + 1;
+      list.push(reviewNoteMessage(`cd-note-${sessionId}`, seq, this.#now().toISOString(), { fromSessionId: sessionId, fromTitle: this.#sessions.get(sessionId)?.title ?? '', state: 'returned', reason: plan.handover.reason ?? '' }));
+      this.#messages.set(COORD_IDS.pm, list);
+      // the window draws it from the history (a run.end reloads it); the project's conversation goes on waiting
+      this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
+      this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
     }, 6000);
   }
 
-  #coordWait = 'cd-wait-1';
-
   /**
-   * The user says 放行 in the upper conversation: the cards it handed back are allowed (it could have allowed them
-   * itself); a card only the user may answer stays, and it says so.
-   */
-  #coordTyped(text: string): void {
-    const allowed: string[] = [];
-    for (const [sessionId, plan] of Object.entries(COORD_ANSWERS)) {
-      const item = this.#pending.get(sessionId)?.find((x) => x.callId === plan.callId);
-      if (plan.allow || item?.kind !== 'confirm' || item.delegated?.state !== 'returned') continue;
-      const answer = { sessionId: COORD_IDS.pm, title: COORD_PROJECT.name, reason: `你在「${COORD_PROJECT.name}」里回复：${text}` };
-      this.#pending.set(sessionId, (this.#pending.get(sessionId) ?? []).filter((x) => x.callId !== plan.callId));
-      this.#emit(sessionId, { type: 'confirm.resolved', callId: plan.callId, approved: true, by: answer });
-      this.#emit(sessionId, { type: 'tool.end', callId: plan.callId, name: item.toolName, isError: false, preview: plan.result, durationMs: 300 });
-      this.#append(sessionId, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: plan.callId, content: plan.result }], { author: 'runtime', agentAnswered: { [plan.callId]: answer } });
-      this.#append(sessionId, 'assistant', 'assistant', [{ type: 'text', text: plan.after }]);
-      this.#setStatus(sessionId, 'done');
-      const title = this.#sessions.get(sessionId)?.title ?? '';
-      const callId = `cd-typed-${sessionId}`;
-      this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'tool_use', id: callId, name: 'answer_confirmation', input: { agent: sessionId, call_id: plan.callId, allow: true, reason: answer.reason } }]);
-      this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: callId, content: `Allowed once. ${title} goes on.` }], { author: 'runtime', toolInfo: { [callId]: { category: 'agent', title } } });
-      allowed.push(title);
-    }
-    // cards only the user may answer (无法撤销 and the like) stay with the user's click
-    const userOnly = COORD_USER_ONLY.filter((id) => this.#pending.get(id)?.length).map((id) => this.#sessions.get(id)?.title ?? '');
-    const said = [allowed.length ? `已放行${allowed.map((x) => `「${x}」`).join('')}。` : '没有交回给你、我能放行的确认。', ...userOnly.map((x) => `「${x}」只能你在卡上点。`)].join('');
-    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'text', text: said }]);
-    this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
-    this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
-  }
-
-  /** What the upper agent's conversation keeps of it: wait_agents came back with the ask, its answer, its reminder, waiting again. */
-  #coordUpper(sessionId: string, plan: (typeof COORD_ANSWERS)[string]): void {
-    const title = this.#sessions.get(sessionId)?.title ?? '';
-    const callId = `cd-ans-${sessionId}`;
-    const reason = plan.allow ? plan.answer.reason : (plan.handover.reason ?? '');
-    this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: this.#coordWait, content: `${title} asks to confirm a step (${plan.callId}).` }], { author: 'runtime' });
-    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [{ type: 'tool_use', id: callId, name: 'answer_confirmation', input: { agent: sessionId, call_id: plan.callId, allow: plan.allow, reason } }]);
-    this.#append(COORD_IDS.pm, 'user', 'tool_results', [{ type: 'tool_result', toolUseId: callId, content: plan.allow ? `Allowed once. ${title} goes on.` : `Handed to the user: ${title} waits on its card.` }], { author: 'runtime', toolInfo: { [callId]: { category: 'agent', title } } });
-    this.#coordWait = `cd-wait-${sessionId}`;
-    this.#append(COORD_IDS.pm, 'assistant', 'assistant', [...(plan.allow ? [] : [{ type: 'text' as const, text: plan.reminder }]), { type: 'tool_use', id: this.#coordWait, name: 'wait_agents', input: {} }]);
-    // the window draws it from the history (a run.end reloads it), still waiting on its sub-agents
-    this.#emit(COORD_IDS.pm, { type: 'run.end', reason: 'completed' });
-    this.#setStatus(COORD_IDS.pm, 'tool', 'wait_agents');
-  }
-
-  /**
-   * The demo's project switch off: nothing is asked of the upper agent, every card is shown as without it. A card shown
-   * so stays the user's when the switch is turned on later; one already asked of the upper agent stays with it.
+   * The demo's project switch off: nothing is reviewed, every card is shown as without it. A card shown so stays the
+   * user's when the switch is turned on later; one already in review stays there.
    */
   #coordOff(sessionId: string, list: PendingItem[]): PendingItem[] {
     if (this.#coordAsked.has(sessionId)) return list;
@@ -608,10 +573,6 @@ export class FakeBackend implements AgentBackend {
     const attachments = pictureAttachments(opts?.attachments);
     if (run) return this.#steer(sessionId, text, 'next', attachments);
     const message = this.#append(sessionId, 'user', 'user', [{ type: 'text', text }], { author: 'user', ...(attachments ? { attachments } : {}) });
-    if (this.#coordDemo && sessionId === COORD_IDS.pm && /放行/.test(text)) {
-      this.#coordTyped(text);
-      return { messageId: message.id, started: true };
-    }
     void this.#run(sessionId, text);
     return { messageId: message.id, started: true };
   }

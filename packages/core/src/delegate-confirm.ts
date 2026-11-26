@@ -1,18 +1,18 @@
-// Which confirmations a sub-agent's upper agent is asked first (a project's switch, off by default). An allow-list: a
-// confirmation goes to the upper agent only when it comes from one of the sources below and nothing about it is
-// human-only; any other source, including ones added later, gets its card at once, as without the switch. The upper
-// agent is asked in the background, with no card: it allows the call once (with a reason, never 始终允许) or hands it
-// back, and a handed-back or unanswered one gets its card for the user. It cannot decline for the user.
-import type { GuardCause, UntrustedKind } from '@spica/protocol';
+// Which confirmations of a sub-agent go through the review first (a project's switch, off by default). An allow-list:
+// a confirmation is reviewed only when it comes from one of the sources below and nothing about it is human-only; any
+// other source, including ones added later, gets its card at once, as without the switch. The review is one model call
+// of its own (confirm-review.ts), in the background with no card: it allows the call once (with a reason, never
+// 始终允许) or hands it back, and a handed-back one, or one it gave no result for, gets its card for the user. It
+// cannot decline for the user. It never sees what the sub-agent read, so what was read does not decide who answers;
+// the guard still asks after outside content as it does without the switch.
+import type { GuardCause } from '@spica/protocol';
 
 /** Why a confirmation is the user's alone; the first that applies. */
 export type HumanOnly =
   /** A step inside a running call (browser_batch, computer_batch …): asked right then, not stored. */
   | 'step'
-  /** The conversation is on a scheduled task's run: nobody started it, so nobody is watching what the upper agent allows. */
+  /** The conversation is on a scheduled task's run: nobody started it, so nobody is watching what the review allows. */
   | 'scheduled'
-  /** The conversation, or the upper agent's, acts on outside content (a web page, mail, MCP or plugin data, a file outside the project). */
-  | 'outside_content'
   /** The guard asks about a link from outside content or a credential file. */
   | 'guard'
   /** The card says 无法撤销: a hook or plugin marked it, or the command deletes, overwrites, stops a program, edits the registry. */
@@ -32,20 +32,13 @@ export interface DelegateQuery {
   step: boolean;
   /** The turn was started by a scheduled task (its message's meta.scheduleRun), in this conversation or one above it. */
   scheduledRun?: boolean;
-  /**
-   * The outside content the session acts on since the user last wrote (Session.outsideKind; every read_file and grep
-   * counts, inside the project too). `inProject`: for 'file', all of it was read inside the project's folders.
-   */
-  outside?: { kind: UntrustedKind; inProject?: boolean };
-  /** The same, for the upper agent's own conversation: what it acts on would sway what it allows. */
-  upperOutside?: { kind: UntrustedKind; inProject?: boolean };
   /** Why the guard asks, if it does. */
   cause?: GuardCause;
   /** The registry's default confirmation of an irreversible-by-declaration tool. Only run_command's may be handed over. */
   byDefault?: boolean;
   /** The tool's name. */
   toolName: string;
-  /** A hook asked and said its confirmation may be answered by the upper agent (a user-added MCP server's tool, a plugin tool not marked irreversible). */
+  /** A hook asked and said its confirmation may be reviewed (a user-added MCP server's tool, a plugin tool not marked irreversible). */
   hookDelegable?: boolean;
   /** Marked irreversible (无法撤销). */
   irreversible?: boolean;
@@ -59,32 +52,16 @@ export interface DelegateQuery {
   command?: { danger: boolean; installs: boolean; downloads: boolean };
 }
 
-/** The guard's causes the upper agent may answer: a write outside the conversation's folders, a read in another project's. */
+/** The guard's causes the review may answer: a write outside the conversation's folders, a read in another project's. */
 const DELEGABLE_CAUSES: ReadonlySet<GuardCause> = new Set<GuardCause>(['outside_folder', 'other_project']);
 
-/**
- * Which outside content keeps a confirmation with the user (not decided yet; one place to change):
- * 'any_file' every file read counts; 'outside_project' files inside the project's folders do not (the default);
- * 'web_only' only web pages, mail, MCP and plugin data count.
- */
-export type ReadPolicy = 'any_file' | 'outside_project' | 'web_only';
-
-function counts(o: DelegateQuery['outside'], policy: ReadPolicy): boolean {
-  if (!o) return false;
-  if (o.kind !== 'file') return true;
-  return policy === 'any_file' || (policy === 'outside_project' && !o.inProject);
-}
-
-/** Undefined: the upper agent is asked first. Otherwise why only the user may answer it. */
-export function humanOnly(q: DelegateQuery, policy: ReadPolicy = 'outside_project'): HumanOnly | undefined {
+/** Undefined: it goes through the review first. Otherwise why only the user may answer it. */
+export function humanOnly(q: DelegateQuery): HumanOnly | undefined {
   if (q.step) return 'step';
   if (q.scheduledRun) return 'scheduled';
-  // files read inside the project are the project's own; anything else from outside stays with the user, read by
-  // the sub-agent or by the upper agent that would answer
-  if (counts(q.outside, policy) || counts(q.upperOutside, policy)) return 'outside_content';
   if (q.cause === 'outside_link' || q.cause === 'sensitive_file') return 'guard';
   if (q.cause === 'python_install' || q.install) return 'install';
-  // untrusted_turn: an irreversible tool after outside content; only project files reach here (see above)
+  // untrusted_turn: an irreversible tool after outside content; reviewed only as a command the card reads (below)
   if (q.cause && q.cause !== 'untrusted_turn' && !DELEGABLE_CAUSES.has(q.cause)) return 'source';
   if (q.irreversible || q.command?.danger) return 'irreversible';
   if (q.command?.installs || q.command?.downloads) return 'install';

@@ -64,13 +64,16 @@ describe('the status line under the answer', () => {
   });
 });
 
-describe('a call asked of the upper agent', () => {
-  it('its row says 等上级 Agent 确认: the status line stays away, the card waiting unshown after it', () => {
-    const asking = { sessionId: 's-up', state: 'asking' as const };
+describe('a call in review', () => {
+  afterEach(() => delete document.documentElement.dataset.reviewRow);
+  it('its row says 等待自动审查: the status line stays away, the card waiting unshown after it; with no row the status line says it', () => {
+    const asking = { model: 'deepseek-flash', state: 'asking' as const };
     const blocks: Block[] = [
       { type: 'tool', callId: 'c1', name: 'run_command', input: { command: 'x' }, state: 'pending', asking },
       { type: 'confirm', callId: 'c1', name: 'run_command', input: { command: 'x' }, reason: 'irreversible action', delegated: asking },
     ];
     expect(shownInAnswer(live(blocks))).toBe(true);
+    document.documentElement.dataset.reviewRow = 'status';
+    expect(shownInAnswer(live(blocks))).toBe(false);
   });
 });

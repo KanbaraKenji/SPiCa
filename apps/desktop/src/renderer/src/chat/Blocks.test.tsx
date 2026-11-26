@@ -824,24 +824,58 @@ describe('files under an answer: cards when few, a list when many', () => {
   });
 });
 
-describe('a sub-agent confirmation asked of the upper agent first', () => {
-  const upper = { sessionId: 's-up', title: '样机测试' };
+describe('a sub-agent confirmation reviewed first', () => {
+  const review = { model: 'deepseek-flash' };
   const base = { type: 'confirm' as const, callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action' };
-
-  it('handed back: the card as always, its last line the upper agent’s reason; no answer: says so', () => {
-    render(<ConfirmCard block={{ ...base, delegated: { ...upper, state: 'returned', reason: '写到项目文件夹以外' } }} onDecide={vi.fn()} />);
-    expect(screen.getByRole('button', { name: '拒绝' })).toBeTruthy();
-    expect(screen.getByText('上级 Agent 未放行：写到项目文件夹以外')).toBeTruthy();
-    cleanup();
-    render(<ConfirmCard block={{ ...base, delegated: { ...upper, state: 'no_answer' } }} onDecide={vi.fn()} />);
-    expect(screen.getByText('上级 Agent 没有回复')).toBeTruthy();
+  const step = { type: 'tool' as const, callId: 'c1', name: 'run_command', input: { command: 'python merge.py' } };
+  afterEach(() => {
+    delete document.documentElement.dataset.reviewRow;
+    delete document.documentElement.dataset.reviewName;
   });
 
-  it('while asking, the call’s row says so; once allowed, the row says who where Auto would be', () => {
-    render(<ToolGroup blocks={[{ type: 'tool', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, state: 'pending', asking: { ...upper, state: 'asking' } }]} />);
-    expect(screen.getByText('等上级 Agent 确认')).toBeTruthy();
+  it('handed back: the card as always, its last line the review’s reason; no result: says why', () => {
+    render(<ConfirmCard block={{ ...base, delegated: { ...review, state: 'returned', reason: '写到项目文件夹以外' } }} onDecide={vi.fn()} />);
+    expect(screen.getByRole('button', { name: '拒绝' })).toBeTruthy();
+    expect(screen.getByText('自动审查未放行：写到项目文件夹以外')).toBeTruthy();
     cleanup();
-    render(<ToolGroup blocks={[{ type: 'tool', callId: 'c1', name: 'run_command', input: { command: 'python merge.py' }, state: 'done', durationMs: 2100, agentAnswered: { ...upper, reason: '只写入 汇总.xlsx' } }]} />);
-    expect(document.body.textContent).toContain('上级 Agent · 2s');
+    render(<ConfirmCard block={{ ...base, delegated: { ...review, state: 'no_result', failure: 'timeout' } }} onDecide={vi.fn()} />);
+    expect(screen.getByText('自动审查无结果：超时')).toBeTruthy();
+  });
+
+  it('in review, the row says only that and turns: no Running, no command (it is in the detail)', () => {
+    render(<ToolGroup blocks={[{ ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
+    const row = screen.getByRole('button', { name: /等待自动审查/ });
+    expect(row.textContent).not.toContain('Running');
+    expect(row.textContent).not.toContain('merge.py');
+    fireEvent.click(row);
+    expect(document.body.textContent).toContain('python merge.py');
+  });
+
+  it('in a fold of steps, the fold says it too, and the step in its list', () => {
+    const done = { type: 'tool' as const, callId: 'c0', name: 'list_dir', input: { path: '报告' }, state: 'done' as const };
+    render(<ToolGroup blocks={[done, { ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
+    const fold = screen.getByRole('button', { name: /等待自动审查/ });
+    expect(fold.textContent).not.toContain('Running');
+    fireEvent.click(fold);
+    expect(screen.getAllByText('等待自动审查')).toHaveLength(2);
+  });
+
+  it('the row candidates: as the live step (no ring), or no row at all (the status line says it)', () => {
+    document.documentElement.dataset.reviewRow = 'status';
+    const { container } = render(<ToolGroup blocks={[{ ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
+    expect(container.textContent).toBe('');
+  });
+
+  it('once allowed it ran: Ran …, and who where Auto would be; the detail says why', () => {
+    render(<ToolGroup blocks={[{ ...step, state: 'done', durationMs: 2100, reviewAllowed: { ...review, reason: '只写入 汇总.xlsx' } }]} />);
+    expect(document.body.textContent).toContain('自动审查 · 2s');
+    fireEvent.click(screen.getByRole('button', { name: /merge/ }));
+    expect(screen.getByText('自动审查已放行：只写入 汇总.xlsx')).toBeTruthy();
+  });
+
+  it('the name candidates change every line together', () => {
+    document.documentElement.dataset.reviewName = 'plain';
+    render(<ToolGroup blocks={[{ ...step, state: 'pending', asking: { ...review, state: 'asking' } }]} />);
+    expect(screen.getByRole('button', { name: /等待批准/ })).toBeTruthy();
   });
 });

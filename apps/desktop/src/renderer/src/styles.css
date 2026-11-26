@@ -6815,15 +6815,7 @@ section.plugins-part > .plugins-part-title {
   flex: 1;
 }
 
-/* A call's row while its confirmation is asked of the upper agent (no card): the running mark and 等…确认, grey. */
-.tool-asking {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--spica-muted);
-}
-
-/* In a call's detail: the upper agent allowed it for the user, and why. */
+/* In a call's detail: the review allowed it for the user, and why. */
 .tool-by {
   margin: 2px 0 0;
   color: var(--spica-muted);

@@ -399,8 +399,10 @@ export interface MessageMeta {
   suggested?: true;
   /** tool_results: calls that ran without asking because the session's approval mode is auto. */
   autoApproved?: string[];
-  /** tool_results: confirmations the upper agent allowed for the user (it is asked first), per tool call id. */
-  agentAnswered?: Record<string, ConfirmAnswer>;
+  /** tool_results: confirmations the review allowed for the user (it is asked first), per tool call id. */
+  reviewAllowed?: Record<string, ConfirmAnswer>;
+  /** Runtime note in the project's conversation: a sub-agent's step the review handed back, or gave no result for. */
+  reviewNote?: ReviewNoteMeta;
   /** Runtime note: the user chose the working folder; what was made before moved there. */
   cwdChange?: CwdChangeMeta;
   /** Runtime note: the user switched the session's model (a decision). */
@@ -640,28 +642,38 @@ export interface PluginToolResult {
  * the tool in permissions.irreversible); the card shows 无法撤销 and the warning mark.
  */
 /**
- * Who a sub-agent's confirmation is asked of before the user: its upper agent (the project's own conversation). A
- * function of the conversation picks it, so it could be the conversation right above, or a model a scheduled task names.
+ * The review a sub-agent's confirmation goes through before the user, when its project's switch is on: one model call
+ * of its own (not the upper agent), which sees only what the user said in the project, the task the sub-agent was given,
+ * and the step itself (the command or the path, as the app reads it). `model`: the one it ran with (the project's
+ * default model unless one is set for it).
  */
-export interface ConfirmDelegate {
-  sessionId: string;
-  title?: string;
+export interface ConfirmReview {
+  model?: string;
 }
 
-/** A confirmation the upper agent allowed for the user (once): which agent, and the reason it gave. It never declines. */
-export interface ConfirmAnswer extends ConfirmDelegate {
+/** A confirmation the review allowed for the user (once), and the reason it gave. It never declines. */
+export interface ConfirmAnswer extends ConfirmReview {
   reason: string;
 }
 
 /**
- * A confirmation asked of the upper agent first. `asking`: in the background, no card (the call's row says so).
- * `returned`: it did not allow it and handed it to the user, with its reason. `no_answer`: it could not answer (it
- * waits on the user itself, its turn failed or was stopped or hit the spend limit, the app restarted, or no answer in
- * time); the card is the user's then, as without the switch.
+ * A confirmation in review. `asking`: in the background, no card (the call's row says so). `returned`: the review did
+ * not allow it and handed it to the user, with its reason. `no_result`: the review gave nothing (`failure`: its call
+ * failed, it hit the spend limit, or no answer in time); the card is the user's then, as without the switch.
  */
-export interface ConfirmHandover extends ConfirmDelegate {
-  state: 'asking' | 'returned' | 'no_answer';
+export interface ConfirmHandover extends ConfirmReview {
+  state: 'asking' | 'returned' | 'no_result';
   reason?: string;
+  failure?: 'error' | 'spend_limit' | 'timeout';
+}
+
+/** What the project's conversation is told when a sub-agent's step comes to the user after the review (no run starts). */
+export interface ReviewNoteMeta {
+  fromSessionId: string;
+  fromTitle: string;
+  state: 'returned' | 'no_result';
+  reason?: string;
+  failure?: ConfirmHandover['failure'];
 }
 
 export type PendingItem =
@@ -684,7 +696,7 @@ export type PendingItem =
        */
       keepTool?: string;
       install?: InstallPreview;
-      /** Asked of the upper agent first (see ConfirmHandover): no card while it is asking. */
+      /** In review first (see ConfirmHandover): no card while it is asked. */
       delegated?: ConfirmHandover;
       createdAt: string;
     }
@@ -781,8 +793,8 @@ export type CoreEventBody =
       durationMs: number;
     }
   /**
-   * `irreversible`: as on a pending confirmation (the card shows 无法撤销). `delegated`: asked of the upper agent first;
-   * sent again for the same call when it is handed back or gets no answer (its card is shown then).
+   * `irreversible`: as on a pending confirmation (the card shows 无法撤销). `delegated`: in review first; sent again for
+   * the same call when the review hands it back or gives no result (its card is shown then).
    */
   | { type: 'confirm.request'; callId: string; name: string; input: unknown; reason: string; cause?: GuardCause; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: string; install?: InstallPreview; delegated?: ConfirmHandover }
   /** Outside content (mail, web page, file, plugin tool) contained text that looks like instructions. */
@@ -795,7 +807,7 @@ export type CoreEventBody =
   | { type: 'settings.changed'; change: SettingsChangeMeta }
   /** Session details changed (context use after a model call, model, approval mode). */
   | { type: 'session.updated'; info: SessionInfo }
-  /** `by`: the upper agent allowed it for the user (absent: the user answered). */
+  /** `by`: the review allowed it for the user (absent: the user answered). */
   | { type: 'confirm.resolved'; callId: string; approved: boolean; by?: ConfirmAnswer }
   | { type: 'ask.request'; callId: string; question: string; options?: string[]; recommended?: string; multiSelect?: boolean }
   | { type: 'ask.resolved'; callId: string; answer: string }

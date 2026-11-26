@@ -890,10 +890,10 @@ describe('currentPlan (update_plan)', () => {
   });
 });
 
-describe('a sub-agent confirmation asked of the upper agent first', () => {
-  const upper = { sessionId: 's-up', title: '样机测试' };
+describe('a sub-agent confirmation reviewed first', () => {
+  const upper = { model: 'deepseek-flash' };
   const call: Message = { id: 'm1', sessionId: 's', seq: 1, role: 'assistant', kind: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'run_command', input: { command: 'python merge.py' } }], createdAt: '' };
-  const pending = (state: 'asking' | 'returned' | 'no_answer', reason?: string) =>
+  const pending = (state: 'asking' | 'returned' | 'no_result', reason?: string) =>
     [{ kind: 'confirm' as const, callId: 'c1', toolName: 'run_command', input: { command: 'python merge.py' }, reason: 'irreversible action', delegated: { ...upper, state, ...(reason ? { reason } : {}) }, createdAt: '' }];
   const ev = (e: Record<string, unknown>) => ({ seq: 1, at: '', sessionId: 's', parentChain: [], ...e }) as unknown as CoreEvent;
   const tool = (t: Transcript) => t.items.flatMap((i) => (i.kind === 'response' ? i.blocks : [])).find((b) => b.type === 'tool' && b.callId === 'c1') as Extract<Block, { type: 'tool' }>;
@@ -911,16 +911,16 @@ describe('a sub-agent confirmation asked of the upper agent first', () => {
 
   it('opened again after it was handed back or got no answer: the card as it was shown live', () => {
     expect(card(fromHistory([call], pending('returned', '理由'))).delegated?.reason).toBe('理由');
-    expect(tool(fromHistory([call], pending('no_answer'))).asking).toBeUndefined();
+    expect(tool(fromHistory([call], pending('no_result'))).asking).toBeUndefined();
   });
 
-  it('allowed by the upper agent: the row keeps who and why, live and from the history', () => {
+  it('allowed by the review: the row keeps who and why, live and from the history', () => {
     const answer = { ...upper, reason: '只写入 汇总.xlsx' };
     const live = applyEvent(fromHistory([call], pending('asking')), ev({ type: 'confirm.resolved', callId: 'c1', approved: true, by: answer }));
-    expect(tool(live).agentAnswered).toEqual(answer);
+    expect(tool(live).reviewAllowed).toEqual(answer);
     expect(tool(live).asking).toBeUndefined();
     expect(card(live).by).toEqual(answer);
-    const result: Message = { id: 'm2', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'ok' }], createdAt: '', meta: { author: 'runtime', agentAnswered: { c1: answer } } };
-    expect(tool(fromHistory([call, result])).agentAnswered).toEqual(answer);
+    const result: Message = { id: 'm2', sessionId: 's', seq: 2, role: 'user', kind: 'tool_results', content: [{ type: 'tool_result', toolUseId: 'c1', content: 'ok' }], createdAt: '', meta: { author: 'runtime', reviewAllowed: { c1: answer } } };
+    expect(tool(fromHistory([call, result])).reviewAllowed).toEqual(answer);
   });
 });

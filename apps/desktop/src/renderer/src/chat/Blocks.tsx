@@ -7,7 +7,7 @@ import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fileCardLine, fileCardParts, fileCardVerb, NO_REPORT_WORDS, type Block, type ChildNote, type FileRef } from '../store/transcript';
 import { N_, t } from '../../../shared/i18n';
-import { upperName } from './upper-agent';
+import { reviewBy, reviewNoResult, reviewReturned, reviewRow, reviewWaiting } from './review-words';
 import { useLocale } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { FileBadge, FileGlyph } from '../ui/FileIcon';
@@ -619,25 +619,28 @@ export const ToolCardsContext = createContext<Record<string, FileCardMeta> | und
 
 /** What a call's own line says after its words: how it ended (Failed, stopped), or how long it took. */
 function toolMeta(block: ToolBlock, done = false): ReactNode {
-  // asked of the upper agent in the background: said quietly where the time goes, no card
-  if (block.state === 'pending' && block.asking)
-    return (
-      <span className="tool-asking">
-        <SpicaStatusIcon name="running" size={14} />
-        {t('等{name}确认', { name: upperName(block.asking, true) })}
-      </span>
-    );
+  // in review (no card): the row's words say so; the turning ring after them, or the clock on a live row
+  if (block.state === 'pending' && block.asking) return reviewRow() === 'live' ? null : <SpicaStatusIcon name="running" size={14} title={reviewWaiting()} />;
   if (block.state === 'pending') return <SpicaStatusIcon name="running" size={14} title={t('进行中')} />;
   if (block.state === 'error') return <span className="text-danger">Failed</span>;
   if (block.state === 'unavailable') return t('已停用，未执行');
   if (block.state === 'repeated') return t('重复，未执行');
   if (block.state === 'timeout') return t('已超时');
   if (block.state === 'running') return null;
-  // allowed by the upper agent for the user: said where Auto would be
-  const by = block.agentAnswered ? upperName(block.agentAnswered) : block.autoApproved ? 'Auto' : null;
+  // allowed by the review for the user: said where Auto would be
+  const by = block.reviewAllowed ? reviewBy() : block.autoApproved ? 'Auto' : null;
   if (block.durationMs !== undefined && !done) return by ? `${by} · ${formatDuration(block.durationMs)}` : formatDuration(block.durationMs);
   return by;
 }
+
+/** A call in review: only that, no command (it is in the detail); else what it is doing (Running Get-ChildItem). */
+function busyWords(block: ToolBlock): ReactNode {
+  if (block.state === 'pending' && block.asking) return <span className="tool-verb">{reviewWaiting()}</span>;
+  return runningWords(block);
+}
+
+/** A call in review whose row is left out: the status line under the answer says it (data-review-row="status"). */
+const reviewHidden = (b: ToolBlock): boolean => b.state === 'pending' && !!b.asking && reviewRow() === 'status';
 
 /** A call's words: the verb quieter, the object as it is; the whole path or address on hover when it was cut. */
 function ToolText({ block }: { block: ToolBlock }) {
@@ -696,7 +699,7 @@ function ToolItem({ block }: { block: ToolBlock }) {
     <div className={open ? 'tool-item is-open' : 'tool-item'}>
       <button type="button" className="tool-item-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="fold-icon">{toolIcon(block)}</span>
-        {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{runningWords(block)}</span> : <ToolText block={block} />}
+        {block.state === 'running' || block.state === 'pending' ? <span className="tool-text">{busyWords(block)}</span> : <ToolText block={block} />}
         {meta ? <span className="fold-meta">{meta}</span> : null}
         <Icon name="chevronRight" size={14} className="fold-chevron" />
       </button>
@@ -739,13 +742,16 @@ export type GroupStep = ToolBlock | { type: 'thinking'; text: string };
 function ToolRow({ block, since }: { block: ToolBlock; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const done = useContext(RoundDoneContext);
-  const now = since !== undefined && block.state === 'running';
+  // in review, drawn as the step the run is on (data-review-row="live")
+  const reviewLive = block.state === 'pending' && !!block.asking && reviewRow() === 'live';
+  const now = since !== undefined && (block.state === 'running' || reviewLive);
+  if (reviewHidden(block)) return null;
   return (
     <Disclosure
       open={open}
       onToggle={() => setOpen((o) => !o)}
-      icon={now ? LIVE_MARK : toolIcon(block)}
-      label={now || block.state === 'running' || block.state === 'pending' ? runningWords(block) : <ToolText block={block} />}
+      icon={now || reviewLive ? LIVE_MARK : toolIcon(block)}
+      label={now || block.state === 'running' || block.state === 'pending' ? busyWords(block) : <ToolText block={block} />}
       meta={toolMeta(block, done)}
       tail={now ? <RunClock since={since} /> : undefined}
     >
@@ -767,20 +773,26 @@ export function runningText(running: ToolBlock[]): string {
  * are what the run is doing now: while some run, the line says so (the turning mark first, Running and the
  * step, the run's clock at the end) in place of the status line under the answer.
  */
-export function ToolGroup({ blocks, steps = blocks, since }: { blocks: ToolBlock[]; steps?: GroupStep[]; since?: number | undefined }) {
+export function ToolGroup({ blocks: all, steps: allSteps = all, since }: { blocks: ToolBlock[]; steps?: GroupStep[]; since?: number | undefined }) {
   const [open, setOpen] = useState(false);
   const cards = useContext(ToolCardsContext);
   const done = useContext(RoundDoneContext);
+  const blocks = all.filter((b) => !reviewHidden(b));
+  const steps = allSteps.filter((b) => b.type === 'thinking' || !reviewHidden(b));
+  if (!blocks.length) return null;
   if (blocks.length === 1 && blocks[0] && steps.length === 1) return <ToolRow block={blocks[0]} since={since} />;
   const running = blocks.filter((b) => b.state === 'running');
   const busy = running.length > 0 || blocks.some((b) => b.state === 'pending');
   const now = since !== undefined && running.length > 0;
   const failed = blocks.filter((b) => b.state === 'error').length;
   const total = blocks.reduce((n, b) => n + (b.durationMs ?? 0), 0);
-  const label = now ? runningText(running) : busy ? runningWords(running[0] ?? blocks.find((b) => b.state === 'pending')!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
-  const meta = busy ? (now ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
+  const first = running[0] ?? blocks.find((b) => b.state === 'pending');
+  // a step in review drawn as the step the run is on (data-review-row="live"): the mark in front, no ring
+  const reviewLive = !now && !!first?.asking && first.state === 'pending' && reviewRow() === 'live';
+  const label = now ? runningText(running) : busy ? busyWords(first!) : groupWords(blocks.map((b) => ({ call: b, card: cards?.[b.callId] })));
+  const meta = busy ? (now || reviewLive ? null : <SpicaStatusIcon name="running" size={14} title={t('进行中')} />) : failed ? <span className="text-danger">{failed} failed</span> : total && !done ? formatDuration(total) : null;
   return (
-    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
+    <Disclosure open={open} onToggle={() => setOpen((o) => !o)} icon={now || reviewLive ? LIVE_MARK : <Icon name="tool" size={14} />} label={label} meta={meta} tail={now ? <RunClock since={since} /> : undefined}>
       <div className="tool-list">
         {steps.map((b, i) => (b.type === 'thinking' ? <ThinkingItem key={`thinking-${i}`} text={b.text} /> : <ToolItem key={b.callId} block={b} />))}
       </div>
@@ -1352,9 +1364,9 @@ export function ConfirmCard({ block, onDecide }: { block: Extract<Block, { type:
       ) : null}
       {block.install ? <InstallList preview={block.install} /> : <ConfirmTarget name={block.name} input={block.input} change={block.change} outsideFolder={block.outsideFolder} bare />}
       {block.cause && GUARD_CAUSE_TEXT[block.cause] ? <p className="card-why">{GUARD_CAUSE_TEXT[block.cause]}</p> : null}
-      {/* asked of the upper agent first: handed back to the user with its reason, or it could not answer */}
-      {block.delegated?.state === 'returned' ? <p className="card-why">{t('{name}未放行：{reason}', { name: upperName(block.delegated, true), reason: block.delegated.reason ?? '' })}</p> : null}
-      {block.delegated?.state === 'no_answer' ? <p className="card-why">{t('{name}没有回复', { name: upperName(block.delegated, true) })}</p> : null}
+      {/* reviewed first: handed back to the user with its reason, or the review gave no result */}
+      {block.delegated?.state === 'returned' ? <p className="card-why">{reviewReturned(block.delegated.reason ?? '')}</p> : null}
+      {block.delegated?.state === 'no_result' ? <p className="card-why">{reviewNoResult(block.delegated.failure)}</p> : null}
     </section>
   );
 }

@@ -15,6 +15,7 @@ import { answerText, MessageActions } from './MessageActions';
 import { answerSources } from './sources';
 import { WEB_IMAGES, webImagesFor } from './answer-image';
 import { StatusLine } from './StatusLine';
+import { reviewNoResult, reviewReturned } from './review-words';
 import { ASK, greeting } from './welcome';
 import { GUARD_FLAG_TEXT, installFailureText, NETWORK_FAILURES } from './format';
 import { SettingsChangeCard } from './SettingsChangeCard';
@@ -254,7 +255,7 @@ function Response({
             // Waiting, it stands above the message box (Conversation: openAsks); here once answered or stopped.
             return b.answer === undefined && !b.cancelled ? null : <AskCard key={`ask-${b.callId}`} block={b} onAnswer={(a) => actions.answer(b.callId, a)} />;
           case 'confirm':
-            // asked of the upper agent: no card while it asks (the row says so), none at all once it allowed it then;
+            // in review: no card while it is reviewed (the row says so), none at all once the review allowed it;
             // a card shown (handed back) stays, answered
             if (b.delegated?.state === 'asking' && (b.by || (b.approved === undefined && !b.cancelled))) return null;
             return <ConfirmCard key={`confirm-${b.callId}`} block={b} onDecide={(ok, always) => actions.confirm(b.callId, ok, always)} />;
@@ -592,6 +593,16 @@ export function Conversation({ session, transcript, actions, demo, needsModel = 
                 );
               if (item.kind === 'mail') return <MailNote key={item.id} ids={item.mailIds} flagged={item.flagged} actions={actions} />;
               if (item.kind === 'settings') return <SettingsChangeCard key={item.id} change={item.change} onOpenSettings={actions.openModelSettings} />;
+              // a sub-agent's step came to the user after the review: which, and why (the card is in that conversation)
+              if (item.kind === 'note' && item.review)
+                return (
+                  <p key={item.id} className="turn-note review-note" {...mark(item.id)}>
+                    <button type="button" className="link-btn" onClick={() => actions.openSession(item.review!.fromSessionId)}>
+                      {t('「{name}」', { name: item.review.fromTitle })}
+                    </button>
+                    {item.review.state === 'returned' ? reviewReturned(item.review.reason ?? '') : reviewNoResult(item.review.failure)}
+                  </p>
+                );
               if (item.kind === 'note')
                 return item.child ? (
                   <ChildNoteCard key={item.id} note={item.child} onOpen={actions.openSession} />

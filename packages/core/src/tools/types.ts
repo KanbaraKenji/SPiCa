@@ -80,8 +80,8 @@ export interface Tool {
   /** Irreversible actions (sending mail, writing external systems) need confirmation by default. */
   irreversible?: boolean;
   /**
-   * Its confirmation is the user's alone: an agent that answers sub-agents' confirmations for the user (the upper
-   * agent, delegate-confirm.ts) never gets it. Setting up a scheduled task, 操作电脑's access.
+   * Its confirmation is the user's alone: the review that answers sub-agents' confirmations for the user
+   * (delegate-confirm.ts) never gets it. Setting up a scheduled task, 操作电脑's access.
    */
   confirmByUser?: true;
   /**

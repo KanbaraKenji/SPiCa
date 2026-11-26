@@ -1145,11 +1145,11 @@ export function App({ bridge, shell, agent, version = '', mail: mailProp }: AppP
         onStopJob={(jobId) => void agent.stopJob(jobId)}
         {...(project
           ? {
-              upperApproves: {
-                on: (settings.upperApproves ?? []).includes(project.id),
+              reviewSwitch: {
+                on: (settings.reviewProjects ?? []).includes(project.id),
                 set: (on: boolean) => {
-                  const rest = (settings.upperApproves ?? []).filter((x) => x !== project.id);
-                  shell.update({ upperApproves: on ? [...rest, project.id] : rest });
+                  const rest = (settings.reviewProjects ?? []).filter((x) => x !== project.id);
+                  shell.update({ reviewProjects: on ? [...rest, project.id] : rest });
                 },
               },
             }

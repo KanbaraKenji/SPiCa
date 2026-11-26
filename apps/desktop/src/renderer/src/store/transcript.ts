@@ -1,7 +1,7 @@
 // Turns a session's history (Message[] + pending items) and its live event
 // stream into what the conversation view draws. Pure functions, no React.
 import { relocate, shownPath } from './relocate';
-import type { ChangePreview, CommandJob, ConfirmAnswer, ConfirmHandover, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
+import type { ReviewNoteMeta, ChangePreview, CommandJob, ConfirmAnswer, ConfirmHandover, InstallFailure, InstallPreview, CoreEvent, CwdChangeMeta, FileCardMeta, GuardCause, HistoryCardMeta, MemoryCardMeta, MemoryItem, Message, PendingItem, SessionStatus, SettingsChangeMeta, SourceCardMeta, ToolCategory, UntrustedKind } from '@spica/protocol';
 import { humanError, isBalanceWords } from '../../../shared/errors';
 import { AGENT_MESSAGES_LIMIT_MARK, askRecommended, PLAN_TOOL, readPlan, REPEAT_REMINDER_MARK, REPEAT_STOP_MARK, type PlanStep } from '@spica/protocol';
 import { toolLabel } from '../chat/format';
@@ -52,9 +52,9 @@ export type Block =
       outside?: UntrustedKind;
       /** Irreversible, but ran without asking: the conversation's approval is automatic. */
       autoApproved?: boolean;
-      /** Its confirmation was allowed by the upper agent, for the user (it is asked first): which, and the reason. */
-      agentAnswered?: ConfirmAnswer;
-      /** Its confirmation is being asked of the upper agent, in the background (no card yet): which. */
+      /** Its confirmation was allowed by the review, for the user (it is reviewed first): and the reason. */
+      reviewAllowed?: ConfirmAnswer;
+      /** Its confirmation is in review, in the background (no card yet). */
       asking?: ConfirmHandover;
       /** What kind of step it is, as the core said (tool.start, or the stored toolInfo); absent in older conversations. */
       category?: ToolCategory;
@@ -71,8 +71,8 @@ export type Block =
   /** `cancelled`: dropped undecided (the run was stopped): nothing to decide any more. */
   /** `irreversible`: what it allows cannot be undone (a plugin said so): the card shows 无法撤销. */
   /**
-   * `delegated`: asked of the upper agent first; while it is asking there is no card (the call's row says so), handed
-   * back or unanswered the card is the user's. `by`: the upper agent allowed it (there was never a card).
+   * `delegated`: reviewed first; while in review there is no card (the call's row says so), handed back or with no
+   * result the card is the user's. `by`: the review allowed it (there was never a card).
    */
   | { type: 'confirm'; callId: string; name: string; input: unknown; reason: string; approved?: boolean; cause?: GuardCause; cancelled?: boolean; irreversible?: boolean; change?: ChangePreview; outsideFolder?: string; folderTooWide?: boolean; keepTool?: boolean; install?: InstallPreview; delegated?: ConfirmHandover; by?: ConfirmAnswer }
   /** 操作电脑's approval card (computer_request_access): waiting and answered; the call has no step row. */
@@ -174,6 +174,8 @@ function noteItem(m: Message): Item | undefined {
     const empty = child.kind === 'report' && (child.text.trim() === '' || child.text === NO_REPORT);
     return { kind: 'note', id: m.id, text: empty ? NO_REPORT_WORDS : child.text, child: empty ? { ...child, text: NO_REPORT_WORDS } : child };
   }
+  const review = m.meta?.reviewNote;
+  if (review && typeof review.fromSessionId === 'string') return { kind: 'note', id: m.id, text: '', review };
   if (m.meta?.author === 'runtime') return undefined;
   return { kind: 'note', id: m.id, text: textOf(m) };
 }
@@ -238,7 +240,7 @@ export type Item =
   | { kind: 'mail'; id: string; mailIds: string[]; flagged?: string[] }
   /** `cwd`: the working-folder note; files named before it are looked for where they went (store/relocate.ts). */
   /** `toolsOff`, `model`: the tools turned off, the model switch (noteText words them in the current language). */
-  | { kind: 'note'; id: string; text: string; child?: ChildNote; cwd?: CwdChangeMeta; toolsOff?: string[]; model?: { from?: string; to: string } }
+  | { kind: 'note'; id: string; text: string; child?: ChildNote; review?: ReviewNoteMeta; cwd?: CwdChangeMeta; toolsOff?: string[]; model?: { from?: string; to: string } }
   /** A model setting a connected script changed (the card; meta.settingsChange). */
   | { kind: 'settings'; id: string; change: SettingsChangeMeta }
   /**
@@ -536,7 +538,7 @@ function settleCard(items: Item[], callId: string, content: string, isError: boo
   }
 }
 
-/** A call whose confirmation the upper agent is asking about says so on its row; handed back, its card says the rest. */
+/** A call whose confirmation is in review says so on its row; handed back, its card says the rest. */
 function markAsking(items: Item[], callId: string, delegated: ConfirmHandover | undefined): void {
   const tool = findBlock(items, 'tool', callId);
   if (!tool) return;
@@ -695,8 +697,8 @@ export function fromHistory(all: readonly Message[], pending: readonly PendingIt
           if (note) tool.outside = note.kind;
           if (note?.signals?.length) tool.flagged = note.kind;
           if (m.meta?.autoApproved?.includes(b.toolUseId)) tool.autoApproved = true;
-          const answered = m.meta?.agentAnswered?.[b.toolUseId];
-          if (answered) tool.agentAnswered = answered;
+          const answered = m.meta?.reviewAllowed?.[b.toolUseId];
+          if (answered) tool.reviewAllowed = answered;
           continue;
         }
         settleCard(items, b.toolUseId, b.content, b.isError);
@@ -974,7 +976,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
       }
       markAsking(items, e.callId, e.delegated);
       const asked = findBlock(items, 'confirm', e.callId);
-      // asked again: the upper agent handed it back or did not answer, and the card is shown now
+      // asked again: the review handed it back or gave no result, and the card is shown now
       if (asked) {
         if (e.delegated) asked.delegated = e.delegated;
       } else {
@@ -1001,7 +1003,7 @@ export function applyEvent(prev: Transcript, e: CoreEvent, now: number = Date.no
         c.by = e.by;
         // the step's row says who allowed it, as it does once the conversation is opened again
         const tool = findBlock(items, 'tool', e.callId);
-        if (tool) tool.agentAnswered = e.by;
+        if (tool) tool.reviewAllowed = e.by;
       }
       markAsking(items, e.callId, undefined);
       return t;

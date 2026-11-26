@@ -182,7 +182,7 @@ function overlayHeight(zoom: number): number {
 //   SPICA_PICK_FOLDER=<dir>  the folder picker answers this without showing (not in installed builds)
 //   SPICA_PICK_FILES=<a;b>   the file picker answers these without showing (not in installed builds)
 //   SPICA_DEMO_PLUGINS=many  the demo's plugin list has twelve plugins (screenshots; not in installed builds)
-//   SPICA_DEMO_COORD=1       the demo has a project whose sub-agents ask its conversation before the user (not in installed builds)
+//   SPICA_DEMO_COORD=1       the demo has a project whose sub-agents' confirmations are reviewed before the user (not in installed builds)
 //   SPICA_HIDDEN=1           never show the window: test scripts drive it over DevTools while
 //                            someone is using the computer (not in installed builds)
 //   SPICA_COMPUTER=real|fake 操作电脑 is there in this run: real = the Windows driver (installed builds too), fake =
@@ -475,7 +475,7 @@ const backend: AgentBackend =
           },
         },
       })
-    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, coordDemo: !app.isPackaged && process.env.SPICA_DEMO_COORD === '1' ? (projectId) => settings.get().upperApproves.includes(projectId) : undefined, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
+    : new FakeBackend({ speed: automated ? 0 : 1, legacyDefaultCwd, coordDemo: !app.isPackaged && process.env.SPICA_DEMO_COORD === '1' ? (projectId) => settings.get().reviewProjects.includes(projectId) : undefined, demoImage: () => writeDemoChart(join(app.getPath('userData'), 'demo-media')) });
 console.log(`[spica] backend: ${backendKind === 'core' ? 'agent core (own process)' : 'fake (demo data)'}`);
 // A development run says where it keeps things (SPICA_USER_DATA moves all of it), so a check can see it.
 if (!app.isPackaged) console.log(`[spica] data: ${app.getPath('userData')} · documents: ${app.getPath('documents')} · app's Python: ${pythonRoot()}`);

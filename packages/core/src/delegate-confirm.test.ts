@@ -7,37 +7,21 @@ const plainCommand = { danger: false, installs: false, downloads: false };
 const command: DelegateQuery = { ...base, toolName: 'run_command', byDefault: true, command: plainCommand };
 
 describe('humanOnly', () => {
-  it('goes to the upper agent first: a plain command in Manual, a write outside the folders, a read in another project, a user-added MCP tool', () => {
+  it('goes through the review first: a plain command in Manual, a write outside the folders, a read in another project, a user-added MCP tool', () => {
     expect(humanOnly(command)).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder' })).toBeUndefined();
     expect(humanOnly({ ...base, toolName: 'read_file', cause: 'other_project' })).toBeUndefined();
     expect(humanOnly({ ...base, toolName: 'notes__add', hookDelegable: true })).toBeUndefined();
   });
 
-  it('still goes to the upper agent first after reading files inside the project (the guard asks about the command then)', () => {
-    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'file', inProject: true } })).toBeUndefined();
-    expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'file', inProject: true } })).toBeUndefined();
+  it('is reviewed after outside content too (the review never sees it; the guard still asks): a plain command, a write outside the folders', () => {
+    expect(humanOnly({ ...command, cause: 'untrusted_turn' })).toBeUndefined();
+    expect(humanOnly({ ...base, cause: 'outside_folder' })).toBeUndefined();
   });
 
-  it('keeps with the user anything asked after a web page, mail, MCP data or a file outside the project, read by either agent', () => {
-    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'web' } })).toBe('outside_content');
-    expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'mail' } })).toBe('outside_content');
-    expect(humanOnly({ ...base, cause: 'outside_folder', outside: { kind: 'mcp' } })).toBe('outside_content');
-    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: { kind: 'file' } })).toBe('outside_content');
-    expect(humanOnly({ ...command, upperOutside: { kind: 'web' } })).toBe('outside_content');
-    expect(humanOnly({ ...command, upperOutside: { kind: 'file', inProject: true } })).toBeUndefined();
+  it('keeps with the user a link from outside content and a credential file', () => {
     expect(humanOnly({ ...base, cause: 'outside_link' })).toBe('guard');
     expect(humanOnly({ ...base, toolName: 'read_file', cause: 'sensitive_file' })).toBe('guard');
-  });
-
-  it('what counts as outside content is one setting: any file, files outside the project (default), or web and plugin data only', () => {
-    const inProject = { ...command, cause: 'untrusted_turn' as const, outside: { kind: 'file' as const, inProject: true } };
-    const elsewhere = { ...command, cause: 'untrusted_turn' as const, outside: { kind: 'file' as const } };
-    expect(humanOnly(inProject, 'any_file')).toBe('outside_content');
-    expect(humanOnly(inProject)).toBeUndefined();
-    expect(humanOnly(elsewhere)).toBe('outside_content');
-    expect(humanOnly(elsewhere, 'web_only')).toBeUndefined();
-    expect(humanOnly({ ...command, outside: { kind: 'web' } }, 'web_only')).toBe('outside_content');
   });
 
   it('keeps with the user whatever a step of a running call asks (one of a batch)', () => {
@@ -73,7 +57,7 @@ describe('humanOnly', () => {
     expect(humanOnly({ ...base, toolName: 'run_javascript', byDefault: true })).toBe('source');
     expect(humanOnly({ ...base, toolName: 'files__delete', byDefault: true })).toBe('source');
     expect(humanOnly({ ...base, toolName: 'run_command', byDefault: true })).toBe('source');
-    expect(humanOnly({ ...base, toolName: 'run_javascript', cause: 'untrusted_turn', outside: { kind: 'file', inProject: true } })).toBe('source');
+    expect(humanOnly({ ...base, toolName: 'run_javascript', cause: 'untrusted_turn' })).toBe('source');
   });
 
   it('keeps with the user any source not on the list: a hook that did not say, a plugin view, a settings change', () => {
