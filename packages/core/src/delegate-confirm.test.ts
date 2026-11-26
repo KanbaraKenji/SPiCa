@@ -20,8 +20,13 @@ describe('humanOnly', () => {
     expect(humanOnly({ ...command, outside: 'mcp' })).toBe('outside_content');
   });
 
-  it('is still reviewed after reading files or history: a plain command, a write outside the folders', () => {
-    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'file' })).toBeUndefined();
+  it('keeps with the user anything asked after a file outside the project, or one not known to be inside it', () => {
+    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'file', fileInProject: false })).toBe('outside_content');
+    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'file' })).toBe('outside_content');
+  });
+
+  it('is still reviewed after reading files inside the project, or history: a plain command, a write outside the folders', () => {
+    expect(humanOnly({ ...command, cause: 'untrusted_turn', outside: 'file', fileInProject: true })).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder', outside: 'history' })).toBeUndefined();
     expect(humanOnly({ ...base, cause: 'outside_folder' })).toBeUndefined();
   });
