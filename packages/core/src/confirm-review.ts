@@ -55,7 +55,7 @@ export function reviewPrompt(input: ReviewInput): string {
   return ['<user_words>', ...words, '</user_words>', '<task>', input.task, '</task>', '<step>', `tool: ${input.step.tool}`, step, '</step>'].join('\n');
 }
 
-const VERDICT = /^[\s*_#>`"'“【[]*(ALLOW|HAND[\s_-]*BACK|放行|交回(?:给用户)?)(?![A-Za-z])[\s*_`"'”】\].:：,，;；-]*(.*)$/i;
+const VERDICT = /^[\s*_#>`"'“【[]*(ALLOW|HAND[\s_-]*BACK|放行|允许|交回(?:给用户)?|交给用户|退回)(?![A-Za-z])[\s*_`"'”】\].:：,，;；-]*(.*)$/i;
 
 /**
  * Its answer, or null when it said neither (that counts as no result: the card is the user's). The word starts a line
@@ -72,7 +72,7 @@ export function readVerdict(text: string): { allow: boolean; reason: string } | 
   if (at < 0) return null;
   const m = VERDICT.exec(lines[at]!)!;
   const reason = [m[2] ?? '', ...lines.slice(at + 1)].join(' ').replace(/\s+/g, ' ').trim();
-  if (/^(allow|放行)$/i.test(m[1]!)) return reason ? { allow: true, reason } : null;
+  if (/^(allow|放行|允许)$/i.test(m[1]!)) return reason ? { allow: true, reason } : null;
   return { allow: false, reason };
 }
 

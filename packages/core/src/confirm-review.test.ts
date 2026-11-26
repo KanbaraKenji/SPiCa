@@ -27,6 +27,9 @@ describe('the review of a sub-agent step', () => {
     expect(readVerdict('交回给用户：用户没有提到 share 文件夹')).toEqual({ allow: false, reason: '用户没有提到 share 文件夹' });
     expect(readVerdict('Looking at it.\nHAND BACK\nNot asked for.')).toEqual({ allow: false, reason: 'Not asked for.' });
     expect(readVerdict('放行\n只读统计')).toEqual({ allow: true, reason: '只读统计' });
+    // what deepseek-flash answered in a real run: the word in the user's language
+    expect(readVerdict('允许\n这一步正是任务第 1 步要求的。')).toEqual({ allow: true, reason: '这一步正是任务第 1 步要求的。' });
+    expect(readVerdict('交给用户：要写到项目外')).toEqual({ allow: false, reason: '要写到项目外' });
   });
 
   it("runs with the model set for it, else the project's default", () => {
